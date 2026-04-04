@@ -25,5 +25,4 @@ jobs:
             throw 'PSGALLERY_API_KEY secret is not set.'
           }
 
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Publish-Module -Path ./src/Fylgyr -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
