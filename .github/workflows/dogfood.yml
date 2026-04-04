@@ -43,8 +43,12 @@ jobs:
             # Require full 40-character commit SHAs only for GitHub-hosted action refs
             # in owner/repo[@ref] form. Allow local actions/workflows and docker:// refs.
             while IFS= read -r use_line; do
-              if [[ "${use_line}" =~ ^[[:space:]]*uses:[[:space:]]*['\"]?([^'\"[:space:]]+)['\"]?[[:space:]]*$ ]]; then
-                use_target="${BASH_REMATCH[1]}"
+              use_target="$(printf '%s\n' "${use_line}" | sed -E "s/^[[:space:]]*uses:[[:space:]]*['\"]?([^'\"[:space:]]+)['\"]?[[:space:]]*$/\\1/")"
+
+              # Skip lines that did not parse as a valid uses: target.
+              if [[ -z "${use_target}" || "${use_target}" == "${use_line}" ]]; then
+                continue
+              fi
 
                 # Local actions/workflows and Docker-based actions do not use owner/repo@ref.
                 if [[ "${use_target}" == ./* || "${use_target}" == ../* || "${use_target}" == docker://* ]]; then
@@ -58,7 +62,6 @@ jobs:
                   echo "ERROR: ${file} has non-SHA-pinned action reference: ${use_line}"
                   failed=1
                 fi
-              fi
             done < <(grep -E '^[[:space:]]*uses:[[:space:]]*' "${file}" || true)
 
             # Guardrail against broad write permissions patterns.
