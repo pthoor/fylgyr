@@ -21,8 +21,17 @@ function Test-DangerousTrigger {
 
         $foundTriggers = @()
         foreach ($trigger in $dangerousTriggers) {
-            if ($content -match "(?m)^\s*$trigger\s*:") {
-                $foundTriggers += $trigger
+            $escaped = [regex]::Escape($trigger)
+            $triggerPatterns = @(
+                "(?m)^\s*$escaped\s*:"
+                "(?m)^\s*on\s*:\s*$escaped\s*(?:#.*)?$"
+                "(?m)^\s*on\s*:\s*\[[^\]]*\b$escaped\b[^\]]*\]"
+            )
+            foreach ($tp in $triggerPatterns) {
+                if ($content -match $tp) {
+                    $foundTriggers += $trigger
+                    break
+                }
             }
         }
 
@@ -54,7 +63,7 @@ function Test-DangerousTrigger {
                 -Status 'Fail' `
                 -Severity 'Critical' `
                 -Resource $wf.Path `
-                -Detail "Uses $triggerList and checks out untrusted PR code. This allows attacker-controlled code to run with write permissions." `
+                -Detail "Uses $triggerList and checks out untrusted PR code. This may allow attacker-controlled code to run with elevated permissions unless explicitly restricted." `
                 -Remediation 'Do not checkout the PR head ref in pull_request_target workflows. Use pull_request trigger instead, or run untrusted code in a separate unprivileged workflow.' `
                 -AttackMapping @('nx-pwn-request')))
         }
@@ -64,7 +73,7 @@ function Test-DangerousTrigger {
                 -Status 'Warning' `
                 -Severity 'Medium' `
                 -Resource $wf.Path `
-                -Detail "Uses $triggerList without apparent checkout of untrusted code. The workflow still runs with a write-capable token." `
+                -Detail "Uses $triggerList without apparent checkout of untrusted code. The workflow may still run with elevated permissions." `
                 -Remediation 'Verify this workflow does not process untrusted input. Consider narrowing permissions or switching to pull_request trigger.' `
                 -AttackMapping @('nx-pwn-request')))
         }

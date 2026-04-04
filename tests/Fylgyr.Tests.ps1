@@ -192,6 +192,49 @@ jobs:
         $results[0].AttackMapping | Should -Contain 'nx-pwn-request'
     }
 
+    It 'detects inline scalar trigger syntax' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'inline.yml'
+            Path    = '.github/workflows/inline.yml'
+            Content = @'
+name: Inline
+on: pull_request_target
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@b4ffde65f46336ab88eb53be808477a3936bae11
+'@
+        })
+
+        $results = Test-DangerousTrigger -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Warning'
+    }
+
+    It 'detects inline array trigger syntax' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'array.yml'
+            Path    = '.github/workflows/array.yml'
+            Content = @'
+name: Array
+on: [push, pull_request_target]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+'@
+        })
+
+        $results = Test-DangerousTrigger -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Fail'
+        $results[0].Severity | Should -Be 'Critical'
+    }
+
     It 'warns when pull_request_target is used without untrusted checkout' {
         $wf = @([PSCustomObject]@{
             Name    = 'label.yml'

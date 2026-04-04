@@ -11,7 +11,15 @@ function Get-WorkflowFile {
         [string]$Token
     )
 
-    $listing = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/contents/.github/workflows" -Token $Token
+    try {
+        $listing = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/contents/.github/workflows" -Token $Token
+    }
+    catch {
+        if ($_.Exception.Message -match '404' -or $_.Exception.Message -match 'Not Found') {
+            return @()
+        }
+        throw
+    }
 
     $workflowFiles = @()
 
@@ -19,7 +27,11 @@ function Get-WorkflowFile {
         if ($item.type -ne 'file') { continue }
         if ($item.name -notmatch '\.(yml|yaml)$') { continue }
 
-        $raw = Invoke-GitHubApi -Endpoint $item.download_url -Token $Token
+        $fileResponse = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/contents/$($item.path)" -Token $Token
+        $raw = [System.Text.Encoding]::UTF8.GetString(
+            [System.Convert]::FromBase64String(($fileResponse.content -replace '\s', ''))
+        )
+
         $workflowFiles += [PSCustomObject]@{
             Name    = $item.name
             Path    = $item.path

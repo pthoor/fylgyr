@@ -19,7 +19,7 @@ function Test-WorkflowPermission {
             if ($line -match '^\s*jobs\s*:') {
                 break
             }
-            if ($line -match '^permissions\s*:') {
+            if ($line -match '^\s*permissions\s*:') {
                 $hasTopLevelPermissions = $true
                 break
             }
@@ -40,8 +40,8 @@ function Test-WorkflowPermission {
                 -Status 'Fail' `
                 -Severity 'Medium' `
                 -Resource $wf.Path `
-                -Detail 'Workflow does not declare a top-level permissions block. The GITHUB_TOKEN inherits broad default write permissions.' `
-                -Remediation 'Add a top-level permissions: block (e.g., permissions: read-all or permissions: { contents: read }) to restrict the default token scope.' `
+                -Detail 'Workflow does not declare a top-level permissions block. Without an explicit permissions setting, the GITHUB_TOKEN uses the repository or organization default permissions, which may be broader than intended.' `
+                -Remediation 'Add a top-level permissions: block (for example, permissions: read-all or permissions: { contents: read }) to explicitly define the token scope for this workflow.' `
                 -AttackMapping @('tj-actions-shai-hulud', 'nx-pwn-request')))
         }
     }
