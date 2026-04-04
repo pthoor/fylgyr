@@ -11,6 +11,9 @@ function Invoke-GitHubApi {
 
         [string]$Token = $env:GITHUB_TOKEN,
 
+        [ValidateRange(1, 300)]
+        [int]$TimeoutSec = 30,
+
         [switch]$GraphQL
     )
 
@@ -48,6 +51,7 @@ function Invoke-GitHubApi {
         Headers = $headers
         ErrorAction = 'Stop'
         ResponseHeadersVariable = 'responseHeaders'
+        TimeoutSec = $TimeoutSec
     }
 
     if ($Body) {
@@ -88,21 +92,10 @@ function Invoke-GitHubApi {
     catch {
         $errorMessage = $_.Exception.Message
 
-        if ($_.Exception.Response) {
-            $responseStream = $_.Exception.Response.GetResponseStream()
-            if ($responseStream) {
-                $reader = [System.IO.StreamReader]::new($responseStream)
-                try {
-                    $responseBody = $reader.ReadToEnd()
-                }
-                finally {
-                    $reader.Dispose()
-                }
-
-                if ($responseBody) {
-                    $errorMessage = "$errorMessage`nGitHub response: $responseBody"
-                }
-            }
+        # PS7 (.NET 5+): Invoke-RestMethod throws HttpResponseException; the
+        # response body is pre-populated in ErrorDetails.Message by PowerShell.
+        if ($_.ErrorDetails.Message) {
+            $errorMessage = "$errorMessage`nGitHub response: $($_.ErrorDetails.Message)"
         }
 
         throw "GitHub API call failed for '$uri' using method '$Method'. $errorMessage"
