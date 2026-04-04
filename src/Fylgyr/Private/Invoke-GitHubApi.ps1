@@ -64,19 +64,19 @@ function Invoke-GitHubApi {
 
         $remaining = $null
         if ($responseHeaders.ContainsKey('X-RateLimit-Remaining')) {
-            $remaining = [int]$responseHeaders['X-RateLimit-Remaining']
+            $remaining = [int]($responseHeaders['X-RateLimit-Remaining'][0])
         }
         elseif ($responseHeaders.ContainsKey('x-ratelimit-remaining')) {
-            $remaining = [int]$responseHeaders['x-ratelimit-remaining']
+            $remaining = [int]($responseHeaders['x-ratelimit-remaining'][0])
         }
 
         if ($null -ne $remaining -and $remaining -le 10) {
             $resetEpoch = $null
             if ($responseHeaders.ContainsKey('X-RateLimit-Reset')) {
-                $resetEpoch = [long]$responseHeaders['X-RateLimit-Reset']
+                $resetEpoch = [long]($responseHeaders['X-RateLimit-Reset'][0])
             }
             elseif ($responseHeaders.ContainsKey('x-ratelimit-reset')) {
-                $resetEpoch = [long]$responseHeaders['x-ratelimit-reset']
+                $resetEpoch = [long]($responseHeaders['x-ratelimit-reset'][0])
             }
 
             if ($remaining -eq 0 -and $null -ne $resetEpoch) {
