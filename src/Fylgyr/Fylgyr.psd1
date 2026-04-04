@@ -7,7 +7,12 @@
     Copyright = '(c) Pierre Thoor. All rights reserved.'
     Description = 'Audits GitHub repositories and organizations for supply chain risks mapped to real-world attack campaigns.'
     PowerShellVersion = '7.0'
-    FunctionsToExport = '*'
+    FunctionsToExport = @(
+        'Invoke-Fylgyr'
+        'Test-ActionPinning'
+        'Test-DangerousTrigger'
+        'Test-WorkflowPermission'
+    )
     CmdletsToExport = @()
     VariablesToExport = @()
     AliasesToExport = @()
