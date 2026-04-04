@@ -88,13 +88,20 @@ function Invoke-GitHubApi {
     catch {
         $errorMessage = $_.Exception.Message
 
-        if ($_.Exception.Response -and $_.Exception.Response.GetResponseStream()) {
-            $reader = [System.IO.StreamReader]::new($_.Exception.Response.GetResponseStream())
-            $responseBody = $reader.ReadToEnd()
-            $reader.Dispose()
+        if ($_.Exception.Response) {
+            $responseStream = $_.Exception.Response.GetResponseStream()
+            if ($responseStream) {
+                $reader = [System.IO.StreamReader]::new($responseStream)
+                try {
+                    $responseBody = $reader.ReadToEnd()
+                }
+                finally {
+                    $reader.Dispose()
+                }
 
-            if ($responseBody) {
-                $errorMessage = "$errorMessage`nGitHub response: $responseBody"
+                if ($responseBody) {
+                    $errorMessage = "$errorMessage`nGitHub response: $responseBody"
+                }
             }
         }
 
