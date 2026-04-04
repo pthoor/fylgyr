@@ -40,14 +40,26 @@ jobs:
               failed=1
             fi
 
-            # Every actions/* use must be pinned to a full 40-character commit SHA.
+            # Require full 40-character commit SHAs only for GitHub-hosted action refs
+            # in owner/repo[@ref] form. Allow local actions/workflows and docker:// refs.
             while IFS= read -r use_line; do
-              ref="${use_line##*@}"
-              if [[ ! "${ref}" =~ ^[0-9a-f]{40}$ ]]; then
-                echo "ERROR: ${file} has non-SHA-pinned action reference: ${use_line}"
-                failed=1
+              if [[ "${use_line}" =~ ^[[:space:]]*uses:[[:space:]]*['\"]?([^'\"[:space:]]+)['\"]?[[:space:]]*$ ]]; then
+                use_target="${BASH_REMATCH[1]}"
+
+                # Local actions/workflows and Docker-based actions do not use owner/repo@ref.
+                if [[ "${use_target}" == ./* || "${use_target}" == ../* || "${use_target}" == docker://* ]]; then
+                  continue
+                fi
+
+                # Enforce SHA pinning only for GitHub action/reusable-workflow refs that
+                # use an external repository reference, e.g. owner/repo@ref or
+                # owner/repo/path/to/workflow.yml@ref.
+                if [[ "${use_target}" =~ ^[^/]+/[^@]+@.+$ ]] && [[ ! "${use_target}" =~ ^[^/]+/[^@]+@[0-9a-f]{40}$ ]]; then
+                  echo "ERROR: ${file} has non-SHA-pinned action reference: ${use_line}"
+                  failed=1
+                fi
               fi
-            done < <(grep -E '^\s*uses:\s*' "${file}" || true)
+            done < <(grep -E '^[[:space:]]*uses:[[:space:]]*' "${file}" || true)
 
             # Guardrail against broad write permissions patterns.
             if grep -Eqi '^\s*(permissions:\s*write-all|\w+:\s*write-all)\s*$' "${file}"; then
