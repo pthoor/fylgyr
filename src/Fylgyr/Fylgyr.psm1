@@ -7,3 +7,7 @@ $privateFunctions = @(Get-ChildItem -Path $privatePath -Filter '*.ps1' -File -Er
 foreach ($file in $privateFunctions + $publicFunctions) {
     . $file.FullName
 }
+
+if ($publicFunctions.Count -gt 0) {
+    Export-ModuleMember -Function $publicFunctions.BaseName
+}
