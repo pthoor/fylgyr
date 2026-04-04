@@ -1,0 +1,79 @@
+name: Dogfood Policy
+
+on:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  supply-chain-policy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+
+      - name: Enforce workflow supply-chain policy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          failed=0
+
+          while IFS= read -r file; do
+            echo "Checking ${file}"
+
+            # Require workflow-level permissions block before first jobs: key.
+            if ! awk '
+              BEGIN { seen_jobs = 0; found = 0 }
+              /^jobs:/ { seen_jobs = 1 }
+              !seen_jobs && /^permissions:/ { found = 1 }
+              END { exit(found ? 0 : 1) }
+            ' "${file}"; then
+              echo "ERROR: ${file} must declare workflow-level permissions before jobs:."
+              failed=1
+            fi
+
+            # Require full 40-character commit SHAs only for GitHub-hosted action refs
+            # in owner/repo[@ref] form. Allow local actions/workflows and docker:// refs.
+            while IFS= read -r use_line; do
+              use_target="$(printf '%s\n' "${use_line}" | sed -E "s/^[[:space:]]*uses:[[:space:]]*['\"]?([^'\"[:space:]]+)['\"]?[[:space:]]*$/\\1/")"
+
+              # Skip lines that did not parse as a valid uses: target.
+              if [[ -z "${use_target}" || "${use_target}" == "${use_line}" ]]; then
+                continue
+              fi
+
+                # Local actions/workflows and Docker-based actions do not use owner/repo@ref.
+                if [[ "${use_target}" == ./* || "${use_target}" == ../* || "${use_target}" == docker://* ]]; then
+                  continue
+                fi
+
+                # Enforce SHA pinning only for GitHub action/reusable-workflow refs that
+                # use an external repository reference, e.g. owner/repo@ref or
+                # owner/repo/path/to/workflow.yml@ref.
+                if [[ "${use_target}" =~ ^[^/]+/[^@]+@.+$ ]] && [[ ! "${use_target}" =~ ^[^/]+/[^@]+@[0-9a-f]{40}$ ]]; then
+                  echo "ERROR: ${file} has non-SHA-pinned action reference: ${use_line}"
+                  failed=1
+                fi
+            done < <(grep -E '^[[:space:]]*uses:[[:space:]]*' "${file}" || true)
+
+            # Guardrail against broad write permissions patterns.
+            if grep -Eqi '^\s*(permissions:\s*write-all|\w+:\s*write-all)\s*$' "${file}"; then
+              echo "ERROR: ${file} contains write-all permission pattern."
+              failed=1
+            fi
+          done < <(find .github/workflows -type f -name '*.yml' | sort)
+
+          if [[ "${failed}" -ne 0 ]]; then
+            echo "Dogfood policy checks failed."
+            exit 1
+          fi
+
+          echo "Dogfood policy checks passed."

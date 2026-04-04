@@ -1,0 +1,26 @@
+# PowerShell artifacts
+*.psd1.bak
+*.psm1.bak
+*.ps1xml
+*.nupkg
+
+# Build/output folders
+out/
+output/
+dist/
+artifacts/
+
+# Test and tool output
+TestResults/
+coverage/
+
+# Editor files
+.vscode/settings.json
+.vscode/*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local planning docs
+plans/

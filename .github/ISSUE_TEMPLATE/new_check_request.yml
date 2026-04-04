@@ -1,0 +1,30 @@
+name: New check request
+description: Propose a new supply chain check
+title: "check: "
+labels:
+  - enhancement
+  - check-request
+body:
+  - type: textarea
+    id: detection
+    attributes:
+      label: What should the check detect?
+      description: Describe the risky behavior or missing control.
+    validations:
+      required: true
+
+  - type: textarea
+    id: campaigns
+    attributes:
+      label: Which attack campaign(s) does it map to?
+      description: List attack IDs or campaign names from attacks.json.
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References and advisories
+      description: Include links to advisories, writeups, or incident reports.
+    validations:
+      required: true
