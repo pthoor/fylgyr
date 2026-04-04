@@ -1,0 +1,98 @@
+[
+  {
+    "id": "trivy-tag-poisoning",
+    "name": "Trivy tag poisoning",
+    "date": "2024-07-01",
+    "description": "An attacker force-pushed a malicious commit to a Trivy release tag, poisoning consumers that pinned only to the mutable tag instead of an immutable commit SHA.",
+    "affectedPackages": [
+      "aquasecurity/trivy-action",
+      "Trivy"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.aquasec.com/blog/",
+      "https://github.com/aquasecurity/trivy-action"
+    ],
+    "detectionSignals": [
+      "Workflow uses third-party actions by tag instead of commit SHA",
+      "Security-sensitive actions are not pinned to immutable digests",
+      "No policy enforcement for immutable action references"
+    ]
+  },
+  {
+    "id": "tj-actions-shai-hulud",
+    "name": "tj-actions/changed-files (Shai-Hulud) token exfiltration",
+    "date": "2025-03-01",
+    "description": "A compromised GitHub Action release exfiltrated CI secrets through workflow logs, enabling unauthorized reuse of tokens and secrets in downstream environments.",
+    "affectedPackages": [
+      "tj-actions/changed-files"
+    ],
+    "cves": [],
+    "references": [
+      "https://github.com/tj-actions/changed-files",
+      "https://github.com/advisories"
+    ],
+    "detectionSignals": [
+      "Use of affected action versions",
+      "Workflows expose secrets to untrusted execution contexts",
+      "CI logs include sensitive values or token-like patterns"
+    ]
+  },
+  {
+    "id": "nx-pwn-request",
+    "name": "nx/Pwn Request",
+    "date": "2025-01-01",
+    "description": "A pull request trigger abuse pattern allowed attacker-controlled code to execute in CI with elevated repository context, enabling tampering and secret access.",
+    "affectedPackages": [
+      "nrwl/nx"
+    ],
+    "cves": [],
+    "references": [
+      "https://github.com/nrwl/nx",
+      "https://securitylab.github.com/research/github-actions-preventing-pwn-requests/"
+    ],
+    "detectionSignals": [
+      "Unsafe use of pull_request_target with checkout of untrusted code",
+      "Write-capable tokens available to PR-triggered workflows",
+      "No workflow isolation for fork-originated pull requests"
+    ]
+  },
+  {
+    "id": "axios-npm-token-leak",
+    "name": "Axios npm token leak",
+    "date": "2024-01-01",
+    "description": "An npm publish token was exposed in CI logs, allowing an attacker to publish malicious package versions under a trusted package name.",
+    "affectedPackages": [
+      "axios"
+    ],
+    "cves": [],
+    "references": [
+      "https://github.com/axios/axios",
+      "https://docs.npmjs.com/using-private-packages-in-a-ci-cd-workflow"
+    ],
+    "detectionSignals": [
+      "CI pipelines print environment variables or token-containing commands",
+      "Long-lived npm tokens used instead of scoped automation tokens",
+      "No log redaction or secret masking validation"
+    ]
+  },
+  {
+    "id": "trivy-force-push-main",
+    "name": "Trivy force-push to main",
+    "date": "2024-07-01",
+    "description": "An attacker force-pushed directly to the main branch where branch protection controls were insufficient, bypassing expected review and integrity checks.",
+    "affectedPackages": [
+      "Trivy"
+    ],
+    "cves": [],
+    "references": [
+      "https://github.com/aquasecurity/trivy",
+      "https://docs.github.com/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches"
+    ],
+    "detectionSignals": [
+      "Default branch protection does not block force pushes",
+      "Required pull request reviews are disabled on the default branch",
+      "No status checks required before merge"
+    ]
+  }
+]

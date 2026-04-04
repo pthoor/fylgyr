@@ -1,0 +1,53 @@
+name: New attack mapping
+description: Add a real-world attack campaign to attacks.json
+title: "attack: "
+labels:
+  - enhancement
+  - attack-mapping
+body:
+  - type: input
+    id: campaign_name
+    attributes:
+      label: Campaign name
+    validations:
+      required: true
+
+  - type: input
+    id: campaign_date
+    attributes:
+      label: Date
+      description: ISO 8601 date (for example 2025-03-14).
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected
+    attributes:
+      label: Affected packages or actions
+      description: Provide package names, action names, and versions if known.
+    validations:
+      required: true
+
+  - type: textarea
+    id: cves
+    attributes:
+      label: CVEs (if any)
+      description: List CVE identifiers, or write "none".
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Include URLs to advisories and technical analysis.
+    validations:
+      required: true
+
+  - type: textarea
+    id: detection_signals
+    attributes:
+      label: Detection signals
+      description: What observable signals should checks use?
+    validations:
+      required: true
