@@ -32,7 +32,7 @@ Describe 'ConvertTo-FylgyrSarif' {
         Import-Module -Name $modulePath -Force
     }
 
-    It 'produces valid SARIF 2.1.0 structure' {
+    It 'produces valid SARIF 2.1.0 structure with security metadata' {
         $json = InModuleScope Fylgyr {
             $results = @(
                 (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'High' -Resource '.github/workflows/ci.yml:5' -Detail 'Unpinned action' -Remediation 'Pin it.' -AttackMapping @('trivy-tag-poisoning'))
@@ -43,11 +43,42 @@ Describe 'ConvertTo-FylgyrSarif' {
         $sarif = $json | ConvertFrom-Json
 
         $sarif.version | Should -Be '2.1.0'
+        $sarif.'$schema' | Should -Be 'https://json.schemastore.org/sarif-2.1.0.json'
         $sarif.runs.Count | Should -Be 1
         $sarif.runs[0].tool.driver.name | Should -Be 'Fylgyr'
         $sarif.runs[0].results.Count | Should -Be 1
         $sarif.runs[0].results[0].ruleId | Should -Be 'fylgyr/ActionPinning'
         $sarif.runs[0].results[0].level | Should -Be 'error'
+    }
+
+    It 'includes security-severity and tags on rules' {
+        $json = InModuleScope Fylgyr {
+            $results = @(
+                (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'High' -Resource '.github/workflows/ci.yml:5' -Detail 'Unpinned' -Remediation 'Pin.')
+            )
+            ConvertTo-FylgyrSarif -Results $results
+        }
+
+        $sarif = $json | ConvertFrom-Json
+        $rule = $sarif.runs[0].tool.driver.rules[0]
+        $rule.properties.'security-severity' | Should -Be '8.0'
+        $rule.properties.tags | Should -Contain 'security'
+        $rule.properties.tags | Should -Contain 'supply-chain'
+        $rule.properties.precision | Should -Be 'high'
+    }
+
+    It 'generates partialFingerprints for deduplication' {
+        $json = InModuleScope Fylgyr {
+            $results = @(
+                (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'High' -Resource '.github/workflows/ci.yml:5' -Detail 'Unpinned' -Remediation 'Pin.')
+            )
+            ConvertTo-FylgyrSarif -Results $results
+        }
+
+        $sarif = $json | ConvertFrom-Json
+        $result = $sarif.runs[0].results[0]
+        $result.partialFingerprints | Should -Not -BeNullOrEmpty
+        $result.partialFingerprints.primaryLocationLineHash | Should -Match '^\w+:1$'
     }
 
     It 'parses resource line numbers into SARIF locations' {
@@ -75,6 +106,29 @@ Describe 'ConvertTo-FylgyrSarif' {
         $sarif = $json | ConvertFrom-Json
         $sarif.runs[0].results[0].properties.tags | Should -Contain 'attack:trivy-tag-poisoning'
         $sarif.runs[0].results[0].properties.tags | Should -Contain 'attack:tj-actions-shai-hulud'
+    }
+
+    It 'uses sentinel file for repo-level resources with message context' {
+        $json = InModuleScope Fylgyr {
+            $results = @(
+                (Format-FylgyrResult -CheckName 'RepositorySettings' -Status 'Fail' -Severity 'High' -Resource 'pthoor/fylgyr' -Detail 'Settings issue' -Remediation 'Update repository settings.')
+                (Format-FylgyrResult -CheckName 'RepositorySettings' -Status 'Fail' -Severity 'High' -Resource 'org/repo.name' -Detail 'Dotted repo' -Remediation 'Update repository settings.')
+            )
+            ConvertTo-FylgyrSarif -Results $results
+        }
+
+        $sarif = $json | ConvertFrom-Json
+
+        # Simple owner/repo resource — must have physicalLocation
+        $repoResult = $sarif.runs[0].results[0]
+        $repoResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be '.github/SECURITY.md'
+        $repoResult.locations[0].message.text | Should -Be 'Repository setting: pthoor/fylgyr'
+        $repoResult.partialFingerprints.primaryLocationLineHash | Should -Not -BeNullOrEmpty
+
+        # Dotted repo name should NOT be treated as a file path
+        $dottedResult = $sarif.runs[0].results[1]
+        $dottedResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be '.github/SECURITY.md'
+        $dottedResult.locations[0].message.text | Should -Be 'Repository setting: org/repo.name'
     }
 }
 
