@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Fylgyr** is a PowerShell module that audits GitHub repositories and organizations for supply chain risks by mapping every finding to a real-world attack campaign. Unlike score-based tools (e.g., OpenSSF Scorecard), Fylgyr is *attack-mapped* — each result explains which known incident it aligns with and why the behavior matters.
 
-Public entry point: `Invoke-Fylgyr -Owner <org-or-user> -Repo <repo>` — supports pipeline input via `ValueFromPipelineByPropertyName` (pipe `[PSCustomObject]@{ Owner; Repo }` objects).
+Public entry point: `Invoke-Fylgyr -Owner <org-or-user> -Repo <repo>` — supports pipeline input via `ValueFromPipelineByPropertyName` (pipe `[PSCustomObject]@{ Owner = 'org-or-user'; Repo = 'repo' }` objects).
 
 ## Common Commands
 
