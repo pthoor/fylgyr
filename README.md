@@ -90,18 +90,94 @@ Invoke-Fylgyr -Owner 'myorg' -OutputFormat Console
 
 ### Feeding SARIF into GitHub Code Scanning
 
+Add a workflow to run Fylgyr on every push and PR. Results appear in your repository's **Security** tab under **Code scanning**.
+
+> **Important:** The workflow must trigger on `push` to your default branch — not just `pull_request` — for results to appear in the Security tab. PR-only triggers show results in PR checks but not in the Security tab.
+
+A ready-to-use workflow template is available at [`docs/fylgyr-workflow.yml`](docs/fylgyr-workflow.yml). Copy it to your repo:
+
+```bash
+# From your repository root
+mkdir -p .github/workflows
+cp docs/fylgyr-workflow.yml .github/workflows/fylgyr.yml
+# Or simply copy the file from the Fylgyr repo
+```
+
+> **Note:** The template targets `main` and `master` branches. If your default branch has a different name (e.g., `trunk`), update the `on.push.branches` and `on.pull_request.branches` filters in the copied workflow file.
+
+Or add these steps to an existing workflow:
+
 ```yaml
-- name: Run Fylgyr
+- name: Install Fylgyr
+  shell: pwsh
+  run: Install-Module -Name Fylgyr -Repository PSGallery -Force -Scope CurrentUser
+
+- name: Run Fylgyr scan
   shell: pwsh
   run: |
     Invoke-Fylgyr -Owner '${{ github.repository_owner }}' `
                   -Repo '${{ github.event.repository.name }}' `
-                  -OutputFormat SARIF | Out-File -FilePath fylgyr.sarif
+                  -OutputFormat SARIF `
+      | Out-File -FilePath fylgyr.sarif -Encoding utf8
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 - name: Upload SARIF
+  if: always()
   uses: github/codeql-action/upload-sarif@48ab28a6f5dbc2a99bf1e0131198dd8f1df78169 # v3.28.0
   with:
     sarif_file: fylgyr.sarif
+```
+
+### Where to find results
+
+After the workflow runs on your default branch:
+
+1. Go to your repository on GitHub.
+2. Click the **Security** tab.
+3. Click **Code scanning** in the left sidebar.
+4. Filter by **Tool: Fylgyr** to see only supply chain findings.
+
+Each alert shows the severity, remediation steps, and which real-world attack campaign it maps to.
+
+> **Note:** Code scanning requires GitHub Advanced Security for private repos on GitHub Enterprise. It's free for all public repositories.
+
+### Permissions
+
+The workflow uses the built-in `GITHUB_TOKEN` with minimal permissions:
+
+| Permission | Purpose |
+|---|---|
+| `contents: read` | Read workflow files and repository content |
+| `security-events: write` | Upload SARIF results to Code Scanning |
+
+These two permissions are the only valid `GITHUB_TOKEN` scopes needed. They cover the workflow-based checks (ActionPinning, DangerousTrigger, WorkflowPermissions, RunnerHygiene, CodeScanning).
+
+#### Repo-level checks that need a PAT
+
+Three checks require a **Personal Access Token** (PAT) because the `GITHUB_TOKEN` does not have access to those APIs:
+
+| Check | Requires |
+|---|---|
+| `BranchProtection` | Fine-grained PAT with `administration: read` |
+| `SecretScanning` | Classic PAT with `repo` scope, or fine-grained with `secret_scanning_alerts: read` |
+| `DependabotAlert` | Classic PAT with `repo` scope, or fine-grained with `vulnerability_alerts: read` |
+
+Without a PAT these checks gracefully report `Status = 'Error'` with a clear message — they won't fail the workflow or block other checks.
+
+To enable them, create a fine-grained PAT, add it as a repository secret (e.g., `FYLGYR_TOKEN`), and update the workflow step:
+
+```yaml
+- name: Run Fylgyr scan
+  shell: pwsh
+  run: |
+    Invoke-Fylgyr -Owner '${{ github.repository_owner }}' `
+                  -Repo '${{ github.event.repository.name }}' `
+                  -Token $env:FYLGYR_TOKEN `
+                  -OutputFormat SARIF `
+      | Out-File -FilePath fylgyr.sarif -Encoding utf8
+  env:
+    FYLGYR_TOKEN: ${{ secrets.FYLGYR_TOKEN }}
 ```
 
 ## Usage
@@ -153,6 +229,11 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud` |
 | `DangerousTrigger` | `pull_request_target` / `workflow_run` with untrusted code checkout | Critical | `nx-pwn-request` |
 | `WorkflowPermissions` | Missing top-level `permissions:` block in workflow files | Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
+| `BranchProtection` | Weak or missing default branch protection rules | High | `codecov-bash-uploader` |
+| `SecretScanning` | Secret Scanning not enabled or unresolved alerts | High | `uber-credential-leak` |
+| `DependabotAlert` | Open critical/high Dependabot vulnerability alerts | High | `event-stream-hijack`, `solarwinds-orion` |
+| `CodeScanning` | Code Scanning not configured or stale analyses | Medium | `solarwinds-orion` |
+| `RunnerHygiene` | Risky self-hosted runner configurations | High | `github-actions-cryptomining` |
 
 ## Attack Catalog
 
@@ -165,6 +246,11 @@ Every finding maps to a real-world supply chain incident. The full catalog lives
 | `nx-pwn-request` | nx/Pwn Request | 2025-01 |
 | `axios-npm-token-leak` | Axios npm token leak | 2024-01 |
 | `trivy-force-push-main` | Trivy force-push to main | 2024-07 |
+| `codecov-bash-uploader` | Codecov bash uploader compromise | 2021-01 |
+| `uber-credential-leak` | Uber credential leak breach | 2022-09 |
+| `event-stream-hijack` | event-stream npm package hijack | 2018-11 |
+| `solarwinds-orion` | SolarWinds Orion supply chain attack | 2020-12 |
+| `github-actions-cryptomining` | GitHub Actions crypto-mining campaigns | 2022-04 |
 
 ## Architecture
 
@@ -175,7 +261,12 @@ src/Fylgyr/
 ├── Public/
 │   ├── Invoke-Fylgyr.ps1    # Orchestrator + output formatting
 │   ├── Test-ActionPinning.ps1
+│   ├── Test-BranchProtection.ps1
+│   ├── Test-CodeScanning.ps1
 │   ├── Test-DangerousTrigger.ps1
+│   ├── Test-DependabotAlert.ps1
+│   ├── Test-RunnerHygiene.ps1
+│   ├── Test-SecretScanning.ps1
 │   └── Test-WorkflowPermission.ps1
 ├── Private/
 │   ├── Invoke-GitHubApi.ps1       # REST/GraphQL wrapper with pagination
