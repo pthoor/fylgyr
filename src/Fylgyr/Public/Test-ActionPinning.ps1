@@ -1,5 +1,6 @@
 function Test-ActionPinning {
     [CmdletBinding()]
+    [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory)]
         [PSCustomObject[]]$WorkflowFiles
@@ -14,6 +15,9 @@ function Test-ActionPinning {
         for ($i = 0; $i -lt $lines.Count; $i++) {
             $line = $lines[$i]
 
+            # Skip YAML comment lines
+            if ($line -match '^\s*#') { continue }
+
             if ($line -notmatch '^\s*-?\s*uses:\s*(.+)$') { continue }
 
             $target = $Matches[1].Trim().Trim("'").Trim('"')
@@ -24,7 +28,7 @@ function Test-ActionPinning {
             }
 
             # Third-party action: expect owner/repo@40-hex-char SHA
-            if ($target -match '@[0-9a-f]{40}$') {
+            if ($target -match '@[0-9a-fA-F]{40}$') {
                 continue
             }
 

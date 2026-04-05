@@ -1,5 +1,6 @@
 function Test-DangerousTrigger {
     [CmdletBinding()]
+    [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory)]
         [PSCustomObject[]]$WorkflowFiles
@@ -17,7 +18,8 @@ function Test-DangerousTrigger {
     )
 
     foreach ($wf in $WorkflowFiles) {
-        $content = $wf.Content
+        # Strip YAML comment lines to avoid false positives
+        $content = (($wf.Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
 
         $foundTriggers = @()
         foreach ($trigger in $dangerousTriggers) {

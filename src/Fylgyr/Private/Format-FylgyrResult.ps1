@@ -1,5 +1,6 @@
 function Format-FylgyrResult {
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory)]
         [string]$CheckName,

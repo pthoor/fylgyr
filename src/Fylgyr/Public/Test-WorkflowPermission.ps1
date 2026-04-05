@@ -1,5 +1,6 @@
 function Test-WorkflowPermission {
     [CmdletBinding()]
+    [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory)]
         [PSCustomObject[]]$WorkflowFiles
@@ -8,13 +9,11 @@ function Test-WorkflowPermission {
     $results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
     foreach ($wf in $WorkflowFiles) {
-        $content = $wf.Content
-
         # Check for a top-level permissions: block.
         # It must appear before the first "jobs:" key to be workflow-level.
         $hasTopLevelPermissions = $false
 
-        $lines = $content -split "`n"
+        $lines = ($wf.Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' }
         foreach ($line in $lines) {
             if ($line -match '^\s*jobs\s*:') {
                 break
