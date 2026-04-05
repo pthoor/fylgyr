@@ -32,7 +32,7 @@ Describe 'ConvertTo-FylgyrSarif' {
         Import-Module -Name $modulePath -Force
     }
 
-    It 'produces valid SARIF 2.1.0 structure' {
+    It 'produces valid SARIF 2.1.0 structure with security metadata' {
         $json = InModuleScope Fylgyr {
             $results = @(
                 (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'High' -Resource '.github/workflows/ci.yml:5' -Detail 'Unpinned action' -Remediation 'Pin it.' -AttackMapping @('trivy-tag-poisoning'))
@@ -43,11 +43,42 @@ Describe 'ConvertTo-FylgyrSarif' {
         $sarif = $json | ConvertFrom-Json
 
         $sarif.version | Should -Be '2.1.0'
+        $sarif.'$schema' | Should -Be 'https://json.schemastore.org/sarif-2.1.0.json'
         $sarif.runs.Count | Should -Be 1
         $sarif.runs[0].tool.driver.name | Should -Be 'Fylgyr'
         $sarif.runs[0].results.Count | Should -Be 1
         $sarif.runs[0].results[0].ruleId | Should -Be 'fylgyr/ActionPinning'
         $sarif.runs[0].results[0].level | Should -Be 'error'
+    }
+
+    It 'includes security-severity and tags on rules' {
+        $json = InModuleScope Fylgyr {
+            $results = @(
+                (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'High' -Resource '.github/workflows/ci.yml:5' -Detail 'Unpinned' -Remediation 'Pin.')
+            )
+            ConvertTo-FylgyrSarif -Results $results
+        }
+
+        $sarif = $json | ConvertFrom-Json
+        $rule = $sarif.runs[0].tool.driver.rules[0]
+        $rule.properties.'security-severity' | Should -Be '8.0'
+        $rule.properties.tags | Should -Contain 'security'
+        $rule.properties.tags | Should -Contain 'supply-chain'
+        $rule.properties.precision | Should -Be 'high'
+    }
+
+    It 'generates partialFingerprints for deduplication' {
+        $json = InModuleScope Fylgyr {
+            $results = @(
+                (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'High' -Resource '.github/workflows/ci.yml:5' -Detail 'Unpinned' -Remediation 'Pin.')
+            )
+            ConvertTo-FylgyrSarif -Results $results
+        }
+
+        $sarif = $json | ConvertFrom-Json
+        $result = $sarif.runs[0].results[0]
+        $result.partialFingerprints | Should -Not -BeNullOrEmpty
+        $result.partialFingerprints.primaryLocationLineHash | Should -Match '^\w+:1$'
     }
 
     It 'parses resource line numbers into SARIF locations' {
@@ -75,6 +106,22 @@ Describe 'ConvertTo-FylgyrSarif' {
         $sarif = $json | ConvertFrom-Json
         $sarif.runs[0].results[0].properties.tags | Should -Contain 'attack:trivy-tag-poisoning'
         $sarif.runs[0].results[0].properties.tags | Should -Contain 'attack:tj-actions-shai-hulud'
+    }
+
+    It 'uses message text for repo-level resources instead of invalid URIs' {
+        $json = InModuleScope Fylgyr {
+            $results = @(
+                (Format-FylgyrResult -CheckName 'BranchProtection' -Status 'Fail' -Severity 'High' -Resource 'pthoor/fylgyr (branch: main)' -Detail 'No protection' -Remediation 'Enable branch protection.')
+            )
+            ConvertTo-FylgyrSarif -Results $results
+        }
+
+        $sarif = $json | ConvertFrom-Json
+        $result = $sarif.runs[0].results[0]
+        $result.locations[0] | Should -Not -BeNullOrEmpty
+        $result.locations[0].message.text | Should -Be 'Repository setting: pthoor/fylgyr (branch: main)'
+        $result.locations[0].PSObject.Properties.Name | Should -Not -Contain 'physicalLocation'
+        $result.partialFingerprints.primaryLocationLineHash | Should -Not -BeNullOrEmpty
     }
 }
 
