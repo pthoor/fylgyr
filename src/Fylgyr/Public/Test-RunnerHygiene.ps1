@@ -29,6 +29,7 @@
         #   runs-on:
         #     - self-hosted
         #     - linux
+        # Multi-line label lists represent a single runner spec; collect as one joined string.
         $runsOnValues = [System.Collections.Generic.List[string]]::new()
 
         $lines = $stripped -split "`n"
@@ -39,11 +40,15 @@
                 $runsOnValues.Add($Matches[1].Trim())
             }
             elseif ($line -match '(?i)^\s*runs-on:\s*$') {
-                # Multi-line list — collect subsequent indented list items
+                # Multi-line list — collect all label items as one joined spec
+                $labels = [System.Collections.Generic.List[string]]::new()
                 $j = $i + 1
                 while ($j -lt $lines.Count -and $lines[$j] -match '^\s+-\s+(.+)$') {
-                    $runsOnValues.Add($Matches[1].Trim())
+                    $labels.Add($Matches[1].Trim())
                     $j++
+                }
+                if ($labels.Count -gt 0) {
+                    $runsOnValues.Add($labels -join ', ')
                 }
             }
         }
