@@ -77,6 +77,101 @@
     ]
   },
   {
+    "id": "codecov-bash-uploader",
+    "name": "Codecov bash uploader supply chain compromise",
+    "date": "2021-04-01",
+    "description": "Attackers gained access to Codecov's CI environment and modified the bash uploader script to exfiltrate environment variables — including repository secrets and tokens — from any CI pipeline that downloaded and executed the script. Thousands of organizations were affected before discovery.",
+    "affectedPackages": [
+      "codecov/codecov-action",
+      "codecov-bash-uploader"
+    ],
+    "cves": [],
+    "references": [
+      "https://about.codecov.io/security-update/",
+      "https://github.com/codecov/codecov-action"
+    ],
+    "detectionSignals": [
+      "Default branch allows force pushes with no branch protection",
+      "No required reviewers on default branch",
+      "CI artifacts or scripts fetched without integrity verification"
+    ]
+  },
+  {
+    "id": "uber-credential-leak",
+    "name": "Uber credential exposure via repository secret",
+    "date": "2022-09-01",
+    "description": "An attacker obtained valid credentials through social engineering and discovered additional high-privilege secrets stored in internal repositories and secret scanning tools. Absence of secret scanning and open unresolved alerts allowed lateral movement across Uber's infrastructure.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://www.uber.com/newsroom/security-update/",
+      "https://docs.github.com/code-security/secret-scanning/about-secret-scanning"
+    ],
+    "detectionSignals": [
+      "Secret scanning not enabled on repository",
+      "Open secret scanning alerts left unresolved",
+      "Long-lived credentials committed or accessible without rotation policy"
+    ]
+  },
+  {
+    "id": "event-stream-hijack",
+    "name": "event-stream npm package hijack",
+    "date": "2018-11-01",
+    "description": "A malicious maintainer was granted ownership of the popular event-stream npm package and injected a dependency (flatmap-stream) containing obfuscated code designed to steal cryptocurrency wallet credentials from a specific downstream application. The attack exploited blind trust in transitive dependencies.",
+    "affectedPackages": [
+      "event-stream",
+      "flatmap-stream"
+    ],
+    "cves": [],
+    "references": [
+      "https://github.com/dominictarr/event-stream/issues/116",
+      "https://blog.npmjs.org/post/180565383195/details-about-the-event-stream-incident"
+    ],
+    "detectionSignals": [
+      "Dependabot alerts not enabled on repository",
+      "Open critical or high severity dependency vulnerability alerts",
+      "No automated dependency update policy in place"
+    ]
+  },
+  {
+    "id": "solarwinds-orion",
+    "name": "SolarWinds Orion supply chain attack",
+    "date": "2020-12-01",
+    "description": "Nation-state attackers compromised SolarWinds' build environment and injected the SUNBURST backdoor into signed Orion software updates. The attack went undetected for months because no code scanning or integrity verification was in place to detect the injected code.",
+    "affectedPackages": [
+      "SolarWinds Orion"
+    ],
+    "cves": [
+      "CVE-2020-10148"
+    ],
+    "references": [
+      "https://www.solarwinds.com/sa-overview/securityadvisory",
+      "https://msrc-blog.microsoft.com/2020/12/13/customer-guidance-on-recent-nation-state-cyber-attacks/"
+    ],
+    "detectionSignals": [
+      "Code scanning not configured on repository",
+      "No recent code analysis runs",
+      "Build pipeline lacks integrity checks or reproducible build verification"
+    ]
+  },
+  {
+    "id": "github-actions-cryptomining",
+    "name": "GitHub Actions self-hosted runner crypto-mining abuse",
+    "date": "2020-12-01",
+    "description": "Attackers discovered public repositories with self-hosted runners configured to execute workflows triggered by pull requests from forks. By submitting pull requests, they executed arbitrary code on self-hosted infrastructure to mine cryptocurrency and exfiltrate runner environment secrets.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://docs.github.com/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#self-hosted-runner-security",
+      "https://github.blog/security/application-security/security-hardening-for-github-actions/"
+    ],
+    "detectionSignals": [
+      "Self-hosted runner used in workflow triggered by pull_request on a public repository",
+      "Workflow triggered by pull_request_target runs on a self-hosted runner",
+      "Self-hosted runner labels do not restrict execution to trusted contexts"
+    ]
+  },
+  {
     "id": "trivy-force-push-main",
     "name": "Trivy force-push to main",
     "date": "2024-07-01",

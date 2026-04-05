@@ -175,6 +175,7 @@ function Invoke-FylgyrScan {
             'Test-ActionPinning'
             'Test-DangerousTrigger'
             'Test-WorkflowPermission'
+            'Test-RunnerHygiene'
         )
 
         for ($c = 0; $c -lt $checks.Count; $c++) {
@@ -202,6 +203,34 @@ function Invoke-FylgyrScan {
                     -Remediation 'Review the error and re-run.' `
                     -Target $target))
             }
+        }
+    }
+
+    # Repo-level checks (always run, regardless of workflow files)
+    $repoChecks = @(
+        @{ Name = 'Test-BranchProtection'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-SecretScanning';   Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-DependabotAlert';  Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-CodeScanning';     Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+    )
+
+    foreach ($entry in $repoChecks) {
+        Write-Progress -Activity $target -Status "Running $($entry.Name)" -Id 2 -ParentId 1
+
+        try {
+            $checkParams = $entry.Params
+            $checkResults = & $entry.Name @checkParams
+            foreach ($r in $checkResults) { $results.Add($r) }
+        }
+        catch {
+            $results.Add((Format-FylgyrResult `
+                -CheckName $entry.Name `
+                -Status 'Error' `
+                -Severity 'Critical' `
+                -Resource $target `
+                -Detail "Check failed with error: $_" `
+                -Remediation 'Review the error and re-run.' `
+                -Target $target))
         }
     }
 

@@ -362,21 +362,39 @@ Describe 'Invoke-Fylgyr' {
         Import-Module -Name $modulePath -Force
     }
 
+    BeforeEach {
+        # Stub repo-level checks so tests that only care about workflow results
+        # are not affected by live API calls using fake tokens.
+        $stubResult = [PSCustomObject]@{
+            CheckName     = 'Stub'
+            Status        = 'Pass'
+            Severity      = 'Info'
+            Resource      = 'test/repo'
+            Detail        = 'Stubbed.'
+            Remediation   = 'None.'
+            AttackMapping = @()
+            Target        = 'test/repo'
+        }
+        Mock -ModuleName Fylgyr Test-BranchProtection { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-SecretScanning   { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-DependabotAlert  { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-CodeScanning     { return @($stubResult) }
+    }
+
     It 'returns an Error result when workflow fetch fails' {
         Mock -ModuleName Fylgyr Get-WorkflowFile { throw 'API error' }
 
         $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token'
-        $results | Should -HaveCount 1
-        $results[0].Status | Should -Be 'Error'
-        $results[0].CheckName | Should -Be 'WorkflowFileFetch'
+        $workflowError = $results | Where-Object { $_.CheckName -eq 'WorkflowFileFetch' -and $_.Status -eq 'Error' }
+        $workflowError | Should -HaveCount 1
     }
 
     It 'returns a Warning when no workflow files found' {
         Mock -ModuleName Fylgyr Get-WorkflowFile { return @() }
 
         $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token'
-        $results | Should -HaveCount 1
-        $results[0].Status | Should -Be 'Warning'
+        $workflowWarning = $results | Where-Object { $_.CheckName -eq 'WorkflowFileFetch' -and $_.Status -eq 'Warning' }
+        $workflowWarning | Should -HaveCount 1
     }
 
     It 'orchestrates all checks and returns combined results' {
