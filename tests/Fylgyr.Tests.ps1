@@ -387,6 +387,69 @@ jobs:
         $checkNames | Should -Contain 'WorkflowPermissions'
     }
 
+    It 'processes multiple repos via pipeline input' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+'@
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+
+        $results = @(
+            [PSCustomObject]@{ Owner = 'org1'; Repo = 'repoA' }
+            [PSCustomObject]@{ Owner = 'org1'; Repo = 'repoB' }
+        ) | Invoke-Fylgyr -Token 'fake-token'
+
+        $results.Count | Should -BeGreaterOrEqual 6
+    }
+
+    It 'handles mixed success and failure across pipeline items' {
+        $script:mockCallCount = 0
+        Mock -ModuleName Fylgyr Get-WorkflowFile {
+            $script:mockCallCount++
+            if ($script:mockCallCount -eq 1) {
+                throw 'API error'
+            }
+            return @([PSCustomObject]@{
+                Name    = 'ci.yml'
+                Path    = '.github/workflows/ci.yml'
+                Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+'@
+            })
+        }
+
+        $results = @(
+            [PSCustomObject]@{ Owner = 'org1'; Repo = 'repoA' }
+            [PSCustomObject]@{ Owner = 'org1'; Repo = 'repoB' }
+        ) | Invoke-Fylgyr -Token 'fake-token'
+
+        $errorResults = $results | Where-Object { $_.Status -eq 'Error' -and $_.CheckName -eq 'WorkflowFileFetch' }
+        $errorResults | Should -HaveCount 1
+
+        $checkResults = $results | Where-Object { $_.CheckName -ne 'WorkflowFileFetch' }
+        $checkResults.Count | Should -BeGreaterOrEqual 3
+    }
+
     It 'captures a check error without stopping other checks' {
         $fakeWorkflows = @([PSCustomObject]@{
             Name    = 'ci.yml'

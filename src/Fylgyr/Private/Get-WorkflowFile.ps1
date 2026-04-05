@@ -1,5 +1,6 @@
 function Get-WorkflowFile {
     [CmdletBinding()]
+    [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory)]
         [string]$Owner,
@@ -21,7 +22,7 @@ function Get-WorkflowFile {
         throw
     }
 
-    $workflowFiles = @()
+    $workflowFiles = [System.Collections.Generic.List[PSCustomObject]]::new()
 
     foreach ($item in $listing) {
         if ($item.type -ne 'file') { continue }
@@ -32,12 +33,12 @@ function Get-WorkflowFile {
             [System.Convert]::FromBase64String(($fileResponse.content -replace '\s', ''))
         )
 
-        $workflowFiles += [PSCustomObject]@{
+        $workflowFiles.Add([PSCustomObject]@{
             Name    = $item.name
             Path    = $item.path
             Content = $raw
-        }
+        })
     }
 
-    return $workflowFiles
+    return $workflowFiles.ToArray()
 }

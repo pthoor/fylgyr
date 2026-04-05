@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Fylgyr** is a PowerShell module that audits GitHub repositories and organizations for supply chain risks by mapping every finding to a real-world attack campaign. Unlike score-based tools (e.g., OpenSSF Scorecard), Fylgyr is *attack-mapped* — each result explains which known incident it aligns with and why the behavior matters.
 
-Public entry point (once implemented): `Invoke-Fylgyr -Owner <org-or-user> -Repo <repo>`
+Public entry point: `Invoke-Fylgyr -Owner <org-or-user> -Repo <repo>` — supports pipeline input via `ValueFromPipelineByPropertyName` (pipe `[PSCustomObject]@{ Owner = 'org-or-user'; Repo = 'repo' }` objects).
 
 ## Common Commands
 
@@ -53,6 +53,7 @@ src/Fylgyr/
 ├── Public/              # Exported functions (Invoke-Fylgyr + check implementations: Test-*.ps1)
 ├── Private/
 │   ├── Invoke-GitHubApi.ps1      # GitHub REST/GraphQL wrapper with rate-limit handling and 30s default timeout
+│   ├── Get-WorkflowFile.ps1      # Fetches workflow YAML files from a repo via the GitHub Contents API
 │   └── Format-FylgyrResult.ps1   # Standardizes output schema for all checks
 └── Data/
     └── attacks.json     # Attack campaign catalog (id, name, date, detectionSignals, …)
@@ -65,7 +66,7 @@ plans/                   # Local-only phase plans (not tracked by git)
 
 ### Check pattern
 
-`Invoke-Fylgyr` is the orchestrator — it calls each `Test-*` check function explicitly and returns the collected results. Individual check failures produce `Status = 'Error'` results; `Invoke-Fylgyr` never throws on a per-check failure.
+`Invoke-Fylgyr` is the orchestrator — it validates the token in its `begin` block, then calls each `Test-*` check function explicitly in the `process` block and returns the collected results. Individual check failures produce `Status = 'Error'` results; `Invoke-Fylgyr` never throws on a per-check failure. The `process` block uses if/elseif/else (no `return`) so that all piped input objects are processed.
 
 New security checks are added as `Test-<CheckName>.ps1` in `src/Fylgyr/Public/`. Every check must:
 
@@ -106,4 +107,8 @@ Any new or modified workflow file must satisfy all three, or the dogfood CI job 
 - Secrets and tokens go in environment variables (`$env:GITHUB_TOKEN`, etc.), never in code.
 - Add or update `attacks.json` entries when introducing new attack mappings; include all required fields.
 - `FunctionsToExport` in `Fylgyr.psd1` must be kept as an explicit list matching `Public/` — do not leave it as `'*'` once functions exist.
+- All functions must declare `[OutputType(...)]`.
+- Use `[System.Collections.Generic.List[PSCustomObject]]` for building result arrays — never `+=` in a loop.
+- Check functions must strip YAML comment lines (`^\s*#`) before pattern matching to avoid false positives.
+- Never use `return` inside a `process` block — it exits the entire function and breaks pipeline input.
 - Branch naming: `phase{N}/description` (e.g., `phase2/core-checks`).

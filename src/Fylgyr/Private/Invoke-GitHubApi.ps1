@@ -1,5 +1,6 @@
 function Invoke-GitHubApi {
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory)]
         [string]$Endpoint,
