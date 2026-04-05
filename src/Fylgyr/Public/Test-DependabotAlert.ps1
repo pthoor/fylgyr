@@ -64,7 +64,8 @@
     $critical = @($alerts | Where-Object { $_.security_advisory.severity -eq 'critical' })
     $high = @($alerts | Where-Object { $_.security_advisory.severity -eq 'high' })
 
-    if ($critical.Count -eq 0 -and $high.Count -eq 0) {        $detail = if ($alerts.Count -eq 0) {
+    if ($critical.Count -eq 0 -and $high.Count -eq 0) {
+        $detail = if ($alerts.Count -eq 0) {
             'No open Dependabot alerts found.'
         }
         else {

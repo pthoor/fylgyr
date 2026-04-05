@@ -81,6 +81,28 @@ Describe 'Test-BranchProtection' {
         $fail[0].AttackMapping | Should -Contain 'trivy-force-push-main'
     }
 
+    It 'returns Error when force-push setting is missing from API response' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'repos/[^/]+/[^/]+$') {
+                return [PSCustomObject]@{ default_branch = 'main' }
+            }
+            # allow_force_pushes deliberately absent
+            return [PSCustomObject]@{
+                allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                required_pull_request_reviews = [PSCustomObject]@{
+                    required_approving_review_count = 1
+                    dismiss_stale_reviews           = $true
+                }
+                required_status_checks        = [PSCustomObject]@{ strict = $true }
+            }
+        }
+
+        $results = Test-BranchProtection -Owner 'org' -Repo 'repo' -Token 'fake-token'
+        $errorResult = $results | Where-Object { $_.Status -eq 'Error' -and $_.Detail -like '*force-push*' }
+        $errorResult | Should -HaveCount 1
+    }
+
     It 'fails when no required PR reviews configured' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             param($Endpoint)
@@ -347,5 +369,51 @@ jobs:
         $results | Should -HaveCount 1
         $results[0].Status | Should -Be 'Warning'
         $results[0].Severity | Should -Be 'Low'
+    }
+
+    It 'detects self-hosted runner in multi-line list runs-on syntax' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'deploy.yml'
+            Path    = '.github/workflows/deploy.yml'
+            Content = @'
+name: Deploy
+on:
+  pull_request_target:
+    types: [opened]
+jobs:
+  deploy:
+    runs-on:
+      - self-hosted
+      - linux
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+'@
+        })
+
+        $results = Test-RunnerHygiene -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Fail'
+        $results[0].Severity | Should -Be 'High'
+    }
+
+    It 'warns on dynamic matrix expression for runs-on' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+'@
+        })
+
+        $results = Test-RunnerHygiene -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Warning'
+        $results[0].Detail | Should -BeLike '*dynamic runner*'
     }
 }

@@ -26,25 +26,26 @@ jobs:
         run: |
           Import-Module ./src/Fylgyr/Fylgyr.psm1 -Force
 
-          $results = Invoke-Fylgyr `
-            -Owner '${{ github.repository_owner }}' `
-            -Repo  '${{ github.event.repository.name }}' `
-            -Token $env:GITHUB_TOKEN
+          $scanParams = @{
+            Owner       = '${{ github.repository_owner }}'
+            Repo        = '${{ github.event.repository.name }}'
+            Token       = $env:GITHUB_TOKEN
+          }
 
-          # Emit SARIF for code scanning upload
-          $sarif = Invoke-Fylgyr `
-            -Owner '${{ github.repository_owner }}' `
-            -Repo  '${{ github.event.repository.name }}' `
-            -Token $env:GITHUB_TOKEN `
-            -OutputFormat SARIF
-          $sarif | Out-File -FilePath fylgyr.sarif -Encoding utf8
+          # Single Object scan — reused for console output and failure check
+          $results = Invoke-Fylgyr @scanParams
 
-          # Print console summary
-          Invoke-Fylgyr `
-            -Owner '${{ github.repository_owner }}' `
-            -Repo  '${{ github.event.repository.name }}' `
-            -Token $env:GITHUB_TOKEN `
-            -OutputFormat Console
+          # Separate SARIF scan for upload (one extra call; Object format has no SARIF serialiser in public API)
+          Invoke-Fylgyr @scanParams -OutputFormat SARIF | Out-File -FilePath fylgyr.sarif -Encoding utf8
+
+          # Console summary from cached results
+          Write-Host ''
+          Write-Host 'Fylgyr Supply-Chain Audit: ${{ github.repository_owner }}/${{ github.event.repository.name }}'
+          Write-Host ('-' * 60)
+          $results | Format-Table CheckName, Status, Severity, Resource -AutoSize | Out-String | Write-Host
+          $counts = $results | Group-Object Status | ForEach-Object { "$($_.Name): $($_.Count)" }
+          Write-Host ($counts -join ' | ')
+          Write-Host ('-' * 60)
 
           # Fail the job if any check returned Fail
           $failures = $results | Where-Object { $_.Status -eq 'Fail' }

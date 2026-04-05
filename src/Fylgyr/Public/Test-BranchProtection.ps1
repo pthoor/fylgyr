@@ -80,18 +80,26 @@
     $findings = [System.Collections.Generic.List[PSCustomObject]]::new()
 
     # Force push allowed
-    if (-not $protection.allow_force_pushes -or $protection.allow_force_pushes.enabled -eq $true) {
-        if ($protection.PSObject.Properties['allow_force_pushes'] -and $protection.allow_force_pushes.enabled -eq $true) {
-            $findings.Add((Format-FylgyrResult `
-                -CheckName 'BranchProtection' `
-                -Status 'Fail' `
-                -Severity 'High' `
-                -Resource $resource `
-                -Detail "Branch '$defaultBranch' allows force pushes." `
-                -Remediation "Disable force pushes in Settings → Branches → Branch protection rules." `
-                -AttackMapping @('trivy-force-push-main', 'codecov-bash-uploader') `
-                -Target $target))
-        }
+    if (-not $protection.PSObject.Properties['allow_force_pushes'] -or $null -eq $protection.allow_force_pushes) {
+        $findings.Add((Format-FylgyrResult `
+            -CheckName 'BranchProtection' `
+            -Status 'Error' `
+            -Severity 'High' `
+            -Resource $resource `
+            -Detail "Branch '$defaultBranch' force-push setting could not be evaluated (property missing from API response)." `
+            -Remediation 'Verify the branch protection rule exposes the force-push setting and that the token has sufficient access to read it.' `
+            -Target $target))
+    }
+    elseif ($protection.allow_force_pushes.enabled -eq $true) {
+        $findings.Add((Format-FylgyrResult `
+            -CheckName 'BranchProtection' `
+            -Status 'Fail' `
+            -Severity 'High' `
+            -Resource $resource `
+            -Detail "Branch '$defaultBranch' allows force pushes." `
+            -Remediation "Disable force pushes in Settings → Branches → Branch protection rules." `
+            -AttackMapping @('trivy-force-push-main', 'codecov-bash-uploader') `
+            -Target $target))
     }
 
     # Deletions allowed

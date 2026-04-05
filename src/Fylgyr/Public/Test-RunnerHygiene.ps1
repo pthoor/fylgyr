@@ -24,22 +24,56 @@
         $hasPullRequest = $stripped -match '(?m)(^|\s)pull_request(\s|:|$)'
         $hasWorkflowRun = $stripped -match '(?m)workflow_run'
 
-        # Find all runs-on values
-        $runsOnMatches = [regex]::Matches($stripped, '(?m)^\s*runs-on:\s*(.+)$')
+        # Find all runs-on values — handles both inline and multi-line list forms:
+        #   runs-on: self-hosted
+        #   runs-on:
+        #     - self-hosted
+        #     - linux
+        $runsOnValues = [System.Collections.Generic.List[string]]::new()
+
+        $lines = $stripped -split "`n"
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+            if ($line -match '(?i)^\s*runs-on:\s*(.+)$') {
+                # Inline value
+                $runsOnValues.Add($Matches[1].Trim())
+            }
+            elseif ($line -match '(?i)^\s*runs-on:\s*$') {
+                # Multi-line list — collect subsequent indented list items
+                $j = $i + 1
+                while ($j -lt $lines.Count -and $lines[$j] -match '^\s+-\s+(.+)$') {
+                    $runsOnValues.Add($Matches[1].Trim())
+                    $j++
+                }
+            }
+        }
 
         $foundSelfHosted = $false
 
-        foreach ($match in $runsOnMatches) {
-            $runsOnValue = $match.Groups[1].Value.Trim()
-
+        foreach ($runsOnValue in $runsOnValues) {
             # Skip GitHub-hosted runners
             if ($runsOnValue -match $hostedPattern) {
                 continue
             }
 
+            # Matrix/expression — can't determine at analysis time; warn conservatively
+            if ($runsOnValue -match '^\$\{\{') {
+                $foundSelfHosted = $true
+                $results.Add((Format-FylgyrResult `
+                    -CheckName 'RunnerHygiene' `
+                    -Status 'Warning' `
+                    -Severity 'Low' `
+                    -Resource "$path" `
+                    -Detail "Workflow '$name' uses a dynamic runner expression ('$runsOnValue'). If this resolves to a self-hosted runner, review the security hardening guidance." `
+                    -Remediation 'Verify the expression never resolves to a self-hosted runner in untrusted contexts. See: https://docs.github.com/actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners' `
+                    -AttackMapping @('github-actions-cryptomining') `
+                    -Target $null))
+                continue
+            }
+
             # Check for self-hosted label or non-standard runner
             $isSelfHosted = $runsOnValue -match $selfHostedPattern -or
-                            ($runsOnValue -notmatch $hostedPattern -and $runsOnValue -notmatch '^\$\{\{')
+                            $runsOnValue -notmatch $hostedPattern
 
             if (-not $isSelfHosted) {
                 continue
