@@ -20,6 +20,7 @@ function Invoke-Fylgyr {
         }
 
         $allResults = [System.Collections.Generic.List[PSCustomObject]]::new()
+        $scannedTargets = [System.Collections.Generic.List[string]]::new()
     }
 
     process {
@@ -41,7 +42,8 @@ function Invoke-Fylgyr {
                         -Severity 'Critical' `
                         -Resource $Owner `
                         -Detail "Failed to list repositories for '$Owner': $_" `
-                        -Remediation 'Verify the owner exists and the token has repo access.'))
+                        -Remediation 'Verify the owner exists and the token has repo access.' `
+                        -Target $Owner))
                     return
                 }
             }
@@ -57,7 +59,8 @@ function Invoke-Fylgyr {
                     -Severity 'Info' `
                     -Resource $Owner `
                     -Detail "No repositories found for '$Owner'." `
-                    -Remediation 'Verify the owner name and token permissions.'))
+                    -Remediation 'Verify the owner name and token permissions.' `
+                    -Target $Owner))
                 return
             }
 
@@ -72,6 +75,7 @@ function Invoke-Fylgyr {
 
                 $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $repoName -Token $Token
                 foreach ($result in $repoResults) { $allResults.Add($result) }
+                $scannedTargets.Add("$Owner/$repoName")
             }
 
             Write-Progress -Activity "Scanning $Owner" -Id 1 -Completed
@@ -79,6 +83,7 @@ function Invoke-Fylgyr {
         else {
             $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $Repo -Token $Token
             foreach ($result in $repoResults) { $allResults.Add($result) }
+            $scannedTargets.Add("$Owner/$Repo")
         }
     }
 
@@ -89,14 +94,26 @@ function Invoke-Fylgyr {
 
         $resultsArray = $allResults.ToArray()
 
+        # Derive display target from scanned targets
+        $displayTarget = if ($scannedTargets.Count -eq 1) {
+            $scannedTargets[0]
+        }
+        elseif ($scannedTargets.Count -gt 1) {
+            $owners = $scannedTargets | ForEach-Object { ($_ -split '/')[0] } | Sort-Object -Unique
+            if ($owners.Count -eq 1) { $owners[0] } else { "$($scannedTargets.Count) repositories" }
+        }
+        else {
+            'unknown'
+        }
+
         if ($OutputFormat -eq 'JSON') {
-            ConvertTo-FylgyrJson -Results $resultsArray -Owner $Owner -Repo $Repo
+            ConvertTo-FylgyrJson -Results $resultsArray -Target $displayTarget
         }
         elseif ($OutputFormat -eq 'SARIF') {
             ConvertTo-FylgyrSarif -Results $resultsArray
         }
         elseif ($OutputFormat -eq 'Console') {
-            Write-FylgyrConsole -Results $resultsArray -Owner $Owner -Repo $Repo
+            Write-FylgyrConsole -Results $resultsArray -Target $displayTarget
         }
         else {
             $resultsArray
@@ -118,9 +135,10 @@ function Invoke-FylgyrScan {
         [string]$Token
     )
 
+    $target = "$Owner/$Repo"
     $results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-    Write-Progress -Activity "$Owner/$Repo" -Status 'Fetching workflow files...' -Id 2 -ParentId 1
+    Write-Progress -Activity $target -Status 'Fetching workflow files...' -Id 2 -ParentId 1
 
     $workflowFiles = $null
     $fetchFailed = $false
@@ -133,9 +151,10 @@ function Invoke-FylgyrScan {
             -CheckName 'WorkflowFileFetch' `
             -Status 'Error' `
             -Severity 'Critical' `
-            -Resource "$Owner/$Repo" `
+            -Resource $target `
             -Detail "Failed to fetch workflow files: $_" `
-            -Remediation 'Verify the repository exists and the token has contents:read access.'))
+            -Remediation 'Verify the repository exists and the token has contents:read access.' `
+            -Target $target))
     }
 
     if ($fetchFailed) {
@@ -146,9 +165,10 @@ function Invoke-FylgyrScan {
             -CheckName 'WorkflowFileFetch' `
             -Status 'Warning' `
             -Severity 'Info' `
-            -Resource "$Owner/$Repo" `
+            -Resource $target `
             -Detail 'No workflow files found in .github/workflows.' `
-            -Remediation 'No action needed if this repository does not use GitHub Actions.'))
+            -Remediation 'No action needed if this repository does not use GitHub Actions.' `
+            -Target $target))
     }
     else {
         $checks = @(
@@ -160,7 +180,7 @@ function Invoke-FylgyrScan {
         for ($c = 0; $c -lt $checks.Count; $c++) {
             $check = $checks[$c]
             $checkPct = [math]::Floor(($c / $checks.Count) * 100)
-            Write-Progress -Activity "$Owner/$Repo" `
+            Write-Progress -Activity $target `
                 -Status "Running $check ($($workflowFiles.Count) workflow files)" `
                 -PercentComplete $checkPct `
                 -Id 2 -ParentId 1
@@ -168,7 +188,7 @@ function Invoke-FylgyrScan {
             try {
                 $checkResults = & $check -WorkflowFiles $workflowFiles
                 foreach ($r in $checkResults) {
-                    $r.Resource = "$Owner/$Repo/$($r.Resource)"
+                    $r.Target = $target
                     $results.Add($r)
                 }
             }
@@ -177,14 +197,15 @@ function Invoke-FylgyrScan {
                     -CheckName $check `
                     -Status 'Error' `
                     -Severity 'Critical' `
-                    -Resource "$Owner/$Repo" `
+                    -Resource $target `
                     -Detail "Check failed with error: $_" `
-                    -Remediation 'Review the error and re-run.'))
+                    -Remediation 'Review the error and re-run.' `
+                    -Target $target))
             }
         }
     }
 
-    Write-Progress -Activity "$Owner/$Repo" -Id 2 -Completed
+    Write-Progress -Activity $target -Id 2 -Completed
 
     $results.ToArray()
 }

@@ -5,17 +5,18 @@ function ConvertTo-FylgyrJson {
         [Parameter(Mandatory)]
         [PSCustomObject[]]$Results,
 
-        [string]$Owner,
-
-        [string]$Repo
+        [string]$Target = ''
     )
 
+    $module = Get-Module -Name Fylgyr -ErrorAction SilentlyContinue
+    $version = if ($module -and $module.Version) { $module.Version.ToString() } else { '0.0.0' }
+
     $output = [PSCustomObject]@{
-        tool    = 'Fylgyr'
-        version = (Get-Module -Name Fylgyr -ErrorAction SilentlyContinue).Version.ToString()
+        tool     = 'Fylgyr'
+        version  = $version
         scanDate = (Get-Date -Format 'o')
-        target  = if ($Repo) { "$Owner/$Repo" } else { $Owner }
-        summary = [PSCustomObject]@{
+        target   = $Target
+        summary  = [PSCustomObject]@{
             total   = $Results.Count
             pass    = ($Results | Where-Object Status -EQ 'Pass').Count
             fail    = ($Results | Where-Object Status -EQ 'Fail').Count

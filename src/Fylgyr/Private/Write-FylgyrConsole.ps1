@@ -6,26 +6,20 @@ function Write-FylgyrConsole {
         [Parameter(Mandatory)]
         [PSCustomObject[]]$Results,
 
-        [string]$Owner,
-
-        [string]$Repo
+        [string]$Target = ''
     )
 
-    $target = if ($Repo) { "$Owner/$Repo" } else { $Owner }
-
     Write-Host ''
-    Write-Host "  Fylgyr Supply-Chain Audit: $target" -ForegroundColor Cyan
+    Write-Host "  Fylgyr Supply-Chain Audit: $Target" -ForegroundColor Cyan
     Write-Host "  $('-' * 60)" -ForegroundColor DarkGray
 
     # Separate repos with no workflows from repos with actual check results
     $noWorkflowResults = $Results | Where-Object { $_.CheckName -eq 'WorkflowFileFetch' -and $_.Status -eq 'Warning' }
     $checkResults = $Results | Where-Object { -not ($_.CheckName -eq 'WorkflowFileFetch' -and $_.Status -eq 'Warning') }
 
-    # Extract repo from Resource (format: Owner/Repo/path) for grouping
+    # Group by Target (Owner/Repo)
     if ($checkResults.Count -gt 0) {
-        $repoGroups = $checkResults | Group-Object -Property {
-            if ($_.Resource -match '^([^/]+/[^/]+)') { $Matches[1] } else { $_.Resource }
-        }
+        $repoGroups = $checkResults | Group-Object -Property Target
 
         foreach ($repoGroup in $repoGroups) {
             Write-Host ''
@@ -71,15 +65,9 @@ function Write-FylgyrConsole {
                             default   { 'Gray' }
                         }
 
-                        # Show just the file path portion (strip Owner/Repo/ prefix for readability)
-                        $displayResource = $r.Resource
-                        if ($displayResource -match '^[^/]+/[^/]+/(.+)$') {
-                            $displayResource = $Matches[1]
-                        }
-
                         Write-Host "      $icon " -ForegroundColor $color -NoNewline
                         Write-Host "$($r.Detail)" -ForegroundColor $color
-                        Write-Host "        Resource:    $displayResource" -ForegroundColor DarkGray
+                        Write-Host "        Resource:    $($r.Resource)" -ForegroundColor DarkGray
                         Write-Host "        Severity:    $($r.Severity)" -ForegroundColor DarkGray
                         Write-Host "        Remediation: $($r.Remediation)" -ForegroundColor DarkGray
 
@@ -97,14 +85,12 @@ function Write-FylgyrConsole {
         Write-Host ''
         Write-Host "  Repos with no workflow files ($($noWorkflowResults.Count)):" -ForegroundColor DarkGray
         foreach ($nw in $noWorkflowResults) {
-            Write-Host "    - $($nw.Resource)" -ForegroundColor DarkGray
+            Write-Host "    - $($nw.Target)" -ForegroundColor DarkGray
         }
     }
 
     # Summary
-    $totalRepos   = ($Results | Group-Object -Property {
-        if ($_.Resource -match '^([^/]+/[^/]+)') { $Matches[1] } else { $_.Resource }
-    }).Count
+    $totalRepos   = ($Results | Group-Object -Property Target).Count
     $passCount    = ($Results | Where-Object Status -EQ 'Pass').Count
     $failCount    = ($Results | Where-Object Status -EQ 'Fail').Count
     $warnCount    = ($Results | Where-Object Status -EQ 'Warning').Count

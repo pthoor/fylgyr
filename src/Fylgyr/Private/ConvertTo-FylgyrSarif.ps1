@@ -6,6 +6,9 @@ function ConvertTo-FylgyrSarif {
         [PSCustomObject[]]$Results
     )
 
+    # SARIF results represent findings — filter out passes
+    $findings = @($Results | Where-Object { $_.Status -ne 'Pass' })
+
     $severityToLevel = @{
         Critical = 'error'
         High     = 'error'
@@ -26,7 +29,7 @@ function ConvertTo-FylgyrSarif {
     $rules = [System.Collections.Generic.Dictionary[string, PSCustomObject]]::new()
     $sarifResults = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-    foreach ($r in $Results) {
+    foreach ($r in $findings) {
         $ruleId = "fylgyr/$($r.CheckName)"
 
         if (-not $rules.ContainsKey($ruleId)) {
@@ -94,8 +97,8 @@ function ConvertTo-FylgyrSarif {
         $sarifResults.Add($sarifResult)
     }
 
-    $moduleVersion = (Get-Module -Name Fylgyr -ErrorAction SilentlyContinue).Version
-    $versionStr = if ($moduleVersion) { $moduleVersion.ToString() } else { '0.1.0' }
+    $module = Get-Module -Name Fylgyr -ErrorAction SilentlyContinue
+    $versionStr = if ($module -and $module.Version) { $module.Version.ToString() } else { '0.1.0' }
 
     $sarif = [PSCustomObject]@{
         '$schema' = 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json'

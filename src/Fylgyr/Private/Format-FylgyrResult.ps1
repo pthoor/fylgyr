@@ -22,16 +22,19 @@ function Format-FylgyrResult {
         [Parameter(Mandatory)]
         [string]$Remediation,
 
-        [string[]]$AttackMapping = @()
+        [string[]]$AttackMapping = @(),
+
+        [string]$Target = ''
     )
 
     [PSCustomObject]@{
-        CheckName = $CheckName
-        Status = $Status
-        Severity = $Severity
-        Resource = $Resource
-        Detail = $Detail
-        Remediation = $Remediation
+        CheckName     = $CheckName
+        Status        = $Status
+        Severity      = $Severity
+        Resource      = $Resource
+        Detail        = $Detail
+        Remediation   = $Remediation
         AttackMapping = $AttackMapping
+        Target        = $Target
     }
 }
