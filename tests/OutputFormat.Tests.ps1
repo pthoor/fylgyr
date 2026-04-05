@@ -105,6 +105,23 @@ Describe 'Invoke-Fylgyr OutputFormat' {
         Import-Module -Name $modulePath -Force
     }
 
+    BeforeEach {
+        $stubResult = [PSCustomObject]@{
+            CheckName     = 'Stub'
+            Status        = 'Pass'
+            Severity      = 'Info'
+            Resource      = 'test/repo'
+            Detail        = 'Stubbed.'
+            Remediation   = 'None.'
+            AttackMapping = @()
+            Target        = 'test/repo'
+        }
+        Mock -ModuleName Fylgyr Test-BranchProtection { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-SecretScanning   { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-DependabotAlert  { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-CodeScanning     { return @($stubResult) }
+    }
+
     It 'returns JSON string when OutputFormat is JSON' {
         $fakeWorkflows = @([PSCustomObject]@{
             Name    = 'ci.yml'

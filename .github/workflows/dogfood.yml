@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   supply-chain-policy:
@@ -19,61 +20,43 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Enforce workflow supply-chain policy
-        shell: bash
+      - name: Run Fylgyr against own workflows
+        id: fylgyr
+        shell: pwsh
         run: |
-          set -euo pipefail
+          Import-Module ./src/Fylgyr/Fylgyr.psm1 -Force
 
-          failed=0
+          $results = Invoke-Fylgyr `
+            -Owner '${{ github.repository_owner }}' `
+            -Repo  '${{ github.event.repository.name }}' `
+            -Token $env:GITHUB_TOKEN
 
-          while IFS= read -r file; do
-            echo "Checking ${file}"
+          # Emit SARIF for code scanning upload
+          $sarif = Invoke-Fylgyr `
+            -Owner '${{ github.repository_owner }}' `
+            -Repo  '${{ github.event.repository.name }}' `
+            -Token $env:GITHUB_TOKEN `
+            -OutputFormat SARIF
+          $sarif | Out-File -FilePath fylgyr.sarif -Encoding utf8
 
-            # Require workflow-level permissions block before first jobs: key.
-            if ! awk '
-              BEGIN { seen_jobs = 0; found = 0 }
-              /^jobs:/ { seen_jobs = 1 }
-              !seen_jobs && /^permissions:/ { found = 1 }
-              END { exit(found ? 0 : 1) }
-            ' "${file}"; then
-              echo "ERROR: ${file} must declare workflow-level permissions before jobs:."
-              failed=1
-            fi
+          # Print console summary
+          Invoke-Fylgyr `
+            -Owner '${{ github.repository_owner }}' `
+            -Repo  '${{ github.event.repository.name }}' `
+            -Token $env:GITHUB_TOKEN `
+            -OutputFormat Console
 
-            # Require full 40-character commit SHAs only for GitHub-hosted action refs
-            # in owner/repo[@ref] form. Allow local actions/workflows and docker:// refs.
-            while IFS= read -r use_line; do
-              use_target="$(printf '%s\n' "${use_line}" | sed -E "s/^[[:space:]]*uses:[[:space:]]*['\"]?([^'\"[:space:]]+)['\"]?[[:space:]]*$/\\1/")"
-
-              # Skip lines that did not parse as a valid uses: target.
-              if [[ -z "${use_target}" || "${use_target}" == "${use_line}" ]]; then
-                continue
-              fi
-
-                # Local actions/workflows and Docker-based actions do not use owner/repo@ref.
-                if [[ "${use_target}" == ./* || "${use_target}" == ../* || "${use_target}" == docker://* ]]; then
-                  continue
-                fi
-
-                # Enforce SHA pinning only for GitHub action/reusable-workflow refs that
-                # use an external repository reference, e.g. owner/repo@ref or
-                # owner/repo/path/to/workflow.yml@ref.
-                if [[ "${use_target}" =~ ^[^/]+/[^@]+@.+$ ]] && [[ ! "${use_target}" =~ ^[^/]+/[^@]+@[0-9a-f]{40}$ ]]; then
-                  echo "ERROR: ${file} has non-SHA-pinned action reference: ${use_line}"
-                  failed=1
-                fi
-            done < <(grep -E '^[[:space:]]*uses:[[:space:]]*' "${file}" || true)
-
-            # Guardrail against broad write permissions patterns.
-            if grep -Eqi '^\s*(permissions:\s*write-all|\w+:\s*write-all)\s*$' "${file}"; then
-              echo "ERROR: ${file} contains write-all permission pattern."
-              failed=1
-            fi
-          done < <(find .github/workflows -type f -name '*.yml' | sort)
-
-          if [[ "${failed}" -ne 0 ]]; then
-            echo "Dogfood policy checks failed."
+          # Fail the job if any check returned Fail
+          $failures = $results | Where-Object { $_.Status -eq 'Fail' }
+          if ($failures) {
+            Write-Error "Fylgyr found $($failures.Count) policy violation(s). See above for details."
             exit 1
-          fi
+          }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          echo "Dogfood policy checks passed."
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@48ab28a6f5dbc2a99bf1e0131198dd8f1df78169
+        with:
+          sarif_file: fylgyr.sarif
