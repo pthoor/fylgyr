@@ -75,10 +75,12 @@
             }
         }
 
-        # Determine whether Resource is a file path or a repo-level identifier.
-        # File paths contain a dot-extension (e.g., .yml); repo-level resources
-        # look like "owner/repo" or "owner/repo (branch: main)".
-        $isFilePath = $r.Resource -match '\.\w+(:\d+)?$'
+        # Determine whether Resource is a repo-level identifier or a file path.
+        # Repo-level resources look like "owner/repo" or
+        # "owner/repo (branch: main)". Everything else is treated as a file
+        # path, with an optional trailing ":line" suffix parsed below.
+        $isRepoLevelResource = $r.Resource -match '^[^/\s]+/[^/\s]+(?: \(branch: .+\))?$'
+        $isFilePath = -not $isRepoLevelResource
 
         $sarifResult = [PSCustomObject]@{
             ruleId  = $ruleId
