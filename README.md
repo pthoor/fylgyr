@@ -26,7 +26,7 @@ Invoke-Fylgyr -Owner 'myorg'
 
 ## Sample Output
 
-### Console (default objects)
+### Object output (default)
 
 ```
 CheckName          : ActionPinning

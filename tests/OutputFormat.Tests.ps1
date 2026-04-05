@@ -11,7 +11,7 @@ Describe 'ConvertTo-FylgyrJson' {
                 (Format-FylgyrResult -CheckName 'TestCheck' -Status 'Pass' -Severity 'Info' -Resource 'test' -Detail 'OK' -Remediation 'None.')
                 (Format-FylgyrResult -CheckName 'TestCheck' -Status 'Fail' -Severity 'High' -Resource 'test' -Detail 'Bad' -Remediation 'Fix it.')
             )
-            ConvertTo-FylgyrJson -Results $results -Owner 'org' -Repo 'repo'
+            ConvertTo-FylgyrJson -Results $results -Target 'org/repo'
         }
 
         $parsed = $json | ConvertFrom-Json
@@ -89,10 +89,10 @@ Describe 'Write-FylgyrConsole' {
         {
             InModuleScope Fylgyr {
                 $results = @(
-                    (Format-FylgyrResult -CheckName 'TestCheck' -Status 'Pass' -Severity 'Info' -Resource 'test' -Detail 'OK' -Remediation 'None.')
-                    (Format-FylgyrResult -CheckName 'TestCheck' -Status 'Fail' -Severity 'High' -Resource 'test:10' -Detail 'Bad' -Remediation 'Fix it.' -AttackMapping @('trivy-tag-poisoning'))
+                    (Format-FylgyrResult -CheckName 'TestCheck' -Status 'Pass' -Severity 'Info' -Resource 'test' -Detail 'OK' -Remediation 'None.' -Target 'org/repo')
+                    (Format-FylgyrResult -CheckName 'TestCheck' -Status 'Fail' -Severity 'High' -Resource 'test:10' -Detail 'Bad' -Remediation 'Fix it.' -AttackMapping @('trivy-tag-poisoning') -Target 'org/repo')
                 )
-                Write-FylgyrConsole -Results $results -Owner 'org' -Repo 'repo'
+                Write-FylgyrConsole -Results $results -Target 'org/repo'
             }
         } | Should -Not -Throw
     }
