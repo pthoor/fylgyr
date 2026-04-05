@@ -111,16 +111,31 @@ Describe 'ConvertTo-FylgyrSarif' {
     It 'uses message text for repo-level resources instead of invalid URIs' {
         $json = InModuleScope Fylgyr {
             $results = @(
-                (Format-FylgyrResult -CheckName 'BranchProtection' -Status 'Fail' -Severity 'High' -Resource 'pthoor/fylgyr (branch: main)' -Detail 'No protection' -Remediation 'Enable branch protection.')
+                (Format-FylgyrResult -CheckName 'RepositorySettings' -Status 'Fail' -Severity 'High' -Resource 'pthoor/fylgyr' -Detail 'Settings issue' -Remediation 'Update repository settings.')
+                (Format-FylgyrResult -CheckName 'RepositorySettings' -Status 'Fail' -Severity 'High' -Resource 'org/repo.name' -Detail 'Settings issue' -Remediation 'Update repository settings.')
             )
             ConvertTo-FylgyrSarif -Results $results
         }
 
         $sarif = $json | ConvertFrom-Json
-        $result = $sarif.runs[0].results[0]
-        $result.locations[0] | Should -Not -BeNullOrEmpty
-        $result.locations[0].message.text | Should -Be 'Repository setting: pthoor/fylgyr (branch: main)'
-        $result.locations[0].PSObject.Properties.Name | Should -Not -Contain 'physicalLocation'
+
+        $branchResult = $sarif.runs[0].results[0]
+        $branchResult.locations[0] | Should -Not -BeNullOrEmpty
+        $branchResult.locations[0].logicalLocations[0].fullyQualifiedName | Should -Be 'pthoor/fylgyr (branch: main)'
+        $branchResult.locations[0].logicalLocations[0].kind | Should -Be 'repository'
+        $branchResult.locations[0].PSObject.Properties.Name | Should -Not -Contain 'physicalLocation'
+
+        $repoResult = $sarif.runs[0].results[1]
+        $repoResult.locations[0] | Should -Not -BeNullOrEmpty
+        $repoResult.locations[0].logicalLocations[0].fullyQualifiedName | Should -Be 'pthoor/fylgyr'
+        $repoResult.locations[0].logicalLocations[0].kind | Should -Be 'repository'
+        $repoResult.locations[0].PSObject.Properties.Name | Should -Not -Contain 'physicalLocation'
+
+        $dottedRepoResult = $sarif.runs[0].results[2]
+        $dottedRepoResult.locations[0] | Should -Not -BeNullOrEmpty
+        $dottedRepoResult.locations[0].logicalLocations[0].fullyQualifiedName | Should -Be 'org/repo.name'
+        $dottedRepoResult.locations[0].logicalLocations[0].kind | Should -Be 'repository'
+        $dottedRepoResult.locations[0].PSObject.Properties.Name | Should -Not -Contain 'physicalLocation'
         $result.partialFingerprints.primaryLocationLineHash | Should -Not -BeNullOrEmpty
     }
 }
