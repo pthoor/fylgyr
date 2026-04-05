@@ -48,7 +48,10 @@ jobs:
         shell: pwsh
         run: |
           Install-Module -Name Pester -MinimumVersion 5.0 -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
-          Invoke-Pester -Path ./tests -Output Detailed -CI
+          $testResult = Invoke-Pester -Path ./tests -Output Detailed -PassThru
+          if ($testResult.FailedCount -gt 0) {
+            throw "Pester failed with $($testResult.FailedCount) failed test(s)."
+          }
 
   publish:
     runs-on: ubuntu-latest
