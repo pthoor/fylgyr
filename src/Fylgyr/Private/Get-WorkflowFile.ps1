@@ -12,8 +12,9 @@ function Get-WorkflowFile {
         [string]$Token
     )
 
+    # Use Git Trees API for efficient batch fetching (single call for all paths)
     try {
-        $listing = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/contents/.github/workflows" -Token $Token
+        $tree = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/git/trees/HEAD?recursive=1" -Token $Token
     }
     catch {
         if ($_.Exception.Message -match '404' -or $_.Exception.Message -match 'Not Found') {
@@ -22,20 +23,25 @@ function Get-WorkflowFile {
         throw
     }
 
+    $workflowEntries = $tree.tree | Where-Object {
+        $_.path -match '^\.github/workflows/.+\.(yml|yaml)$' -and $_.type -eq 'blob'
+    }
+
+    if (-not $workflowEntries -or $workflowEntries.Count -eq 0) {
+        return @()
+    }
+
     $workflowFiles = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-    foreach ($item in $listing) {
-        if ($item.type -ne 'file') { continue }
-        if ($item.name -notmatch '\.(yml|yaml)$') { continue }
-
-        $fileResponse = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/contents/$($item.path)" -Token $Token
+    foreach ($entry in $workflowEntries) {
+        $blob = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/git/blobs/$($entry.sha)" -Token $Token
         $raw = [System.Text.Encoding]::UTF8.GetString(
-            [System.Convert]::FromBase64String(($fileResponse.content -replace '\s', ''))
+            [System.Convert]::FromBase64String(($blob.content -replace '\s', ''))
         )
 
         $workflowFiles.Add([PSCustomObject]@{
-            Name    = $item.name
-            Path    = $item.path
+            Name    = ($entry.path -split '/')[-1]
+            Path    = $entry.path
             Content = $raw
         })
     }

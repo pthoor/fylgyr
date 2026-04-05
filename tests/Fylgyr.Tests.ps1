@@ -115,6 +115,26 @@ jobs:
         $results[0].Status | Should -Be 'Pass'
     }
 
+    It 'passes when SHA-pinned action has a trailing comment' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+'@
+        })
+
+        $results = Test-ActionPinning -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
     It 'reports each unpinned reference separately' {
         $wf = @([PSCustomObject]@{
             Name    = 'ci.yml'

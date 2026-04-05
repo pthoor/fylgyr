@@ -22,6 +22,11 @@ function Test-ActionPinning {
 
             $target = $Matches[1].Trim().Trim("'").Trim('"')
 
+            # Strip trailing YAML inline comments (e.g., "actions/checkout@sha # v4.2.2")
+            if ($target -match '^([^#]+)\s+#') {
+                $target = $Matches[1].Trim()
+            }
+
             # Skip local actions and Docker references
             if ($target -match '^\./' -or $target -match '^\.\.' -or $target -match '^docker://') {
                 continue
