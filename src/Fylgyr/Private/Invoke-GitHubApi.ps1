@@ -15,7 +15,9 @@ function Invoke-GitHubApi {
         [ValidateRange(1, 300)]
         [int]$TimeoutSec = 30,
 
-        [switch]$GraphQL
+        [switch]$GraphQL,
+
+        [switch]$AllPages
     )
 
     if (-not $Token) {
@@ -46,59 +48,88 @@ function Invoke-GitHubApi {
         }
     }
 
-    $invokeParams = @{
-        Uri = $uri
-        Method = $Method
-        Headers = $headers
-        ErrorAction = 'Stop'
-        ResponseHeadersVariable = 'responseHeaders'
-        TimeoutSec = $TimeoutSec
-    }
+    $allResults = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $nextUri = $uri
 
-    if ($Body) {
-        $invokeParams['ContentType'] = 'application/json'
-        $invokeParams['Body'] = ($Body | ConvertTo-Json -Depth 20)
-    }
-
-    try {
-        $response = Invoke-RestMethod @invokeParams
-
-        $remaining = $null
-        if ($responseHeaders.ContainsKey('X-RateLimit-Remaining')) {
-            $remaining = [int]($responseHeaders['X-RateLimit-Remaining'][0])
-        }
-        elseif ($responseHeaders.ContainsKey('x-ratelimit-remaining')) {
-            $remaining = [int]($responseHeaders['x-ratelimit-remaining'][0])
+    do {
+        $invokeParams = @{
+            Uri = $nextUri
+            Method = $Method
+            Headers = $headers
+            ErrorAction = 'Stop'
+            ResponseHeadersVariable = 'responseHeaders'
+            TimeoutSec = $TimeoutSec
         }
 
-        if ($null -ne $remaining -and $remaining -le 10) {
-            $resetEpoch = $null
-            if ($responseHeaders.ContainsKey('X-RateLimit-Reset')) {
-                $resetEpoch = [long]($responseHeaders['X-RateLimit-Reset'][0])
+        if ($Body) {
+            $invokeParams['ContentType'] = 'application/json'
+            $invokeParams['Body'] = ($Body | ConvertTo-Json -Depth 20)
+        }
+
+        try {
+            $response = Invoke-RestMethod @invokeParams
+
+            $remaining = $null
+            if ($responseHeaders.ContainsKey('X-RateLimit-Remaining')) {
+                $remaining = [int]($responseHeaders['X-RateLimit-Remaining'][0])
             }
-            elseif ($responseHeaders.ContainsKey('x-ratelimit-reset')) {
-                $resetEpoch = [long]($responseHeaders['x-ratelimit-reset'][0])
+            elseif ($responseHeaders.ContainsKey('x-ratelimit-remaining')) {
+                $remaining = [int]($responseHeaders['x-ratelimit-remaining'][0])
             }
 
-            if ($remaining -eq 0 -and $null -ne $resetEpoch) {
-                $resetTime = [DateTimeOffset]::FromUnixTimeSeconds($resetEpoch).UtcDateTime
-                throw "GitHub API rate limit exhausted. Resets at $resetTime UTC."
+            if ($null -ne $remaining -and $remaining -le 10) {
+                $resetEpoch = $null
+                if ($responseHeaders.ContainsKey('X-RateLimit-Reset')) {
+                    $resetEpoch = [long]($responseHeaders['X-RateLimit-Reset'][0])
+                }
+                elseif ($responseHeaders.ContainsKey('x-ratelimit-reset')) {
+                    $resetEpoch = [long]($responseHeaders['x-ratelimit-reset'][0])
+                }
+
+                if ($remaining -eq 0 -and $null -ne $resetEpoch) {
+                    $resetTime = [DateTimeOffset]::FromUnixTimeSeconds($resetEpoch).UtcDateTime
+                    throw "GitHub API rate limit exhausted. Resets at $resetTime UTC."
+                }
+
+                Write-Warning "GitHub API rate limit is low: $remaining requests remaining."
+            }
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+
+            if ($_.ErrorDetails.Message) {
+                $errorMessage = "$errorMessage`nGitHub response: $($_.ErrorDetails.Message)"
             }
 
-            Write-Warning "GitHub API rate limit is low: $remaining requests remaining."
+            throw "GitHub API call failed for '$nextUri' using method '$Method'. $errorMessage"
         }
 
-        return $response
-    }
-    catch {
-        $errorMessage = $_.Exception.Message
+        if ($AllPages) {
+            if ($response -is [System.Array]) {
+                foreach ($item in $response) { $allResults.Add($item) }
+            }
+            else {
+                $allResults.Add($response)
+            }
 
-        # PS7 (.NET 5+): Invoke-RestMethod throws HttpResponseException; the
-        # response body is pre-populated in ErrorDetails.Message by PowerShell.
-        if ($_.ErrorDetails.Message) {
-            $errorMessage = "$errorMessage`nGitHub response: $($_.ErrorDetails.Message)"
+            # Parse Link header for next page
+            $nextUri = $null
+            $linkHeader = $null
+            if ($responseHeaders.ContainsKey('Link')) {
+                $linkHeader = $responseHeaders['Link'][0]
+            }
+            elseif ($responseHeaders.ContainsKey('link')) {
+                $linkHeader = $responseHeaders['link'][0]
+            }
+
+            if ($linkHeader -and $linkHeader -match '<([^>]+)>;\s*rel="next"') {
+                $nextUri = $Matches[1]
+            }
         }
+        else {
+            return $response
+        }
+    } while ($null -ne $nextUri)
 
-        throw "GitHub API call failed for '$uri' using method '$Method'. $errorMessage"
-    }
+    return $allResults.ToArray()
 }
