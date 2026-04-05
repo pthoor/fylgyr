@@ -1,4 +1,4 @@
-function ConvertTo-FylgyrSarif {
+﻿function ConvertTo-FylgyrSarif {
     [CmdletBinding()]
     [OutputType([string])]
     param(
