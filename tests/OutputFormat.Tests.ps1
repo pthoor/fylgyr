@@ -108,7 +108,7 @@ Describe 'ConvertTo-FylgyrSarif' {
         $sarif.runs[0].results[0].properties.tags | Should -Contain 'attack:tj-actions-shai-hulud'
     }
 
-    It 'uses message text for repo-level resources instead of invalid URIs' {
+    It 'uses sentinel file for repo-level resources with message context' {
         $json = InModuleScope Fylgyr {
             $results = @(
                 (Format-FylgyrResult -CheckName 'RepositorySettings' -Status 'Fail' -Severity 'High' -Resource 'pthoor/fylgyr' -Detail 'Settings issue' -Remediation 'Update repository settings.')
@@ -119,18 +119,16 @@ Describe 'ConvertTo-FylgyrSarif' {
 
         $sarif = $json | ConvertFrom-Json
 
-        # Simple owner/repo resource
+        # Simple owner/repo resource — must have physicalLocation
         $repoResult = $sarif.runs[0].results[0]
-        $repoResult.locations[0] | Should -Not -BeNullOrEmpty
+        $repoResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be '.github/SECURITY.md'
         $repoResult.locations[0].message.text | Should -Be 'Repository setting: pthoor/fylgyr'
-        $repoResult.locations[0].PSObject.Properties.Name | Should -Not -Contain 'physicalLocation'
         $repoResult.partialFingerprints.primaryLocationLineHash | Should -Not -BeNullOrEmpty
 
         # Dotted repo name should NOT be treated as a file path
         $dottedResult = $sarif.runs[0].results[1]
-        $dottedResult.locations[0] | Should -Not -BeNullOrEmpty
+        $dottedResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be '.github/SECURITY.md'
         $dottedResult.locations[0].message.text | Should -Be 'Repository setting: org/repo.name'
-        $dottedResult.locations[0].PSObject.Properties.Name | Should -Not -Contain 'physicalLocation'
     }
 }
 

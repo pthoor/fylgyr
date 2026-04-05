@@ -109,10 +109,19 @@
                 }
             )
         } else {
-            # Repo-level findings have no file to annotate — use a location
-            # with message text so the alert still appears in code scanning.
+            # GitHub code scanning requires physicalLocation on every result.
+            # Repo-level findings point to a sentinel path with the detail in the message.
             $sarifResult | Add-Member -NotePropertyName 'locations' -NotePropertyValue @(
                 [PSCustomObject]@{
+                    physicalLocation = [PSCustomObject]@{
+                        artifactLocation = [PSCustomObject]@{
+                            uri       = '.github/SECURITY.md'
+                            uriBaseId = '%SRCROOT%'
+                        }
+                        region = [PSCustomObject]@{
+                            startLine = 1
+                        }
+                    }
                     message = [PSCustomObject]@{
                         text = "Repository setting: $($r.Resource)"
                     }
