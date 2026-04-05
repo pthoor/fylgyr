@@ -121,13 +121,13 @@ Describe 'ConvertTo-FylgyrSarif' {
 
         # Simple owner/repo resource — must have physicalLocation
         $repoResult = $sarif.runs[0].results[0]
-        $repoResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be '.github/SECURITY.md'
+        $repoResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be 'SECURITY.md'
         $repoResult.locations[0].message.text | Should -Be 'Repository setting: pthoor/fylgyr'
         $repoResult.partialFingerprints.primaryLocationLineHash | Should -Not -BeNullOrEmpty
 
         # Dotted repo name should NOT be treated as a file path
         $dottedResult = $sarif.runs[0].results[1]
-        $dottedResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be '.github/SECURITY.md'
+        $dottedResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be 'SECURITY.md'
         $dottedResult.locations[0].message.text | Should -Be 'Repository setting: org/repo.name'
     }
 }

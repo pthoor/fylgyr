@@ -10,7 +10,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 - SARIF output now fully compliant with GitHub code scanning requirements.
 - All results include `physicalLocation` (required by GitHub's SARIF processor).
-- Repo-level findings (BranchProtection, SecretScanning, etc.) use `.github/SECURITY.md` as sentinel file with context in `location.message.text`.
+- Repo-level findings (BranchProtection, SecretScanning, etc.) use `SECURITY.md` as sentinel file with context in `location.message.text`.
 - Added `partialFingerprints` (SHA-256 based `primaryLocationLineHash`) to prevent duplicate alerts across runs.
 - Added `properties.security-severity` scores on rules so findings appear as security results in the Security tab.
 - Added `security` and `supply-chain` tags and `precision: high` on all rules.

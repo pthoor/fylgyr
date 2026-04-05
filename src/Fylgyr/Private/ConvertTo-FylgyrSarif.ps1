@@ -115,7 +115,7 @@
                 [PSCustomObject]@{
                     physicalLocation = [PSCustomObject]@{
                         artifactLocation = [PSCustomObject]@{
-                            uri       = '.github/SECURITY.md'
+                            uri       = 'SECURITY.md'
                             uriBaseId = '%SRCROOT%'
                         }
                         region = [PSCustomObject]@{
