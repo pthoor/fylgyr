@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.3.1] - 2026-04-05
+
+### Fixed
+
+- SARIF output now fully compliant with GitHub code scanning requirements.
+- All results include `physicalLocation` (required by GitHub's SARIF processor).
+- Repo-level findings (BranchProtection, SecretScanning, etc.) use `SECURITY.md` as sentinel file with context in `location.message.text`.
+- Added `partialFingerprints` (SHA-256 based `primaryLocationLineHash`) to prevent duplicate alerts across runs.
+- Added `properties.security-severity` scores on rules so findings appear as security results in the Security tab.
+- Added `security` and `supply-chain` tags and `precision: high` on all rules.
+- Updated `$schema` to GitHub-recommended `json.schemastore.org` URL.
+- Improved repo-level resource detection to handle dotted repo names (e.g., `org/repo.name`).
+
+### Changed
+
+- Release workflow now scopes `contents: write` to publish job only (least privilege).
+
+## [0.3.0] - 2026-04-05
+
+### Added
+
+- `Test-BranchProtection` check — audits default branch protection rules (required reviews, status checks, force push, signed commits). Maps to `codecov-bash-uploader`.
+- `Test-SecretScanning` check — verifies Secret Scanning is enabled and flags unresolved alerts. Maps to `uber-credential-leak`.
+- `Test-DependabotAlert` check — checks for open critical/high Dependabot alerts. Maps to `event-stream-hijack` and `solarwinds-orion`.
+- `Test-CodeScanning` check — verifies GitHub Code Scanning is configured with recent analyses. Maps to `solarwinds-orion`.
+- `Test-RunnerHygiene` check — detects risky self-hosted runner configurations in workflow YAML. Maps to `github-actions-cryptomining`.
+- Five new attack catalog entries: `codecov-bash-uploader`, `uber-credential-leak`, `event-stream-hijack`, `solarwinds-orion`, `github-actions-cryptomining`.
+- Release workflow hardened with validate job (manifest, tag/version match, lint, tests) before publish.
+- Automatic GitHub Release creation with `gh release create`.
+
 ## [0.2.0] - TBD
 
 ### Added

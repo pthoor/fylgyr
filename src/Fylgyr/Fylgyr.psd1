@@ -1,6 +1,6 @@
 @{
     RootModule = 'Fylgyr.psm1'
-    ModuleVersion = '0.3.0'
+    ModuleVersion = '0.3.1'
     GUID = 'f3e1c20d-3f0d-4a40-a4e3-9dca27b6bd4a'
     Author = 'Pierre Thoor'
     CompanyName = 'Community'
