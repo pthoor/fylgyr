@@ -1,4 +1,4 @@
-function Get-WorkflowFile {
+﻿function Get-WorkflowFile {
     [CmdletBinding()]
     [OutputType([PSCustomObject[]])]
     param(
@@ -34,12 +34,12 @@ function Get-WorkflowFile {
     $workflowFiles = [System.Collections.Generic.List[PSCustomObject]]::new()
 
     foreach ($entry in $workflowEntries) {
+        # Let API fetch errors bubble up — only catch Base64/UTF-8 decode failures
+        $blob = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/git/blobs/$($entry.sha)" -Token $Token
         try {
-            $blob = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/git/blobs/$($entry.sha)" -Token $Token
             $raw = [System.Text.Encoding]::UTF8.GetString(
                 [System.Convert]::FromBase64String(($blob.content -replace '\s', ''))
             )
-
             $workflowFiles.Add([PSCustomObject]@{
                 Name    = ($entry.path -split '/')[-1]
                 Path    = $entry.path
@@ -53,3 +53,4 @@ function Get-WorkflowFile {
 
     return $workflowFiles.ToArray()
 }
+

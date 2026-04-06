@@ -120,8 +120,22 @@
                 }
             }
 
-            # Sanitize: strip any token fragments that might appear in error output
-            $sanitizedUri = $nextUri -replace '[?&]access_token=[^&]+', '?access_token=***'
+            # Sanitize: mask any access_token value while preserving the original query string structure
+            $sanitizedUri = $nextUri
+            if ($sanitizedUri -match '(?:\?|&)access_token=') {
+                try {
+                    $uriBuilder = [System.UriBuilder]$sanitizedUri
+                    $query = [System.Web.HttpUtility]::ParseQueryString($uriBuilder.Query)
+                    if ($null -ne $query['access_token']) {
+                        $query['access_token'] = '***'
+                        $uriBuilder.Query = $query.ToString()
+                        $sanitizedUri = $uriBuilder.Uri.AbsoluteUri
+                    }
+                }
+                catch {
+                    $sanitizedUri = $sanitizedUri -replace '([?&]access_token=)[^&]+', '$1***'
+                }
+            }
             throw "GitHub API call failed for '$sanitizedUri' using method '$Method'. $errorMessage"
         }
 

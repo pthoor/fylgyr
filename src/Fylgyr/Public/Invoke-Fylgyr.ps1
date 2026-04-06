@@ -232,7 +232,7 @@ function Invoke-FylgyrScan {
                 -Status 'Error' `
                 -Severity 'Critical' `
                 -Resource $target `
-                -Detail "Check failed with error: $_" `
+                -Detail "Check failed with error: $($_.Exception.Message)" `
                 -Remediation 'Review the error and re-run.' `
                 -Target $target))
         }

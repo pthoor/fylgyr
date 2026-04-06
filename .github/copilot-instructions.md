@@ -35,7 +35,7 @@ These rules apply to every code change. No exceptions.
 - All functions must declare `[OutputType(...)]`
 - Use `[System.Collections.Generic.List[PSCustomObject]]` for arrays — never `+=` in a loop
 - Strip YAML comment lines (`^\s*#`) before pattern matching
-- Never use `return` inside a `process` block
+- Use `return` inside a `process` block only when it is intentional for pipeline-aware control flow and consistent with existing function patterns; avoid unnecessary `return` statements that make processing behavior unclear
 - PSScriptAnalyzer must report zero errors and zero warnings
 
 ## Before Completing Any Change
