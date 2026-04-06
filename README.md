@@ -264,7 +264,7 @@ Fylgyr is a security tool and holds itself to the same standard it applies to th
 |---|---|
 | **SHA-pinned actions** | All workflow `uses:` references pin to full 40-char commit SHAs |
 | **Least-privilege permissions** | Workflows declare minimal `permissions:` blocks; `contents: write` scoped to publish job only |
-| **No secret leakage** | Error messages use `$_.Exception.Message` only; tokens are never logged or included in output |
+| **No secret leakage** | Error handling is designed to avoid logging secrets; tokens are never logged or included in output |
 | **Input validation** | All user-facing parameters enforce `[ValidatePattern]` to reject injection attempts |
 | **HTTPS-only** | HTTP API endpoints are explicitly rejected |
 | **Bounded pagination** | API pagination capped at 100 pages to prevent infinite loops |
