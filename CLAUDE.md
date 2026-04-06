@@ -105,6 +105,7 @@ Any new or modified workflow file must satisfy all three, or the dogfood CI job 
 
 ### Error handling and information leakage
 - **Never use raw `$_` in error messages.** Always use `$_.Exception.Message` to prevent leaking stack traces, tokens, or internal paths.
+  - **Current exception:** one known legacy instance remains in the `Invoke-FylgyrScan` `repoChecks` catch block and must be treated as technical debt until removed.
 - **Sanitize API error responses** before including them in output. Parse JSON error bodies and extract only the `.message` field.
 - **Never log, display, or include tokens** in error messages, warnings, verbose output, or result objects.
 
