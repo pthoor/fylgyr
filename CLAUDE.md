@@ -99,6 +99,35 @@ Any new or modified workflow file must satisfy all three, or the dogfood CI job 
 2. **All `uses:` references SHA-pinned** to a full 40-character hex commit SHA (e.g., `uses: actions/checkout@abc123...40chars`). Tags and branch names are rejected.
 3. **No `write-all` permission pattern** anywhere in the file.
 
+## Security Requirements — MANDATORY
+
+**This is a security tool. It must not contain security vulnerabilities itself.** Every code change must be evaluated through this lens. These rules are non-negotiable:
+
+### Error handling and information leakage
+- **Never use raw `$_` in error messages.** Always use `$_.Exception.Message` to prevent leaking stack traces, tokens, or internal paths.
+  - **Current exception:** one known legacy instance remains in the `Invoke-FylgyrScan` `repoChecks` catch block and must be treated as technical debt until removed.
+- **Sanitize API error responses** before including them in output. Parse JSON error bodies and extract only the `.message` field.
+- **Never log, display, or include tokens** in error messages, warnings, verbose output, or result objects.
+
+### Input validation
+- **All Owner/Repo parameters must use `[ValidatePattern('^[a-zA-Z0-9._-]+$')]`** to reject injection attempts.
+- **Enforce HTTPS-only** for all API communication. HTTP endpoints must be explicitly rejected with a thrown error.
+
+### Safe coding patterns
+- **Never use `Invoke-Expression`, `Start-Process`, or dynamic code execution.** The call operator `& $functionName` is acceptable only with hardcoded function name arrays.
+- **Never use `ConvertFrom-SecureString`** or store credentials in any form.
+- **Bound all loops** — pagination must have a maximum page limit (currently 100) to prevent infinite loops from malformed API responses.
+- **Wrap external data decoding** (Base64, JSON) in try/catch blocks.
+
+### Output safety
+- **Treat all data from the GitHub API as untrusted.** Repository names, file paths, and alert details could contain special characters or injection payloads.
+- **SARIF and JSON output** must use `ConvertTo-Json` (which handles encoding) — never manual string concatenation for structured output.
+
+### Before submitting any change
+1. Run `Invoke-ScriptAnalyzer -Path ./src -Recurse -Severity Error,Warning` — must report **zero** findings.
+2. Run `Invoke-Pester -Path ./tests -Output Detailed` — must report **zero** failures.
+3. Verify the README is up to date with any new checks, attack mappings, or features.
+
 ## Conventions
 
 - Use `Format-FylgyrResult` for all check output — never return ad-hoc objects.

@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.3.2] - 2026-04-06
+
+### Security
+
+- Error messages now use `$_.Exception.Message` instead of raw `$_` across all check functions and orchestrator to prevent token/path leakage.
+- `Invoke-GitHubApi` sanitizes error output by parsing GitHub JSON error responses and stripping token fragments from URIs.
+- HTTP endpoints are explicitly rejected — HTTPS-only enforcement added to `Invoke-GitHubApi`.
+- Pagination bounded at 100 pages to prevent infinite loops from malformed API responses.
+- `Owner` and `Repo` parameters enforce `[ValidatePattern('^[a-zA-Z0-9._-]+$')]` to reject injection attempts.
+- Base64 decoding in `Get-WorkflowFile` wrapped in try/catch to handle corrupt blobs gracefully.
+
+### Added
+
+- `.github/copilot-instructions.md` — security-first coding guidance for GitHub Copilot.
+- Security Requirements section in `CLAUDE.md` — mandatory rules for all AI-assisted code changes.
+- Security Posture section in README documenting how Fylgyr practices what it preaches.
+- "Why Fylgyr?" section in README explaining the Norse mythology origin of the name.
+- Security Impact section and error sanitization checkbox in PR template.
+- Expanded `SECURITY.md` with supported versions, scope, usage security guidance, and security design principles.
+
+### Fixed
+
+- Changelog dates for v0.1.0 and v0.2.0 updated from TBD.
+
 ## [0.3.1] - 2026-04-05
 
 ### Fixed
@@ -34,7 +58,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Release workflow hardened with validate job (manifest, tag/version match, lint, tests) before publish.
 - Automatic GitHub Release creation with `gh release create`.
 
-## [0.2.0] - TBD
+## [0.2.0] - 2026-04-05
 
 ### Added
 

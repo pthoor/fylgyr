@@ -27,7 +27,7 @@
             -Status 'Error' `
             -Severity 'High' `
             -Resource $target `
-            -Detail "Failed to retrieve repository info: $_" `
+            -Detail "Failed to retrieve repository info: $($_.Exception.Message)" `
             -Remediation 'Verify the repository exists and the token has contents:read access.' `
             -Target $target))
         return $results.ToArray()
@@ -71,7 +71,7 @@
             -Status 'Error' `
             -Severity 'High' `
             -Resource $resource `
-            -Detail "Unexpected error reading branch protection: $_" `
+            -Detail "Unexpected error reading branch protection: $($_.Exception.Message)" `
             -Remediation 'Re-run with a valid token and verify network access to api.github.com.' `
             -Target $target))
         return $results.ToArray()

@@ -3,9 +3,11 @@ function Invoke-Fylgyr {
     [OutputType([PSCustomObject[]], [string])]
     param(
         [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Owner,
 
         [Parameter(ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Repo,
 
         [ValidateSet('Object', 'JSON', 'SARIF', 'Console')]
@@ -41,7 +43,7 @@ function Invoke-Fylgyr {
                         -Status 'Error' `
                         -Severity 'Critical' `
                         -Resource $Owner `
-                        -Detail "Failed to list repositories for '$Owner': $_" `
+                        -Detail "Failed to list repositories for '$Owner': $($_.Exception.Message)" `
                         -Remediation 'Verify the owner exists and the token has repo access.' `
                         -Target $Owner))
                     return
@@ -126,9 +128,11 @@ function Invoke-FylgyrScan {
     [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Owner,
 
         [Parameter(Mandatory)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Repo,
 
         [Parameter(Mandatory)]
@@ -152,7 +156,7 @@ function Invoke-FylgyrScan {
             -Status 'Error' `
             -Severity 'Critical' `
             -Resource $target `
-            -Detail "Failed to fetch workflow files: $_" `
+            -Detail "Failed to fetch workflow files: $($_.Exception.Message)" `
             -Remediation 'Verify the repository exists and the token has contents:read access.' `
             -Target $target))
     }
@@ -199,7 +203,7 @@ function Invoke-FylgyrScan {
                     -Status 'Error' `
                     -Severity 'Critical' `
                     -Resource $target `
-                    -Detail "Check failed with error: $_" `
+                    -Detail "Check failed with error: $($_.Exception.Message)" `
                     -Remediation 'Review the error and re-run.' `
                     -Target $target))
             }
@@ -228,7 +232,7 @@ function Invoke-FylgyrScan {
                 -Status 'Error' `
                 -Severity 'Critical' `
                 -Resource $target `
-                -Detail "Check failed with error: $_" `
+                -Detail "Check failed with error: $($_.Exception.Message)" `
                 -Remediation 'Review the error and re-run.' `
                 -Target $target))
         }
