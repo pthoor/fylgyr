@@ -9,6 +9,10 @@ Fylgyr audits GitHub repositories and organizations for supply chain risks by ma
 
 Unlike score-based tools such as [OpenSSF Scorecard](https://securityscorecards.dev/), Fylgyr is **attack-mapped, not score-based**. Every finding explains which known campaign it aligns with and why that behavior matters.
 
+### Why "Fylgyr"?
+
+In Norse mythology, a *fylgja* (plural *fylgjur*) is a supernatural guardian spirit that accompanies a person throughout their life. Often appearing as an animal, the fylgja watches over its ward and can serve as a warning of danger ahead. Fylgyr serves the same role for your repositories — a vigilant guardian that watches for supply chain threats others might miss.
+
 ## Quick Start
 
 ```powershell
@@ -251,6 +255,24 @@ Every finding maps to a real-world supply chain incident. The full catalog lives
 | `event-stream-hijack` | event-stream npm package hijack | 2018-11 |
 | `solarwinds-orion` | SolarWinds Orion supply chain attack | 2020-12 |
 | `github-actions-cryptomining` | GitHub Actions crypto-mining campaigns | 2022-04 |
+
+## Security Posture
+
+Fylgyr is a security tool and holds itself to the same standard it applies to the repositories it audits.
+
+| Practice | How Fylgyr applies it |
+|---|---|
+| **SHA-pinned actions** | All workflow `uses:` references pin to full 40-char commit SHAs |
+| **Least-privilege permissions** | Workflows declare minimal `permissions:` blocks; `contents: write` scoped to publish job only |
+| **No secret leakage** | Error messages use `$_.Exception.Message` only; tokens are never logged or included in output |
+| **Input validation** | All user-facing parameters enforce `[ValidatePattern]` to reject injection attempts |
+| **HTTPS-only** | HTTP API endpoints are explicitly rejected |
+| **Bounded pagination** | API pagination capped at 100 pages to prevent infinite loops |
+| **Self-auditing** | The [dogfood workflow](.github/workflows/dogfood.yml) runs Fylgyr against its own repo on every push |
+| **No dynamic execution** | `Invoke-Expression`, `Start-Process`, and similar cmdlets are never used |
+| **Fork-safe CI** | Dogfood workflow skips fork PRs to prevent token exfiltration |
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting, scope, and security design principles.
 
 ## Architecture
 

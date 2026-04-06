@@ -55,7 +55,7 @@
             -Status 'Error' `
             -Severity 'Medium' `
             -Resource $resource `
-            -Detail "Unexpected error reading Dependabot alerts: $_" `
+            -Detail "Unexpected error reading Dependabot alerts: $($_.Exception.Message)" `
             -Remediation 'Re-run with a valid token and verify network access to api.github.com.' `
             -Target $target))
         return $results.ToArray()

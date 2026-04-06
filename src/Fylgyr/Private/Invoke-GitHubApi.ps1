@@ -1,4 +1,4 @@
-function Invoke-GitHubApi {
+﻿function Invoke-GitHubApi {
     [CmdletBinding()]
     [OutputType([PSCustomObject], [PSCustomObject[]])]
     param(
@@ -39,8 +39,11 @@ function Invoke-GitHubApi {
         }
     }
     else {
-        if ($Endpoint -match '^https?://') {
+        if ($Endpoint -match '^https://') {
             $uri = $Endpoint
+        }
+        elseif ($Endpoint -match '^http://') {
+            throw 'HTTP endpoints are not allowed. Use HTTPS only.'
         }
         else {
             $trimmedEndpoint = $Endpoint.TrimStart('/')
@@ -48,10 +51,18 @@ function Invoke-GitHubApi {
         }
     }
 
+    $maxPages = 100
+    $pageCount = 0
     $allResults = [System.Collections.Generic.List[PSCustomObject]]::new()
     $nextUri = $uri
 
     do {
+        $pageCount++
+        if ($pageCount -gt $maxPages) {
+            Write-Warning "Pagination limit reached ($maxPages pages). Results may be incomplete."
+            break
+        }
+
         $invokeParams = @{
             Uri = $nextUri
             Method = $Method
@@ -98,10 +109,20 @@ function Invoke-GitHubApi {
             $errorMessage = $_.Exception.Message
 
             if ($_.ErrorDetails.Message) {
-                $errorMessage = "$errorMessage`nGitHub response: $($_.ErrorDetails.Message)"
+                try {
+                    $ghError = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
+                    if ($ghError.message) {
+                        $errorMessage = "$errorMessage`nGitHub response: $($ghError.message)"
+                    }
+                }
+                catch {
+                    Write-Debug "Could not parse GitHub error response as JSON: $($_.Exception.Message)"
+                }
             }
 
-            throw "GitHub API call failed for '$nextUri' using method '$Method'. $errorMessage"
+            # Sanitize: strip any token fragments that might appear in error output
+            $sanitizedUri = $nextUri -replace '[?&]access_token=[^&]+', '?access_token=***'
+            throw "GitHub API call failed for '$sanitizedUri' using method '$Method'. $errorMessage"
         }
 
         if ($AllPages) {
