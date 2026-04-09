@@ -27,6 +27,14 @@
     # Trim whitespace and newlines — tokens pasted from web UIs often include line breaks
     $Token = $Token.Trim()
 
+    if (-not $Token) {
+        throw 'GitHub token is empty after trimming whitespace. Provide a valid token.'
+    }
+
+    if ($Token -match '[\x00-\x1F\x7F]') {
+        throw 'GitHub token contains invalid control characters.'
+    }
+
     $headers = @{
         Authorization = "Bearer $Token"
         Accept = 'application/vnd.github+json'

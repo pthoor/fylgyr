@@ -22,7 +22,7 @@
     catch {
         $msg = $_.ToString()
 
-        if ($msg -match '40[04]' -or ($msg -match '403' -and $msg -match '(?i)disabled')) {
+        if ($msg -match '404' -or ($msg -match '403' -and $msg -match '(?i)disabled')) {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'SecretScanning' `
                 -Status 'Fail' `
