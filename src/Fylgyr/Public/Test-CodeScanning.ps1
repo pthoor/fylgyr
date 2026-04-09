@@ -25,7 +25,7 @@
     catch {
         $msg = $_.ToString()
 
-        if ($msg -match '404') {
+        if ($msg -match '404' -or ($msg -match '403' -and $msg -match '(?i)disabled')) {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'CodeScanning' `
                 -Status 'Fail' `
@@ -44,8 +44,8 @@
                 -Status 'Error' `
                 -Severity 'Medium' `
                 -Resource $resource `
-                -Detail 'Insufficient permissions to read Code Scanning analyses. Requires a token with security_events scope or GitHub Advanced Security.' `
-                -Remediation 'Use a token with security_events scope or enable GitHub Advanced Security on this repository.' `
+                -Detail 'Insufficient permissions to read Code Scanning analyses.' `
+                -Remediation 'Use a fine-grained token with Code scanning alerts:read permission, or a classic token with security_events scope.' `
                 -Target $target))
             return $results.ToArray()
         }

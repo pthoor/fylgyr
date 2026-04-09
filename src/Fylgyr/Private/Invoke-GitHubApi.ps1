@@ -24,6 +24,17 @@
         throw 'GitHub token not provided. Use -Token or set GITHUB_TOKEN.'
     }
 
+    # Trim whitespace and newlines — tokens pasted from web UIs often include line breaks
+    $Token = $Token.Trim()
+
+    if (-not $Token) {
+        throw 'GitHub token is empty after trimming whitespace. Provide a valid token.'
+    }
+
+    if ($Token -match '[\x00-\x1F\x7F]') {
+        throw 'GitHub token contains invalid control characters.'
+    }
+
     $headers = @{
         Authorization = "Bearer $Token"
         Accept = 'application/vnd.github+json'
@@ -70,6 +81,7 @@
             ErrorAction = 'Stop'
             ResponseHeadersVariable = 'responseHeaders'
             TimeoutSec = $TimeoutSec
+            SkipHeaderValidation = $true
         }
 
         if ($Body) {
@@ -107,6 +119,11 @@
         }
         catch {
             $errorMessage = $_.Exception.Message
+
+            # Strip any token values that .NET may include in validation error messages
+            if ($Token.Length -gt 8) {
+                $errorMessage = $errorMessage -replace [regex]::Escape($Token), '***'
+            }
 
             if ($_.ErrorDetails.Message) {
                 try {

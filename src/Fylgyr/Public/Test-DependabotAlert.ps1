@@ -25,7 +25,7 @@
     catch {
         $msg = $_.ToString()
 
-        if ($msg -match '404') {
+        if ($msg -match '404' -or ($msg -match '403' -and $msg -match '(?i)disabled')) {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'DependabotAlerts' `
                 -Status 'Fail' `
@@ -44,8 +44,8 @@
                 -Status 'Error' `
                 -Severity 'Medium' `
                 -Resource $resource `
-                -Detail 'Insufficient permissions to read Dependabot alerts. Requires a token with security_events scope.' `
-                -Remediation 'Use a token with the security_events scope.' `
+                -Detail 'Insufficient permissions to read Dependabot alerts. Requires a fine-grained token with Dependabot alerts:read permission.' `
+                -Remediation 'Use a fine-grained token with the Dependabot alerts:read permission, or a classic token with security_events scope.' `
                 -Target $target))
             return $results.ToArray()
         }

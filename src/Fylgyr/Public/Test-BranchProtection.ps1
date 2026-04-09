@@ -60,8 +60,8 @@
                 -Status 'Error' `
                 -Severity 'High' `
                 -Resource $resource `
-                -Detail "Insufficient permissions to read branch protection. Requires admin access or a fine-grained token with administration:read." `
-                -Remediation 'Use a token with admin access to the repository, or grant the token the administration:read permission.' `
+                -Detail 'Insufficient permissions to read branch protection.' `
+                -Remediation 'Use a fine-grained token with Administration:read permission, or a classic token with repo scope.' `
                 -Target $target))
             return $results.ToArray()
         }
