@@ -38,13 +38,13 @@ function Test-CodeOwner {
             }
         }
         catch {
-            $msg = $_.ToString()
+            $msg = $_.Exception.Message
             if ($msg -match '404') {
                 continue
             }
             if ($msg -match '403') {
                 $results.Add((Format-FylgyrResult `
-                    -CheckName 'CodeOwners' `
+                    -CheckName 'CodeOwner' `
                     -Status 'Error' `
                     -Severity 'Medium' `
                     -Resource $target `
@@ -54,7 +54,7 @@ function Test-CodeOwner {
                 return $results.ToArray()
             }
             $results.Add((Format-FylgyrResult `
-                -CheckName 'CodeOwners' `
+                -CheckName 'CodeOwner' `
                 -Status 'Error' `
                 -Severity 'Medium' `
                 -Resource $target `
@@ -67,7 +67,7 @@ function Test-CodeOwner {
 
     if (-not $codeownersContent) {
         $results.Add((Format-FylgyrResult `
-            -CheckName 'CodeOwners' `
+            -CheckName 'CodeOwner' `
             -Status 'Fail' `
             -Severity 'Medium' `
             -Resource $target `
@@ -98,7 +98,7 @@ function Test-CodeOwner {
 
     if ($rules.Count -eq 0) {
         $findings.Add((Format-FylgyrResult `
-            -CheckName 'CodeOwners' `
+            -CheckName 'CodeOwner' `
             -Status 'Fail' `
             -Severity 'Medium' `
             -Resource "$target ($foundPath)" `
@@ -111,7 +111,7 @@ function Test-CodeOwner {
         if ($distinctOwners.Count -lt 2) {
             $onlyOwner = if ($distinctOwners.Count -eq 1) { $distinctOwners[0] } else { '(none)' }
             $findings.Add((Format-FylgyrResult `
-                -CheckName 'CodeOwners' `
+                -CheckName 'CodeOwner' `
                 -Status 'Fail' `
                 -Severity 'Medium' `
                 -Resource "$target ($foundPath)" `
@@ -125,7 +125,7 @@ function Test-CodeOwner {
             if ($rule.Owners.Count -le 1) {
                 $soleOwner = if ($rule.Owners.Count -eq 1) { $rule.Owners[0] } else { '(none)' }
                 $findings.Add((Format-FylgyrResult `
-                    -CheckName 'CodeOwners' `
+                    -CheckName 'CodeOwner' `
                     -Status 'Fail' `
                     -Severity 'Medium' `
                     -Resource "$target ($foundPath)" `
@@ -139,7 +139,7 @@ function Test-CodeOwner {
 
     if ($findings.Count -eq 0) {
         $results.Add((Format-FylgyrResult `
-            -CheckName 'CodeOwners' `
+            -CheckName 'CodeOwner' `
             -Status 'Pass' `
             -Severity 'Info' `
             -Resource "$target ($foundPath)" `

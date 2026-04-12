@@ -71,7 +71,7 @@ function Test-EgressControl {
                 }
 
                 $results.Add((Format-FylgyrResult `
-                    -CheckName 'EgressControls' `
+                    -CheckName 'EgressControl' `
                     -Status $status `
                     -Severity $severity `
                     -Resource $wf.Path `
@@ -87,7 +87,7 @@ function Test-EgressControl {
                 }
 
                 $results.Add((Format-FylgyrResult `
-                    -CheckName 'EgressControls' `
+                    -CheckName 'EgressControl' `
                     -Status 'Info' `
                     -Severity 'Low' `
                     -Resource $wf.Path `
@@ -98,7 +98,7 @@ function Test-EgressControl {
             }
             else {
                 $results.Add((Format-FylgyrResult `
-                    -CheckName 'EgressControls' `
+                    -CheckName 'EgressControl' `
                     -Status 'Pass' `
                     -Severity 'Info' `
                     -Resource $wf.Path `
@@ -116,7 +116,7 @@ function Test-EgressControl {
             }
 
             $results.Add((Format-FylgyrResult `
-                -CheckName 'EgressControls' `
+                -CheckName 'EgressControl' `
                 -Status 'Warning' `
                 -Severity $severity `
                 -Resource $wf.Path `

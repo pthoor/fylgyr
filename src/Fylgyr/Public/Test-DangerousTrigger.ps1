@@ -33,20 +33,39 @@ function Test-DangerousTrigger {
         'github\.event\.pull_request\.author_association'
     )
 
-    # Check first-time contributor approval gate if API params provided
+    # Resolve fork PR contributor approval policy via the real API when possible.
+    # Docs: https://docs.github.com/en/rest/actions/permissions#get-fork-pr-contributor-approval-permissions-for-a-repository
+    # Valid approval_policy values (any of these means a gate is configured):
+    #   first_time_contributors_new_to_github
+    #   first_time_contributors
+    #   all_external_contributors
     $hasApprovalGate = $null
     if ($Owner -and $Repo -and $Token) {
         try {
-            $permissions = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/actions/permissions" -Token $Token
-            if ($permissions.PSObject.Properties['allowed_actions']) {
-                # Check fork PR workflow approval policy
-                # The API returns the fork pull request workflow setting
-                $hasApprovalGate = $true
+            $forkApproval = Invoke-GitHubApi `
+                -Endpoint "repos/$Owner/$Repo/actions/permissions/fork-pr-contributor-approval" `
+                -Token $Token
+            if ($forkApproval -and $forkApproval.PSObject.Properties['approval_policy']) {
+                $hasApprovalGate = $forkApproval.approval_policy -in @(
+                    'first_time_contributors_new_to_github',
+                    'first_time_contributors',
+                    'all_external_contributors'
+                )
+            }
+            else {
+                $hasApprovalGate = $false
             }
         }
         catch {
-            # Non-fatal - skip the approval gate check
-            $hasApprovalGate = $null
+            $msg = $_.Exception.Message
+            if ($msg -match '404') {
+                # Repo has no explicit policy - GitHub default applies; treat as absent gate.
+                $hasApprovalGate = $false
+            }
+            else {
+                # 403 or other error: leave as $null so we do not emit a misleading advisory.
+                $hasApprovalGate = $null
+            }
         }
     }
 

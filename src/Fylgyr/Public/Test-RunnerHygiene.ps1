@@ -134,8 +134,21 @@ function Test-RunnerHygiene {
         }
     }
 
-    # Org-level runner checks (require API access)
-    if ($Owner -and $Token) {
+    # Org-level runner checks (require API access).
+    # These hit `orgs/{Owner}/...` and must not re-fire once per repository on an org-wide scan.
+    # Invoke-Fylgyr resets $script:FylgyrOwnerRunnerGroupsChecked in its begin block;
+    # we suppress the org block here if this owner was already checked in the current run.
+    $orgAlreadyChecked = $false
+    if ($script:FylgyrOwnerRunnerGroupsChecked -is [hashtable] -and $Owner) {
+        if ($script:FylgyrOwnerRunnerGroupsChecked.ContainsKey($Owner)) {
+            $orgAlreadyChecked = $true
+        }
+        else {
+            $script:FylgyrOwnerRunnerGroupsChecked[$Owner] = $true
+        }
+    }
+
+    if ($Owner -and $Token -and -not $orgAlreadyChecked) {
         $target = if ($Repo) { "$Owner/$Repo" } else { $Owner }
 
         # Check org-wide runner groups
@@ -164,7 +177,7 @@ function Test-RunnerHygiene {
             }
         }
         catch {
-            $msg = $_.ToString()
+            $msg = $_.Exception.Message
             if ($msg -notmatch '404' -and $msg -notmatch '403') {
                 $results.Add((Format-FylgyrResult `
                     -CheckName 'RunnerHygiene' `
@@ -200,52 +213,52 @@ function Test-RunnerHygiene {
         catch {
             Write-Debug "Org runner listing skipped: $($_.Exception.Message)"
         }
+    }
 
-        # Check for self-hosted runners at repo level
-        if ($Repo) {
-            try {
-                $repoRunners = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/actions/runners" -Token $Token
-                if ($repoRunners.runners -and $repoRunners.runners.Count -gt 0) {
-                    # Check repo visibility
-                    $isPublic = $false
-                    try {
-                        $repoInfo = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo" -Token $Token
-                        $isPublic = -not $repoInfo.private
-                    }
-                    catch {
-                        Write-Debug "Repo info lookup skipped: $($_.Exception.Message)"
-                    }
+    # Repo-level runner listing always runs per-repo (not cached at owner level).
+    if ($Owner -and $Token -and $Repo) {
+        $target = "$Owner/$Repo"
+        try {
+            $repoRunners = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/actions/runners" -Token $Token
+            if ($repoRunners.runners -and $repoRunners.runners.Count -gt 0) {
+                $isPublic = $false
+                try {
+                    $repoInfo = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo" -Token $Token
+                    $isPublic = -not $repoInfo.private
+                }
+                catch {
+                    Write-Debug "Repo info lookup skipped: $($_.Exception.Message)"
+                }
 
-                    if ($isPublic) {
+                if ($isPublic) {
+                    $results.Add((Format-FylgyrResult `
+                        -CheckName 'RunnerHygiene' `
+                        -Status 'Fail' `
+                        -Severity 'Critical' `
+                        -Resource "$target" `
+                        -Detail "$($repoRunners.runners.Count) self-hosted runner(s) registered on a public repository. Anyone who forks this repo can potentially execute code on your runners." `
+                        -Remediation 'Remove self-hosted runners from public repositories or switch to GitHub-hosted runners. If self-hosted runners are required, use ephemeral runners with strict network isolation.' `
+                        -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot') `
+                        -Target $target))
+                }
+
+                foreach ($runner in $repoRunners.runners) {
+                    if ($runner.PSObject.Properties['ephemeral'] -and $runner.ephemeral -eq $false) {
                         $results.Add((Format-FylgyrResult `
                             -CheckName 'RunnerHygiene' `
-                            -Status 'Fail' `
-                            -Severity 'Critical' `
-                            -Resource "$target" `
-                            -Detail "$($repoRunners.runners.Count) self-hosted runner(s) registered on a public repository. Anyone who forks this repo can potentially execute code on your runners." `
-                            -Remediation 'Remove self-hosted runners from public repositories or switch to GitHub-hosted runners. If self-hosted runners are required, use ephemeral runners with strict network isolation.' `
-                            -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot') `
+                            -Status 'Warning' `
+                            -Severity 'Medium' `
+                            -Resource "$target (runner: $($runner.name))" `
+                            -Detail "Self-hosted runner '$($runner.name)' is not ephemeral. Persistent runners allow attackers to maintain access across workflow runs." `
+                            -Remediation 'Configure runners with --ephemeral flag. This limits persistence for attackers.' `
+                            -AttackMapping @('praetorian-runner-pivot') `
                             -Target $target))
-                    }
-
-                    foreach ($runner in $repoRunners.runners) {
-                        if ($runner.PSObject.Properties['ephemeral'] -and $runner.ephemeral -eq $false) {
-                            $results.Add((Format-FylgyrResult `
-                                -CheckName 'RunnerHygiene' `
-                                -Status 'Warning' `
-                                -Severity 'Medium' `
-                                -Resource "$target (runner: $($runner.name))" `
-                                -Detail "Self-hosted runner '$($runner.name)' is not ephemeral. Persistent runners allow attackers to maintain access across workflow runs." `
-                                -Remediation 'Configure runners with --ephemeral flag. This limits persistence for attackers.' `
-                                -AttackMapping @('praetorian-runner-pivot') `
-                                -Target $target))
-                        }
                     }
                 }
             }
-            catch {
-                Write-Debug "Repo runner listing skipped: $($_.Exception.Message)"
-            }
+        }
+        catch {
+            Write-Debug "Repo runner listing skipped: $($_.Exception.Message)"
         }
     }
 

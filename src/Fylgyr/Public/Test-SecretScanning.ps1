@@ -22,7 +22,7 @@
         $alerts = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/secret-scanning/alerts?state=open&per_page=100" -Token $Token -AllPages
     }
     catch {
-        $msg = $_.ToString()
+        $msg = $_.Exception.Message
 
         if ($msg -match '404' -or ($msg -match '403' -and $msg -match '(?i)disabled')) {
             $results.Add((Format-FylgyrResult `

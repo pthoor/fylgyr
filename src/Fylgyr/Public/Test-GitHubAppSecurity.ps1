@@ -3,6 +3,7 @@ function Test-GitHubAppSecurity {
     [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Owner,
 
         [Parameter(Mandatory)]
@@ -21,7 +22,7 @@ function Test-GitHubAppSecurity {
         }
     }
     catch {
-        $msg = $_.ToString()
+        $msg = $_.Exception.Message
         if ($msg -match '404') {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'GitHubAppSecurity' `
@@ -54,7 +55,7 @@ function Test-GitHubAppSecurity {
             $installationsResponse = Invoke-GitHubApi -Endpoint "orgs/$Owner/installations" -Token $Token
         }
         catch {
-            $msg = $_.ToString()
+            $msg = $_.Exception.Message
 
             if ($msg -match '403') {
                 $results.Add((Format-FylgyrResult `
@@ -112,7 +113,7 @@ function Test-GitHubAppSecurity {
             $installationsResponse = Invoke-GitHubApi -Endpoint 'user/installations' -Token $Token
         }
         catch {
-            $msg = $_.ToString()
+            $msg = $_.Exception.Message
 
             if ($msg -match '403') {
                 $results.Add((Format-FylgyrResult `

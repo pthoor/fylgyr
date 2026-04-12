@@ -430,7 +430,7 @@ jobs:
         $checkNames = $results | ForEach-Object { $_.CheckName } | Sort-Object -Unique
         $checkNames | Should -Contain 'ActionPinning'
         $checkNames | Should -Contain 'DangerousTrigger'
-        $checkNames | Should -Contain 'WorkflowPermissions'
+        $checkNames | Should -Contain 'WorkflowPermission'
     }
 
     It 'processes multiple repos via pipeline input' {

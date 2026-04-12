@@ -72,18 +72,18 @@ Required classic scopes: `repo` (full), `read:org`, `security_events`, `workflow
 | `Test-BranchProtection` | `repos/{o}/{r}`, `repos/{o}/{r}/branches/{b}/protection` | Metadata: read, Administration: read |
 | `Test-CodeOwner` | `repos/{o}/{r}/contents/{path}` | Contents: read |
 | `Test-CodeScanning` | `repos/{o}/{r}/code-scanning/analyses` | Code scanning alerts: read |
-| `Test-DangerousTrigger` | `repos/{o}/{r}/actions/permissions`, workflow files | Administration: read, Contents: read, Actions: read |
+| `Test-DangerousTrigger` | `repos/{o}/{r}/actions/permissions/fork-pr-contributor-approval`, workflow files | Administration: read, Contents: read, Actions: read |
 | `Test-DependabotAlert` | `repos/{o}/{r}/dependabot/alerts` | Dependabot alerts: read |
-| `Test-EgressControl` | Workflow files (`.github/workflows/*`) | Contents: read, Actions: read |
+| `Test-EgressControl` | Workflow files (`.github/workflows/*`) | Contents: read |
 | `Test-EnvironmentProtection` | `repos/{o}/{r}/environments` | Environments: read, Administration: read |
-| `Test-ForkPullPolicy` | `repos/{o}/{r}/actions/permissions`, `repos/{o}/{r}` | Administration: read, Metadata: read |
+| `Test-ForkPullPolicy` | Workflow files (`.github/workflows/*`) | Contents: read |
 | `Test-ForkSecretExposure` | `repos/{o}/{r}/environments`, `orgs/{o}/actions/secrets` | Environments: read, **Org Secrets: read** |
 | `Test-GitHubAppSecurity` | `orgs/{o}/installations`, `user/installations` | Org Administration: read |
 | `Test-RepoVisibility` | `repos/{o}/{r}` | Metadata: read |
 | `Test-RunnerHygiene` | `repos/{o}/{r}/actions/runners`, `orgs/{o}/actions/runners`, `orgs/{o}/actions/runner-groups` | Administration: read (repo + org) |
 | `Test-SecretScanning` | `repos/{o}/{r}/secret-scanning/alerts` | Secret scanning alerts: read |
-| `Test-SignedCommit` | `repos/{o}/{r}/commits` | Contents: read |
-| `Test-WorkflowPermission` | Workflow files (`.github/workflows/*`) | Contents: read, Actions: read |
+| `Test-SignedCommit` | `repos/{o}/{r}/branches/{branch}/protection/required_signatures` | Administration: read |
+| `Test-WorkflowPermission` | Workflow files (`.github/workflows/*`) | Contents: read |
 
 All checks additionally require **Metadata: read** — this is mandatory for every fine-grained PAT and cannot be disabled.
 

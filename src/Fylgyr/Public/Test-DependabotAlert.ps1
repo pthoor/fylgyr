@@ -25,11 +25,11 @@
             -AllPages
     }
     catch {
-        $msg = $_.ToString()
+        $msg = $_.Exception.Message
 
         if ($msg -match '404' -or ($msg -match '403' -and $msg -match '(?i)disabled')) {
             $results.Add((Format-FylgyrResult `
-                -CheckName 'DependabotAlerts' `
+                -CheckName 'DependabotAlert' `
                 -Status 'Fail' `
                 -Severity 'Medium' `
                 -Resource $resource `
@@ -42,7 +42,7 @@
 
         if ($msg -match '403') {
             $results.Add((Format-FylgyrResult `
-                -CheckName 'DependabotAlerts' `
+                -CheckName 'DependabotAlert' `
                 -Status 'Error' `
                 -Severity 'Medium' `
                 -Resource $resource `
@@ -53,7 +53,7 @@
         }
 
         $results.Add((Format-FylgyrResult `
-            -CheckName 'DependabotAlerts' `
+            -CheckName 'DependabotAlert' `
             -Status 'Error' `
             -Severity 'Medium' `
             -Resource $resource `
@@ -75,7 +75,7 @@
         }
 
         $results.Add((Format-FylgyrResult `
-            -CheckName 'DependabotAlerts' `
+            -CheckName 'DependabotAlert' `
             -Status 'Pass' `
             -Severity 'Info' `
             -Resource $resource `
@@ -86,7 +86,7 @@
     }
 
     $results.Add((Format-FylgyrResult `
-        -CheckName 'DependabotAlerts' `
+        -CheckName 'DependabotAlert' `
         -Status 'Fail' `
         -Severity 'High' `
         -Resource $resource `

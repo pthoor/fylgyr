@@ -26,7 +26,7 @@ function Test-SignedCommit {
     }
     catch {
         $results.Add((Format-FylgyrResult `
-            -CheckName 'SignedCommits' `
+            -CheckName 'SignedCommit' `
             -Status 'Error' `
             -Severity 'Medium' `
             -Resource $target `
@@ -44,11 +44,11 @@ function Test-SignedCommit {
             -Token $Token
     }
     catch {
-        $msg = $_.ToString()
+        $msg = $_.Exception.Message
 
         if ($msg -match '404') {
             $results.Add((Format-FylgyrResult `
-                -CheckName 'SignedCommits' `
+                -CheckName 'SignedCommit' `
                 -Status 'Warning' `
                 -Severity 'Medium' `
                 -Resource $resource `
@@ -61,7 +61,7 @@ function Test-SignedCommit {
 
         if ($msg -match '403') {
             $results.Add((Format-FylgyrResult `
-                -CheckName 'SignedCommits' `
+                -CheckName 'SignedCommit' `
                 -Status 'Error' `
                 -Severity 'Medium' `
                 -Resource $resource `
@@ -72,7 +72,7 @@ function Test-SignedCommit {
         }
 
         $results.Add((Format-FylgyrResult `
-            -CheckName 'SignedCommits' `
+            -CheckName 'SignedCommit' `
             -Status 'Error' `
             -Severity 'Medium' `
             -Resource $resource `
@@ -84,7 +84,7 @@ function Test-SignedCommit {
 
     if ($signatures.PSObject.Properties['enabled'] -and $signatures.enabled -eq $true) {
         $results.Add((Format-FylgyrResult `
-            -CheckName 'SignedCommits' `
+            -CheckName 'SignedCommit' `
             -Status 'Pass' `
             -Severity 'Info' `
             -Resource $resource `
@@ -94,7 +94,7 @@ function Test-SignedCommit {
     }
     else {
         $results.Add((Format-FylgyrResult `
-            -CheckName 'SignedCommits' `
+            -CheckName 'SignedCommit' `
             -Status 'Warning' `
             -Severity 'Medium' `
             -Resource $resource `

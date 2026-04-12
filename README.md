@@ -84,7 +84,7 @@ Abridged example (a real scan runs ~14 checks per repo):
     > DangerousTrigger  [PASS]
         No dangerous trigger patterns found. (2 files)
 
-    > WorkflowPermissions  [PASS]
+    > WorkflowPermission  [PASS]
         Workflow declares a top-level permissions block. (2 files)
 
   [myorg/api-service]
@@ -94,7 +94,7 @@ Abridged example (a real scan runs ~14 checks per repo):
     > DangerousTrigger  [PASS]
         No dangerous trigger patterns found. (3 files)
 
-    > WorkflowPermissions  [PASS]
+    > WorkflowPermission  [PASS]
         Workflow declares a top-level permissions block. (3 files)
 
   Repos with no workflow files (1):
@@ -176,7 +176,7 @@ The workflow uses the built-in `GITHUB_TOKEN` with minimal permissions:
 | `contents: read` | Read workflow files and repository content |
 | `security-events: write` | Upload SARIF results to Code Scanning |
 
-These two permissions are the only valid `GITHUB_TOKEN` scopes needed. They cover the workflow-based checks (ActionPinning, DangerousTrigger, WorkflowPermissions, RunnerHygiene, EgressControl, ForkPullPolicy, CodeScanning).
+These two permissions are the only valid `GITHUB_TOKEN` scopes needed. They cover the workflow-based checks (ActionPinning, DangerousTrigger, WorkflowPermission, RunnerHygiene, EgressControl, ForkPullPolicy, CodeScanning).
 
 #### Repo-level checks that need a PAT
 
@@ -187,8 +187,8 @@ Several checks require a **Personal Access Token** (PAT) because the workflow `G
 | `BranchProtection` | Administration |
 | `SecretScanning` | Secret scanning alerts |
 | `DependabotAlert` | Dependabot alerts |
-| `CodeOwners` | Contents |
-| `SignedCommits` | Administration |
+| `CodeOwner` | Contents |
+| `SignedCommit` | Administration |
 | `EnvironmentProtection` | Environments |
 | `RepoVisibility` | Metadata |
 | `ForkSecretExposure` | Environments (plus org Secrets for org-level secret enumeration) |
@@ -262,7 +262,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 |---|---|---|---|
 | `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud` |
 | `DangerousTrigger` | `pull_request_target` / `workflow_run` with untrusted code checkout, missing actor restrictions, secret exposure in PRT context | Critical | `nx-pwn-request`, `prt-scan-ai-automated`, `trivy-supply-chain-2026`, `azure-karpenter-pwn-request`, `hackerbot-claw` |
-| `WorkflowPermissions` | Missing top-level `permissions:` block in workflow files | Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
+| `WorkflowPermission` | Missing top-level `permissions:` block in workflow files | Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
 | `EgressControl` | Missing or audit-only network egress filtering in workflows | Medium | `tj-actions-shai-hulud`, `trivy-supply-chain-2026`, `codecov-bash-uploader` |
 | `ForkSecretExposure` | Secrets accessible to fork PRs, unprotected environments, unrestricted org secrets | Critical | `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request` |
 | `GitHubAppSecurity` | Overly permissive GitHub App installations (org or user account) | Critical | `github-app-token-theft` |
@@ -271,8 +271,8 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `DependabotAlert` | Open critical/high Dependabot vulnerability alerts | High | `event-stream-hijack`, `solarwinds-orion` |
 | `CodeScanning` | Code Scanning not configured or stale analyses | Medium | `solarwinds-orion` |
 | `RunnerHygiene` | Risky self-hosted runner configurations, org-wide runner groups, non-ephemeral runners, public repo runners | High | `github-actions-cryptomining`, `praetorian-runner-pivot` |
-| `CodeOwners` | Missing `CODEOWNERS` file, single-owner catch-all rules, too few distinct reviewers | Medium | `xz-utils-backdoor` |
-| `SignedCommits` | Default branch does not require signed commits | Medium | `xz-utils-backdoor` |
+| `CodeOwner` | Missing `CodeOwner` file, single-owner catch-all rules, too few distinct reviewers | Medium | `xz-utils-backdoor` |
+| `SignedCommit` | Default branch does not require signed commits | Medium | `xz-utils-backdoor` |
 | `ForkPullPolicy` | `pull_request_target` combined with checkout of fork-controlled `head.sha`/`head.ref`/`github.head_ref` | High | `nx-pwn-request`, `tj-actions-shai-hulud`, `prt-scan-ai-automated` |
 | `EnvironmentProtection` | Deployment environments without required reviewers or branch policies | High | `unauthorized-env-deployment`, `prt-scan-ai-automated` |
 | `RepoVisibility` | Public repositories with internal/private naming patterns | Medium | `toyota-source-exposure` |

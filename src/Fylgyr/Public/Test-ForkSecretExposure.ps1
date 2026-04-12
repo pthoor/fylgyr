@@ -103,7 +103,7 @@ function Test-ForkSecretExposure {
         }
     }
     catch {
-        $msg = $_.ToString()
+        $msg = $_.Exception.Message
         if ($msg -notmatch '404' -and $msg -notmatch '403') {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'ForkSecretExposure' `

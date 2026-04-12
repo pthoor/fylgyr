@@ -21,7 +21,7 @@ function Test-RepoVisibility {
         $repoInfo = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo" -Token $Token
     }
     catch {
-        $msg = $_.ToString()
+        $msg = $_.Exception.Message
         if ($msg -match '403') {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'RepoVisibility' `

@@ -41,7 +41,7 @@
         $protection = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/branches/$defaultBranch/protection" -Token $Token
     }
     catch {
-        $msg = $_.ToString()
+        $msg = $_.Exception.Message
 
         if ($msg -match '404') {
             $results.Add((Format-FylgyrResult `

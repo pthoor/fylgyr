@@ -23,6 +23,16 @@ function Invoke-Fylgyr {
 
         $allResults = [System.Collections.Generic.List[PSCustomObject]]::new()
         $scannedTargets = [System.Collections.Generic.List[string]]::new()
+
+        # Owner-level check caches. Reset every run so repeated Invoke-Fylgyr calls
+        # inside the same session do not reuse stale data.
+        # - FylgyrOwnerRunnerGroupsChecked: Test-RunnerHygiene consults this to skip the
+        #   `orgs/{Owner}/...` block on second and later repos in an org-wide scan.
+        # - FylgyrOwnerAppSecurityResults: Test-GitHubAppSecurity results cached per owner
+        #   so we emit them exactly once per owner instead of once per repository.
+        $script:FylgyrOwnerRunnerGroupsChecked = @{}
+        $script:FylgyrOwnerAppSecurityResults = @{}
+        $script:FylgyrOwnerAppSecurityEmitted = @{}
     }
 
     process {
@@ -270,24 +280,37 @@ function Invoke-FylgyrScan {
         }
     }
 
-    # Owner-level check: GitHub App Security (runs once per scan target, covers org + user)
-    Write-Progress -Activity $target -Status 'Running Test-GitHubAppSecurity' -Id 2 -ParentId 1
-    try {
-        $checkResults = Test-GitHubAppSecurity -Owner $Owner -Token $Token
-        foreach ($r in $checkResults) {
-            $r.Target = $target
-            $results.Add($r)
+    # Owner-level check: GitHub App Security.
+    # Owner-level API - emit exactly once per Owner across an org-wide scan so we do
+    # not duplicate findings for every repository under the same owner.
+    $cacheReady = $script:FylgyrOwnerAppSecurityResults -is [hashtable] -and
+                  $script:FylgyrOwnerAppSecurityEmitted -is [hashtable]
+
+    if (-not $cacheReady -or -not $script:FylgyrOwnerAppSecurityResults.ContainsKey($Owner)) {
+        Write-Progress -Activity $target -Status 'Running Test-GitHubAppSecurity' -Id 2 -ParentId 1
+        try {
+            $appSecResults = @(Test-GitHubAppSecurity -Owner $Owner -Token $Token)
+            if ($cacheReady) {
+                $script:FylgyrOwnerAppSecurityResults[$Owner] = $appSecResults
+            }
+            foreach ($r in $appSecResults) {
+                $r.Target = $target
+                $results.Add($r)
+            }
+            if ($cacheReady) {
+                $script:FylgyrOwnerAppSecurityEmitted[$Owner] = $true
+            }
         }
-    }
-    catch {
-        $results.Add((Format-FylgyrResult `
-            -CheckName 'Test-GitHubAppSecurity' `
-            -Status 'Error' `
-            -Severity 'Medium' `
-            -Resource $target `
-            -Detail "Check failed with error: $($_.Exception.Message)" `
-            -Remediation 'Review the error and re-run.' `
-            -Target $target))
+        catch {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'GitHubAppSecurity' `
+                -Status 'Error' `
+                -Severity 'Medium' `
+                -Resource $target `
+                -Detail "Check failed with error: $($_.Exception.Message)" `
+                -Remediation 'Review the error and re-run.' `
+                -Target $target))
+        }
     }
 
     Write-Progress -Activity $target -Id 2 -Completed
