@@ -23,6 +23,16 @@ function Invoke-Fylgyr {
 
         $allResults = [System.Collections.Generic.List[PSCustomObject]]::new()
         $scannedTargets = [System.Collections.Generic.List[string]]::new()
+
+        # Owner-level check caches. Reset every run so repeated Invoke-Fylgyr calls
+        # inside the same session do not reuse stale data.
+        # - FylgyrOwnerRunnerGroupsChecked: Test-RunnerHygiene consults this to skip the
+        #   `orgs/{Owner}/...` block on second and later repos in an org-wide scan.
+        # - FylgyrOwnerAppSecurityResults: Test-GitHubAppSecurity results cached per owner
+        #   so we emit them exactly once per owner instead of once per repository.
+        $script:FylgyrOwnerRunnerGroupsChecked = @{}
+        $script:FylgyrOwnerAppSecurityResults = @{}
+        $script:FylgyrOwnerAppSecurityEmitted = @{}
     }
 
     process {
@@ -101,7 +111,7 @@ function Invoke-Fylgyr {
             $scannedTargets[0]
         }
         elseif ($scannedTargets.Count -gt 1) {
-            $owners = $scannedTargets | ForEach-Object { ($_ -split '/')[0] } | Sort-Object -Unique
+            $owners = @($scannedTargets | ForEach-Object { ($_ -split '/')[0] } | Sort-Object -Unique)
             if ($owners.Count -eq 1) { $owners[0] } else { "$($scannedTargets.Count) repositories" }
         }
         else {
@@ -115,7 +125,7 @@ function Invoke-Fylgyr {
             ConvertTo-FylgyrSarif -Results $resultsArray
         }
         elseif ($OutputFormat -eq 'Console') {
-            Write-FylgyrConsole -Results $resultsArray -Target $displayTarget
+            Write-FylgyrConsole -Results $resultsArray -Target $displayTarget -ScannedRepoCount $scannedTargets.Count
         }
         else {
             $resultsArray
@@ -175,23 +185,26 @@ function Invoke-FylgyrScan {
             -Target $target))
     }
     else {
-        $checks = @(
-            'Test-ActionPinning'
-            'Test-DangerousTrigger'
-            'Test-WorkflowPermission'
-            'Test-RunnerHygiene'
+        $workflowChecks = @(
+            @{ Name = 'Test-ActionPinning';      Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-DangerousTrigger';   Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-WorkflowPermission'; Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-RunnerHygiene';      Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-EgressControl';      Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-ForkPullPolicy';     Params = @{ WorkflowFiles = $workflowFiles } }
         )
 
-        for ($c = 0; $c -lt $checks.Count; $c++) {
-            $check = $checks[$c]
-            $checkPct = [math]::Floor(($c / $checks.Count) * 100)
+        for ($c = 0; $c -lt $workflowChecks.Count; $c++) {
+            $check = $workflowChecks[$c]
+            $checkPct = [math]::Floor(($c / $workflowChecks.Count) * 100)
             Write-Progress -Activity $target `
-                -Status "Running $check ($($workflowFiles.Count) workflow files)" `
+                -Status "Running $($check.Name) ($($workflowFiles.Count) workflow files)" `
                 -PercentComplete $checkPct `
                 -Id 2 -ParentId 1
 
             try {
-                $checkResults = & $check -WorkflowFiles $workflowFiles
+                $checkParams = $check.Params
+                $checkResults = & $check.Name @checkParams
                 foreach ($r in $checkResults) {
                     $r.Target = $target
                     $results.Add($r)
@@ -199,7 +212,7 @@ function Invoke-FylgyrScan {
             }
             catch {
                 $results.Add((Format-FylgyrResult `
-                    -CheckName $check `
+                    -CheckName $check.Name `
                     -Status 'Error' `
                     -Severity 'Critical' `
                     -Resource $target `
@@ -210,12 +223,38 @@ function Invoke-FylgyrScan {
         }
     }
 
+    # Fork secret exposure check (needs workflow files + API params)
+    if (-not $fetchFailed -and $workflowFiles -and $workflowFiles.Count -gt 0) {
+        Write-Progress -Activity $target -Status 'Running Test-ForkSecretExposure' -Id 2 -ParentId 1
+        try {
+            $checkResults = Test-ForkSecretExposure -WorkflowFiles $workflowFiles -Owner $Owner -Repo $Repo -Token $Token
+            foreach ($r in $checkResults) {
+                $r.Target = $target
+                $results.Add($r)
+            }
+        }
+        catch {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'Test-ForkSecretExposure' `
+                -Status 'Error' `
+                -Severity 'Critical' `
+                -Resource $target `
+                -Detail "Check failed with error: $($_.Exception.Message)" `
+                -Remediation 'Review the error and re-run.' `
+                -Target $target))
+        }
+    }
+
     # Repo-level checks (always run, regardless of workflow files)
     $repoChecks = @(
-        @{ Name = 'Test-BranchProtection'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-SecretScanning';   Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-DependabotAlert';  Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-CodeScanning';     Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-BranchProtection';     Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-SecretScanning';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-DependabotAlert';      Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-CodeScanning';         Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-CodeOwner';            Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-SignedCommit';         Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-EnvironmentProtection'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-RepoVisibility';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
     )
 
     foreach ($entry in $repoChecks) {
@@ -224,13 +263,49 @@ function Invoke-FylgyrScan {
         try {
             $checkParams = $entry.Params
             $checkResults = & $entry.Name @checkParams
-            foreach ($r in $checkResults) { $results.Add($r) }
+            foreach ($r in $checkResults) {
+                $r.Target = $target
+                $results.Add($r)
+            }
         }
         catch {
             $results.Add((Format-FylgyrResult `
                 -CheckName $entry.Name `
                 -Status 'Error' `
                 -Severity 'Critical' `
+                -Resource $target `
+                -Detail "Check failed with error: $($_.Exception.Message)" `
+                -Remediation 'Review the error and re-run.' `
+                -Target $target))
+        }
+    }
+
+    # Owner-level check: GitHub App Security.
+    # Owner-level API - emit exactly once per Owner across an org-wide scan so we do
+    # not duplicate findings for every repository under the same owner.
+    $cacheReady = $script:FylgyrOwnerAppSecurityResults -is [hashtable] -and
+                  $script:FylgyrOwnerAppSecurityEmitted -is [hashtable]
+
+    if (-not $cacheReady -or -not $script:FylgyrOwnerAppSecurityResults.ContainsKey($Owner)) {
+        Write-Progress -Activity $target -Status 'Running Test-GitHubAppSecurity' -Id 2 -ParentId 1
+        try {
+            $appSecResults = @(Test-GitHubAppSecurity -Owner $Owner -Token $Token)
+            if ($cacheReady) {
+                $script:FylgyrOwnerAppSecurityResults[$Owner] = $appSecResults
+            }
+            foreach ($r in $appSecResults) {
+                $r.Target = $target
+                $results.Add($r)
+            }
+            if ($cacheReady) {
+                $script:FylgyrOwnerAppSecurityEmitted[$Owner] = $true
+            }
+        }
+        catch {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'GitHubAppSecurity' `
+                -Status 'Error' `
+                -Severity 'Medium' `
                 -Resource $target `
                 -Detail "Check failed with error: $($_.Exception.Message)" `
                 -Remediation 'Review the error and re-run.' `

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+#
+# Fylgyr pre-push hook.
+# Runs the same gates as CI so Copilot/reviewer catch fewer mechanical issues.
+#
+# Gates:
+#   1. PSScriptAnalyzer — zero errors + warnings
+#   2. scripts/pr-lint.ps1 — mechanical consistency (CheckName, ValidatePattern, $_.ToString(), PERMISSIONS.md coverage)
+#   3. Pester — full test suite
+#
+# Install via: pwsh scripts/install-hooks.ps1
+# Bypass (emergency only): git push --no-verify
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+printf '\n\033[36m[pre-push]\033[0m Running PSScriptAnalyzer...\n'
+pwsh -NoProfile -Command "
+    \$findings = Invoke-ScriptAnalyzer -Path ./src -Recurse -Severity Error,Warning
+    if (\$findings) {
+        \$findings | Format-Table -AutoSize
+        exit 1
+    }
+" || { printf '\033[31m[pre-push] PSScriptAnalyzer failed — push blocked.\033[0m\n'; exit 1; }
+
+printf '\n\033[36m[pre-push]\033[0m Running pr-lint...\n'
+pwsh -NoProfile -File scripts/pr-lint.ps1 || { printf '\033[31m[pre-push] pr-lint failed — push blocked.\033[0m\n'; exit 1; }
+
+printf '\n\033[36m[pre-push]\033[0m Running Pester tests...\n'
+pwsh -NoProfile -Command "
+    \$result = Invoke-Pester -Path ./tests -Output Detailed -PassThru
+    if (\$result.FailedCount -gt 0) { exit 1 }
+" || { printf '\033[31m[pre-push] Pester failed — push blocked.\033[0m\n'; exit 1; }
+
+printf '\n\033[32m[pre-push] All gates passed.\033[0m\n'
+exit 0

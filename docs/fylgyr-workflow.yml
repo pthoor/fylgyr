@@ -24,7 +24,7 @@
 #     with administration:read)
 #   - SecretScanning: needs a PAT with repo scope (classic)
 #     or secret-scanning-alerts:read (fine-grained)
-#   - DependabotAlerts: needs a PAT with repo scope (classic)
+#   - DependabotAlert: needs a PAT with repo scope (classic)
 #     or vulnerability-alerts:read (fine-grained)
 #
 #   Without a PAT these checks report "Error: insufficient
