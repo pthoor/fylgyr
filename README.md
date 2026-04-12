@@ -26,7 +26,17 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo'
 Invoke-Fylgyr -Owner 'myorg'
 ```
 
-> Requires PowerShell 7+ and a GitHub token (`$env:GITHUB_TOKEN` or `-Token`).
+> Requires PowerShell 7+ and a GitHub token. Fylgyr reads `$env:GITHUB_TOKEN` by default, or you can pass `-Token` explicitly:
+>
+> ```powershell
+> $env:GITHUB_TOKEN = 'github_pat_...'
+> Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo'
+>
+> # Or pass a different token for a single call
+> Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Token $otherToken
+> ```
+>
+> **Fylgyr strongly recommends [fine-grained PATs](docs/PERMISSIONS.md#recommended-token--fine-grained-pat)** — every check works with least-privilege fine-grained permissions, and no feature requires a classic PAT. Never hardcode tokens; load them from a secret manager.
 
 ## Sample Output
 
@@ -52,12 +62,14 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -OutputFormat Console
 Invoke-Fylgyr -Owner 'myorg' -OutputFormat Console
 ```
 
+Abridged example (a real scan runs ~14 checks per repo):
+
 ```
   Fylgyr Supply-Chain Audit: myorg
   ------------------------------------------------------------
 
   [myorg/web-app]
-    ActionPinning: 1 passed, 2 finding(s):
+    > ActionPinning  [1 passed, 2 finding(s)]
       [FAIL] Unpinned action reference: actions/checkout@v4
         Resource:    .github/workflows/ci.yml:12
         Severity:    High
@@ -68,13 +80,22 @@ Invoke-Fylgyr -Owner 'myorg' -OutputFormat Console
         Severity:    High
         Remediation: Pin this action to a full 40-character commit SHA instead of a tag or branch.
         Attacks:     trivy-tag-poisoning, tj-actions-shai-hulud
-    DangerousTrigger: [PASS] No dangerous trigger patterns found. (2 files)
-    WorkflowPermissions: [PASS] Workflow declares a top-level permissions block. (2 files)
+
+    > DangerousTrigger  [PASS]
+        No dangerous trigger patterns found. (2 files)
+
+    > WorkflowPermissions  [PASS]
+        Workflow declares a top-level permissions block. (2 files)
 
   [myorg/api-service]
-    ActionPinning: [PASS] All action references are SHA-pinned. (3 files)
-    DangerousTrigger: [PASS] No dangerous trigger patterns found. (3 files)
-    WorkflowPermissions: [PASS] Workflow declares a top-level permissions block. (3 files)
+    > ActionPinning  [PASS]
+        All action references are SHA-pinned. (3 files)
+
+    > DangerousTrigger  [PASS]
+        No dangerous trigger patterns found. (3 files)
+
+    > WorkflowPermissions  [PASS]
+        Workflow declares a top-level permissions block. (3 files)
 
   Repos with no workflow files (1):
     - myorg/docs-site
@@ -155,19 +176,28 @@ The workflow uses the built-in `GITHUB_TOKEN` with minimal permissions:
 | `contents: read` | Read workflow files and repository content |
 | `security-events: write` | Upload SARIF results to Code Scanning |
 
-These two permissions are the only valid `GITHUB_TOKEN` scopes needed. They cover the workflow-based checks (ActionPinning, DangerousTrigger, WorkflowPermissions, RunnerHygiene, CodeScanning).
+These two permissions are the only valid `GITHUB_TOKEN` scopes needed. They cover the workflow-based checks (ActionPinning, DangerousTrigger, WorkflowPermissions, RunnerHygiene, EgressControl, ForkPullPolicy, CodeScanning).
 
 #### Repo-level checks that need a PAT
 
-Three checks require a **Personal Access Token** (PAT) because the `GITHUB_TOKEN` does not have access to those APIs:
+Several checks require a **Personal Access Token** (PAT) because the workflow `GITHUB_TOKEN` does not have access to those APIs. **Fylgyr strongly recommends fine-grained PATs** — every check below works with least-privilege fine-grained permissions:
 
-| Check | Requires |
+| Check | Fine-grained permission (read-only) |
 |---|---|
-| `BranchProtection` | Fine-grained PAT with `administration: read` |
-| `SecretScanning` | Classic PAT with `repo` scope, or fine-grained with `secret_scanning_alerts: read` |
-| `DependabotAlert` | Classic PAT with `repo` scope, or fine-grained with `vulnerability_alerts: read` |
+| `BranchProtection` | Administration |
+| `SecretScanning` | Secret scanning alerts |
+| `DependabotAlert` | Dependabot alerts |
+| `CodeOwners` | Contents |
+| `SignedCommits` | Administration |
+| `EnvironmentProtection` | Environments |
+| `RepoVisibility` | Metadata |
+| `ForkSecretExposure` | Environments (plus org Secrets for org-level secret enumeration) |
+| `GitHubAppSecurity` | Org Administration (falls back gracefully for user accounts) |
+| `RunnerHygiene` (org-level) | Org Administration |
 
 Without a PAT these checks gracefully report `Status = 'Error'` with a clear message — they won't fail the workflow or block other checks.
+
+> See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the full per-check permission matrix, the recommended least-privilege fine-grained PAT, guidance on classic PAT fallback, and troubleshooting for the common `404 Not Found` error caused by org-level fine-grained PAT approval.
 
 To enable them, create a fine-grained PAT, add it as a repository secret (e.g., `FYLGYR_TOKEN`), and update the workflow step:
 
@@ -231,13 +261,21 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | Check | Detects | Severity | Attack Mapping |
 |---|---|---|---|
 | `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud` |
-| `DangerousTrigger` | `pull_request_target` / `workflow_run` with untrusted code checkout | Critical | `nx-pwn-request` |
+| `DangerousTrigger` | `pull_request_target` / `workflow_run` with untrusted code checkout, missing actor restrictions, secret exposure in PRT context | Critical | `nx-pwn-request`, `prt-scan-ai-automated`, `trivy-supply-chain-2026`, `azure-karpenter-pwn-request`, `hackerbot-claw` |
 | `WorkflowPermissions` | Missing top-level `permissions:` block in workflow files | Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
+| `EgressControl` | Missing or audit-only network egress filtering in workflows | Medium | `tj-actions-shai-hulud`, `trivy-supply-chain-2026`, `codecov-bash-uploader` |
+| `ForkSecretExposure` | Secrets accessible to fork PRs, unprotected environments, unrestricted org secrets | Critical | `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request` |
+| `GitHubAppSecurity` | Overly permissive GitHub App installations (org or user account) | Critical | `github-app-token-theft` |
 | `BranchProtection` | Weak or missing default branch protection rules | High | `codecov-bash-uploader` |
 | `SecretScanning` | Secret Scanning not enabled or unresolved alerts | High | `uber-credential-leak` |
 | `DependabotAlert` | Open critical/high Dependabot vulnerability alerts | High | `event-stream-hijack`, `solarwinds-orion` |
 | `CodeScanning` | Code Scanning not configured or stale analyses | Medium | `solarwinds-orion` |
-| `RunnerHygiene` | Risky self-hosted runner configurations | High | `github-actions-cryptomining` |
+| `RunnerHygiene` | Risky self-hosted runner configurations, org-wide runner groups, non-ephemeral runners, public repo runners | High | `github-actions-cryptomining`, `praetorian-runner-pivot` |
+| `CodeOwners` | Missing `CODEOWNERS` file, single-owner catch-all rules, too few distinct reviewers | Medium | `xz-utils-backdoor` |
+| `SignedCommits` | Default branch does not require signed commits | Medium | `xz-utils-backdoor` |
+| `ForkPullPolicy` | `pull_request_target` combined with checkout of fork-controlled `head.sha`/`head.ref`/`github.head_ref` | High | `nx-pwn-request`, `tj-actions-shai-hulud`, `prt-scan-ai-automated` |
+| `EnvironmentProtection` | Deployment environments without required reviewers or branch policies | High | `unauthorized-env-deployment`, `prt-scan-ai-automated` |
+| `RepoVisibility` | Public repositories with internal/private naming patterns | Medium | `toyota-source-exposure` |
 
 ## Attack Catalog
 
@@ -255,6 +293,15 @@ Every finding maps to a real-world supply chain incident. The full catalog lives
 | `event-stream-hijack` | event-stream npm package hijack | 2018-11 |
 | `solarwinds-orion` | SolarWinds Orion supply chain attack | 2020-12 |
 | `github-actions-cryptomining` | GitHub Actions crypto-mining campaigns | 2022-04 |
+| `praetorian-runner-pivot` | Praetorian self-hosted runner lateral movement | 2024-07 |
+| `prt-scan-ai-automated` | prt-scan AI-automated PR poisoning | 2026-03 |
+| `hackerbot-claw` | hackerbot-claw autonomous CI/CD attacker | 2026-03 |
+| `trivy-supply-chain-2026` | Trivy supply chain worm | 2026-03 |
+| `github-app-token-theft` | GitHub App installation token abuse | 2025-ongoing |
+| `azure-karpenter-pwn-request` | Azure Karpenter Provider Pwn Request | 2025 |
+| `xz-utils-backdoor` | XZ Utils (liblzma) maintainer backdoor | 2024-03 |
+| `unauthorized-env-deployment` | Unauthorized deployment via unprotected environment | pattern |
+| `toyota-source-exposure` | Toyota source code public repository exposure | 2022-10 |
 
 ## Security Posture
 
@@ -284,11 +331,19 @@ src/Fylgyr/
 │   ├── Invoke-Fylgyr.ps1    # Orchestrator + output formatting
 │   ├── Test-ActionPinning.ps1
 │   ├── Test-BranchProtection.ps1
+│   ├── Test-CodeOwner.ps1
 │   ├── Test-CodeScanning.ps1
 │   ├── Test-DangerousTrigger.ps1
 │   ├── Test-DependabotAlert.ps1
+│   ├── Test-EgressControl.ps1
+│   ├── Test-EnvironmentProtection.ps1
+│   ├── Test-ForkPullPolicy.ps1
+│   ├── Test-ForkSecretExposure.ps1
+│   ├── Test-GitHubAppSecurity.ps1
+│   ├── Test-RepoVisibility.ps1
 │   ├── Test-RunnerHygiene.ps1
 │   ├── Test-SecretScanning.ps1
+│   ├── Test-SignedCommit.ps1
 │   └── Test-WorkflowPermission.ps1
 ├── Private/
 │   ├── Invoke-GitHubApi.ps1       # REST/GraphQL wrapper with pagination

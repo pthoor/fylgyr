@@ -6,7 +6,7 @@ function Format-FylgyrResult {
         [string]$CheckName,
 
         [Parameter(Mandatory)]
-        [ValidateSet('Pass', 'Fail', 'Warning', 'Error')]
+        [ValidateSet('Pass', 'Fail', 'Warning', 'Error', 'Info')]
         [string]$Status,
 
         [Parameter(Mandatory)]

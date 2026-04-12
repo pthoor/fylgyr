@@ -189,5 +189,171 @@
       "Required pull request reviews are disabled on the default branch",
       "No status checks required before merge"
     ]
+  },
+  {
+    "id": "praetorian-runner-pivot",
+    "name": "Praetorian self-hosted runner lateral movement",
+    "date": "2024-07-01",
+    "description": "Red team obtained a PAT with repo scope, created a malicious workflow targeting org-wide self-hosted runners, escalated to root via Docker group membership, and pivoted into the internal network. Demonstrates why runners should be scoped to specific repos and why ephemeral runners matter.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://www.praetorian.com/blog/self-hosted-github-runners-are-backdoors/"
+    ],
+    "detectionSignals": [
+      "Org-wide runner groups available to all repositories",
+      "Self-hosted runners not configured as ephemeral",
+      "Runner groups not restricted to specific repositories or workflows",
+      "Self-hosted runners accessible from public repositories"
+    ]
+  },
+  {
+    "id": "prt-scan-ai-automated",
+    "name": "prt-scan AI-automated PR poisoning",
+    "date": "2026-03-11",
+    "description": "AI-assisted threat actor opened 475+ malicious PRs in 26 hours targeting repos with pull_request_target trigger. Approximately 10% success rate across 450+ attempts. High-value targets (Sentry, OpenSearch, NixOS) blocked it with first-time contributor approval gates and actor-restricted workflows. Six waves from six accounts traced to a single actor.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://www.wiz.io/blog/six-accounts-one-actor-inside-the-prt-scan-supply-chain-campaign"
+    ],
+    "detectionSignals": [
+      "Workflows using pull_request_target that checkout untrusted PR code",
+      "No first-time contributor approval gates for fork PRs",
+      "Secrets accessible in pull_request_target context",
+      "No actor-restriction conditions on sensitive workflows"
+    ]
+  },
+  {
+    "id": "hackerbot-claw",
+    "name": "hackerbot-claw autonomous CI/CD attacker",
+    "date": "2026-03-01",
+    "description": "Autonomous bot used 5 different exploitation techniques across 7 successful high-profile attacks. Exfiltrated a GitHub token with write permissions from a highly popular repository. First known AI-powered CI/CD attacker preceding prt-scan.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://github.blog/security/supply-chain-security/securing-the-open-source-supply-chain-across-github/"
+    ],
+    "detectionSignals": [
+      "Workflows using pull_request_target with untrusted code checkout",
+      "Secrets accessible to fork PR workflows",
+      "No egress controls on CI runners",
+      "Write-permission tokens available in PR-triggered workflows"
+    ]
+  },
+  {
+    "id": "trivy-supply-chain-2026",
+    "name": "Trivy supply chain worm",
+    "date": "2026-03-01",
+    "description": "Most sophisticated supply chain attack on a security tool to date. Combined credential theft, tag poisoning, binary tampering, persistent backdoors, and a self-propagating worm. 28 npm packages compromised in under 60 seconds. Originated from pull_request_target misconfiguration leading to credential theft.",
+    "affectedPackages": [
+      "aquasecurity/trivy-action",
+      "Trivy"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/"
+    ],
+    "detectionSignals": [
+      "Pull_request_target trigger with untrusted code checkout",
+      "No egress controls to detect exfiltration",
+      "Actions referenced by mutable tags instead of SHA",
+      "No network egress filtering on CI runners"
+    ]
+  },
+  {
+    "id": "github-app-token-theft",
+    "name": "GitHub App installation token abuse",
+    "date": "2025-01-01",
+    "description": "Pattern where overly permissive GitHub App installations at org level (especially with contents:write and actions:write) allow attackers who compromise any single app to modify workflows and trigger them across all repos the app has access to.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://docs.github.com/en/apps/using-github-apps/reviewing-and-modifying-installed-github-apps"
+    ],
+    "detectionSignals": [
+      "GitHub Apps installed org-wide with write permissions",
+      "Apps with both contents:write and actions:write permissions",
+      "Stale or unused app installations widening attack surface",
+      "Apps with administration permission that can modify repo settings"
+    ]
+  },
+  {
+    "id": "xz-utils-backdoor",
+    "name": "XZ Utils (liblzma) maintainer backdoor",
+    "date": "2024-03-29",
+    "description": "A long-running social engineering operation culminated in a malicious maintainer (\"Jia Tan\") gaining commit access to xz-utils and inserting an obfuscated backdoor into liblzma that compromised sshd on affected systems. The attack hinged on a single trusted maintainer with broad write access, no code-owner enforcement, and unsigned commits reaching downstream distributions.",
+    "affectedPackages": [
+      "xz-utils",
+      "liblzma"
+    ],
+    "cves": [
+      "CVE-2024-3094"
+    ],
+    "references": [
+      "https://tukaani.org/xz-backdoor/",
+      "https://research.swtch.com/xz-script"
+    ],
+    "detectionSignals": [
+      "Repository has a single maintainer with unrestricted write access",
+      "CODEOWNERS absent or uses catch-all assigned to one user",
+      "Default branch does not require signed commits",
+      "Commits merged without secondary reviewer"
+    ]
+  },
+  {
+    "id": "unauthorized-env-deployment",
+    "name": "Unauthorized deployment via unprotected environment",
+    "date": "2024-01-01",
+    "description": "Generic pattern in which GitHub deployment environments are configured without required reviewers, wait timers, or deployment branch policies. Any workflow with access to the environment can push code to production without human approval, turning a compromised PR or workflow into a direct path to prod.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment",
+      "https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-04-Poisoned-Pipeline-Execution"
+    ],
+    "detectionSignals": [
+      "Deployment environments without required reviewers",
+      "Environments with no wait timer for production deployments",
+      "No deployment branch policy restricting which refs can deploy",
+      "Environment secrets accessible to workflows without approval gates"
+    ]
+  },
+  {
+    "id": "toyota-source-exposure",
+    "name": "Toyota source code public repository exposure",
+    "date": "2022-10-07",
+    "description": "Toyota disclosed that portions of its T-Connect connected-car source code had been hosted on a public GitHub repository for roughly five years, exposing an access key for a customer data server. The root cause was a repository whose visibility did not match its sensitivity, with no visibility review or naming-convention audit.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://global.toyota/en/newsroom/corporate/38095972.html",
+      "https://www.bleepingcomputer.com/news/security/toyota-reveals-data-breach-that-exposed-customer-details/"
+    ],
+    "detectionSignals": [
+      "Public repositories with names suggesting internal or private use",
+      "No repository visibility review process",
+      "Secrets committed to public repositories",
+      "Repository visibility mismatched with org conventions"
+    ]
+  },
+  {
+    "id": "azure-karpenter-pwn-request",
+    "name": "Azure Karpenter Provider Pwn Request",
+    "date": "2025-01-01",
+    "description": "Pwn Request vulnerability exploited in Microsoft's open-source Azure Karpenter Provider project. StepSecurity Harden-Runner detected the attack in real-time and reported to MSRC within an hour. Could have compromised the cloud environment the project had access to.",
+    "affectedPackages": [
+      "Azure/karpenter-provider-azure"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.stepsecurity.io/"
+    ],
+    "detectionSignals": [
+      "Pull_request_target trigger with checkout of untrusted PR code",
+      "No egress monitoring to detect exfiltration attempts",
+      "Secrets accessible in pull_request_target context",
+      "No harden-runner or equivalent egress control in place"
+    ]
   }
 ]

@@ -3,9 +3,11 @@
     [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Owner,
 
         [Parameter(Mandatory)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Repo,
 
         [Parameter(Mandatory)]
