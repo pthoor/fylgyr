@@ -17,6 +17,25 @@ function Test-CodeOwner {
     $target = "$Owner/$Repo"
     $results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
+    # Personal GitHub accounts cannot create teams, so CODEOWNERS gaps can't be
+    # fully closed - downgrade findings to Warning to keep the signal without
+    # failing dogfood on a structural limitation.
+    $ownerType = 'Organization'
+    try {
+        $ownerInfo = Invoke-GitHubApi -Endpoint "users/$Owner" -Token $Token
+        if ($ownerInfo -and $ownerInfo.PSObject.Properties['type']) {
+            $ownerType = $ownerInfo.type
+        }
+    }
+    catch {
+        Write-Debug "Could not determine owner type for '$Owner': $($_.Exception.Message)"
+    }
+
+    $gapStatus = if ($ownerType -eq 'User') { 'Warning' } else { 'Fail' }
+    $personalNote = if ($ownerType -eq 'User') {
+        ' Note: this is a personal GitHub account - teams are unavailable, so full remediation requires adding a collaborator co-owner or migrating the repo to an organization.'
+    } else { '' }
+
     $candidatePaths = @('CODEOWNERS', '.github/CODEOWNERS', 'docs/CODEOWNERS')
     $codeownersContent = $null
     $foundPath = $null
@@ -68,10 +87,10 @@ function Test-CodeOwner {
     if (-not $codeownersContent) {
         $results.Add((Format-FylgyrResult `
             -CheckName 'CodeOwner' `
-            -Status 'Fail' `
+            -Status $gapStatus `
             -Severity 'Medium' `
             -Resource $target `
-            -Detail 'No CODEOWNERS file found at CODEOWNERS, .github/CODEOWNERS, or docs/CODEOWNERS. Without code owners, a single compromised maintainer can merge unreviewed changes - the exact pattern exploited in the xz-utils backdoor.' `
+            -Detail ("No CODEOWNERS file found at CODEOWNERS, .github/CODEOWNERS, or docs/CODEOWNERS. Without code owners, a single compromised maintainer can merge unreviewed changes - the exact pattern exploited in the xz-utils backdoor." + $personalNote) `
             -Remediation 'Create a CODEOWNERS file under .github/CODEOWNERS that assigns at least two distinct owners to security-sensitive paths. See: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners' `
             -AttackMapping @('xz-utils-backdoor') `
             -Target $target))
@@ -99,10 +118,10 @@ function Test-CodeOwner {
     if ($rules.Count -eq 0) {
         $findings.Add((Format-FylgyrResult `
             -CheckName 'CodeOwner' `
-            -Status 'Fail' `
+            -Status $gapStatus `
             -Severity 'Medium' `
             -Resource "$target ($foundPath)" `
-            -Detail "CODEOWNERS file exists at '$foundPath' but contains no rules." `
+            -Detail ("CODEOWNERS file exists at '$foundPath' but contains no rules." + $personalNote) `
             -Remediation 'Add at least one pattern with two or more distinct owners.' `
             -AttackMapping @('xz-utils-backdoor') `
             -Target $target))
@@ -112,10 +131,10 @@ function Test-CodeOwner {
             $onlyOwner = if ($distinctOwners.Count -eq 1) { $distinctOwners[0] } else { '(none)' }
             $findings.Add((Format-FylgyrResult `
                 -CheckName 'CodeOwner' `
-                -Status 'Fail' `
+                -Status $gapStatus `
                 -Severity 'Medium' `
                 -Resource "$target ($foundPath)" `
-                -Detail "CODEOWNERS assigns ownership to only $($distinctOwners.Count) distinct owner ($onlyOwner). A single compromised or socially-engineered maintainer can merge malicious code, as in the xz-utils backdoor." `
+                -Detail ("CODEOWNERS assigns ownership to only $($distinctOwners.Count) distinct owner ($onlyOwner). A single compromised or socially-engineered maintainer can merge malicious code, as in the xz-utils backdoor." + $personalNote) `
                 -Remediation 'Assign at least two distinct owners (users or teams) in CODEOWNERS so every change requires review by someone other than the author.' `
                 -AttackMapping @('xz-utils-backdoor') `
                 -Target $target))
@@ -126,10 +145,10 @@ function Test-CodeOwner {
                 $soleOwner = if ($rule.Owners.Count -eq 1) { $rule.Owners[0] } else { '(none)' }
                 $findings.Add((Format-FylgyrResult `
                     -CheckName 'CodeOwner' `
-                    -Status 'Fail' `
+                    -Status $gapStatus `
                     -Severity 'Medium' `
                     -Resource "$target ($foundPath)" `
-                    -Detail "Catch-all pattern '*' is assigned to a single owner ($soleOwner). Any change in the repository can be approved by that one account." `
+                    -Detail ("Catch-all pattern '*' is assigned to a single owner ($soleOwner). Any change in the repository can be approved by that one account." + $personalNote) `
                     -Remediation "Replace the catch-all rule with multiple reviewers (e.g. '* @org/security @org/maintainers') or scope ownership by directory." `
                     -AttackMapping @('xz-utils-backdoor') `
                     -Target $target))

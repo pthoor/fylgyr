@@ -969,6 +969,28 @@ Describe 'Test-CodeOwner' {
         $results = Test-CodeOwner -Owner 'org' -Repo 'repo' -Token 'fake'
         $results[0].Status | Should -Be 'Pass'
     }
+
+    It 'downgrades single-owner findings to Warning for personal (User) accounts' {
+        $codeowners = "* @pthoor`n"
+        $b64 = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($codeowners))
+
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/pthoor') {
+                return [PSCustomObject]@{ type = 'User' }
+            }
+            if ($Endpoint -match '/contents/CODEOWNERS$') {
+                return [PSCustomObject]@{ content = $b64; encoding = 'base64' }
+            }
+            throw '404 Not Found'
+        }
+
+        $results = Test-CodeOwner -Owner 'pthoor' -Repo 'repo' -Token 'fake'
+        $results | Where-Object Status -EQ 'Fail' | Should -BeNullOrEmpty
+        $warn = $results | Where-Object Status -EQ 'Warning'
+        $warn | Should -Not -BeNullOrEmpty
+        ($warn.Detail -join ' ') | Should -Match 'personal GitHub account'
+    }
 }
 
 Describe 'Test-SignedCommit' {
