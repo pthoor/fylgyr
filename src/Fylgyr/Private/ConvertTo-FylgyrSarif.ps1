@@ -45,7 +45,7 @@
             $helpText = $r.Remediation
             if ($r.AttackMapping.Count -gt 0) {
                 $attackNames = $r.AttackMapping | ForEach-Object {
-                    if ($attackCatalog.ContainsKey($_)) { $attackCatalog[$_].name } else { $_ }
+                    if ($attackCatalog.ContainsKey($PSItem)) { $attackCatalog[$PSItem].name } else { $PSItem }
                 }
                 $helpText += "`n`nRelated attacks: $($attackNames -join ', ')"
             }

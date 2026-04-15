@@ -3,9 +3,11 @@
     [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Owner,
 
         [Parameter(Mandatory)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Repo,
 
         [Parameter(Mandatory)]
@@ -39,7 +41,7 @@
         $protection = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/branches/$defaultBranch/protection" -Token $Token
     }
     catch {
-        $msg = $_.ToString()
+        $msg = $_.Exception.Message
 
         if ($msg -match '404') {
             $results.Add((Format-FylgyrResult `

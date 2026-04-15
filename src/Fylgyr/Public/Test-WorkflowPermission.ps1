@@ -26,7 +26,7 @@ function Test-WorkflowPermission {
 
         if ($hasTopLevelPermissions) {
             $results.Add((Format-FylgyrResult `
-                -CheckName 'WorkflowPermissions' `
+                -CheckName 'WorkflowPermission' `
                 -Status 'Pass' `
                 -Severity 'Info' `
                 -Resource $wf.Path `
@@ -35,7 +35,7 @@ function Test-WorkflowPermission {
         }
         else {
             $results.Add((Format-FylgyrResult `
-                -CheckName 'WorkflowPermissions' `
+                -CheckName 'WorkflowPermission' `
                 -Status 'Fail' `
                 -Severity 'Medium' `
                 -Resource $wf.Path `

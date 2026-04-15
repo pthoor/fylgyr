@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.4.0] - 2026-04-12
+
+### Added
+
+- `Test-CodeOwner` check — fetches `CODEOWNERS` (root, `.github/`, `docs/`) and flags missing files, single-distinct-owner repositories, and catch-all `*` rules assigned to one owner. Maps to `xz-utils-backdoor`.
+- `Test-SignedCommit` check — reports whether the default branch enforces required signed commits via `required_signatures`. Medium severity warning (not hard failure) with lower-friction remediation guidance. Maps to `xz-utils-backdoor`.
+- `Test-ForkPullPolicy` check — workflow-level check that fails when `pull_request_target` is combined with checkout of `github.event.pull_request.head.sha`, `head.ref`, or `github.head_ref`, the exact primitive behind the nx Pwn Request and tj-actions/changed-files incidents. Maps to `nx-pwn-request`, `tj-actions-shai-hulud`, `prt-scan-ai-automated`.
+- `Test-EnvironmentProtection` check — lists deployment environments and flags those without required reviewers or deployment branch policies. Maps to `unauthorized-env-deployment`, `prt-scan-ai-automated`.
+- `Test-RepoVisibility` check — cross-checks repository visibility against naming heuristics (`-internal`, `-private`, `-confidential`, etc.) to catch Toyota-style exposures. Maps to `toyota-source-exposure`.
+- `Test-EgressControl` check — detects missing or audit-only network egress filtering in workflows. Detects step-security/harden-runner, code-cargo/cargowall-action, and bullfrogsec/bullfrog. Notes BullFrog DNS-over-TCP bypass. Maps to `tj-actions-shai-hulud`, `trivy-supply-chain-2026`, `codecov-bash-uploader`.
+- `Test-ForkSecretExposure` check — detects secrets accessible to fork PRs via pull_request_target, unprotected deployment environments, and unrestricted org-level secrets. Maps to `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request`.
+- `Test-GitHubAppSecurity` check — audits GitHub App installations at org level for overly permissive configurations (org-wide installs with write permissions, contents:write + actions:write combo, administration permission). Maps to `github-app-token-theft`.
+- Nine new attack catalog entries: `praetorian-runner-pivot`, `prt-scan-ai-automated`, `hackerbot-claw`, `trivy-supply-chain-2026`, `github-app-token-theft`, `azure-karpenter-pwn-request`, `xz-utils-backdoor`, `unauthorized-env-deployment`, `toyota-source-exposure`.
+- `Info` status type added to `Format-FylgyrResult` for advisory/recommendation output.
+- `docs/PERMISSIONS.md` — GitHub token permission reference documenting the scopes required by each check.
+
+### Changed
+
+- `Test-DangerousTrigger` expanded: now detects pull_request_target with secret references, actor-restriction conditions, and maps to new attacks (prt-scan, hackerbot-claw, Trivy 2026, Azure Karpenter). Includes kill-chain details from real campaigns.
+- `Test-RunnerHygiene` expanded: now checks org-wide runner groups, non-ephemeral runners, and self-hosted runners on public repos via GitHub API. Maps to `praetorian-runner-pivot` in addition to existing mappings.
+- Orchestrator (`Invoke-Fylgyr`) updated to pass Owner/Repo/Token to workflow-based checks that need API access, and to register all new checks.
+- `Write-FylgyrConsole` output reformatted: per-check results split onto separate lines with a dimmed detail row, new `Info` status rendering, and a `ScannedRepoCount` parameter so org-wide scans report total repositories scanned.
+
 ## [0.3.2] - 2026-04-06
 
 ### Security

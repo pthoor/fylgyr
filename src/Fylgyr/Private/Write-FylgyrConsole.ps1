@@ -6,7 +6,9 @@ function Write-FylgyrConsole {
         [Parameter(Mandatory)]
         [PSCustomObject[]]$Results,
 
-        [string]$Target = ''
+        [string]$Target = '',
+
+        [int]$ScannedRepoCount = -1
     )
 
     Write-Host ''
@@ -25,30 +27,38 @@ function Write-FylgyrConsole {
             Write-Host ''
             Write-Host "  [$($repoGroup.Name)]" -ForegroundColor Cyan
 
-            $checkGroups = $repoGroup.Group | Group-Object -Property CheckName
+            $checkGroups = @($repoGroup.Group | Group-Object -Property CheckName)
 
-            foreach ($checkGroup in $checkGroups) {
+            for ($i = 0; $i -lt $checkGroups.Count; $i++) {
+                $checkGroup = $checkGroups[$i]
                 $passes = @($checkGroup.Group | Where-Object { $_.Status -eq 'Pass' })
                 $failures = @($checkGroup.Group | Where-Object { $_.Status -ne 'Pass' })
 
-                Write-Host "    $($checkGroup.Name): " -ForegroundColor White -NoNewline
+                if ($i -gt 0) { Write-Host '' }
+
+                Write-Host "    > $($checkGroup.Name)  " -ForegroundColor White -NoNewline
 
                 if ($failures.Count -eq 0) {
-                    # Show the detail from the first pass to explain what was verified
                     $passDetail = $passes[0].Detail
                     if ($passes.Count -gt 1) {
-                        Write-Host "[PASS] $passDetail ($($passes.Count) files)" -ForegroundColor Green
+                        Write-Host "[PASS]" -ForegroundColor Green
+                        Write-Host "        $passDetail ($($passes.Count) files)" -ForegroundColor DarkGray
                     }
                     else {
-                        Write-Host "[PASS] $passDetail" -ForegroundColor Green
+                        Write-Host "[PASS]" -ForegroundColor Green
+                        Write-Host "        $passDetail" -ForegroundColor DarkGray
                     }
                 }
                 else {
+                    $onlyInfo = @($failures | Where-Object { $_.Status -ne 'Info' }).Count -eq 0
                     if ($passes.Count -gt 0) {
-                        Write-Host "$($passes.Count) passed, $($failures.Count) finding(s):" -ForegroundColor Yellow
+                        Write-Host "[$($passes.Count) passed, $($failures.Count) finding(s)]" -ForegroundColor Yellow
+                    }
+                    elseif ($onlyInfo) {
+                        Write-Host "[$($failures.Count) info]" -ForegroundColor Cyan
                     }
                     else {
-                        Write-Host "$($failures.Count) finding(s):" -ForegroundColor Red
+                        Write-Host "[$($failures.Count) finding(s)]" -ForegroundColor Red
                     }
 
                     foreach ($r in $failures) {
@@ -56,12 +66,14 @@ function Write-FylgyrConsole {
                             'Fail'    { '[FAIL]' }
                             'Warning' { '[WARN]' }
                             'Error'   { '[ERR]' }
+                            'Info'    { '[INFO]' }
                             default   { '[?]' }
                         }
                         $color = switch ($r.Status) {
                             'Fail'    { 'Red' }
                             'Warning' { 'Yellow' }
                             'Error'   { 'Magenta' }
+                            'Info'    { 'Cyan' }
                             default   { 'Gray' }
                         }
 
@@ -89,8 +101,14 @@ function Write-FylgyrConsole {
         }
     }
 
-    # Summary
-    $totalRepos   = ($Results | Group-Object -Property Target).Count
+    # Summary - prefer explicit scan count from the orchestrator; fall back to
+    # grouping by Target only when the caller did not provide one.
+    $totalRepos = if ($ScannedRepoCount -ge 0) {
+        $ScannedRepoCount
+    }
+    else {
+        @($Results.Target | Where-Object { $_ } | Sort-Object -Unique).Count
+    }
     $passCount    = ($Results | Where-Object Status -EQ 'Pass').Count
     $failCount    = ($Results | Where-Object Status -EQ 'Fail').Count
     $warnCount    = ($Results | Where-Object Status -EQ 'Warning').Count

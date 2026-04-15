@@ -99,6 +99,56 @@ Any new or modified workflow file must satisfy all three, or the dogfood CI job 
 2. **All `uses:` references SHA-pinned** to a full 40-character hex commit SHA (e.g., `uses: actions/checkout@abc123...40chars`). Tags and branch names are rejected.
 3. **No `write-all` permission pattern** anywhere in the file.
 
+## Threat Model — GitHub Supply Chain Attack Surface
+
+Fylgyr is a purple teaming tool for GitHub supply chain security. Every check maps to a real-world attack technique. This section defines the threat landscape so that new checks target the right risks.
+
+### Attack categories and relevant frameworks
+
+| Category | Description | MITRE ATT&CK / OWASP CI/CD | Example incidents |
+|---|---|---|---|
+| **Dependency confusion** | Attacker publishes a malicious package with the same name as an internal dependency to a public registry | [CICD-SEC-3](https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-03-Dependency-Chain-Abuse) | event-stream, ua-parser-js |
+| **Action/tool poisoning** | Mutable tag or compromised release injects malicious code into CI pipelines | [CICD-SEC-3](https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-03-Dependency-Chain-Abuse), T1195.002 | Trivy tag poisoning, tj-actions/changed-files |
+| **Pwn request** | `pull_request_target` + checkout of PR head gives attacker write tokens and secrets | [CICD-SEC-4](https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-04-Poisoned-Pipeline-Execution) | nx Pwn Request |
+| **Secret exfiltration** | CI logs, artifacts, or misconfigured permissions leak tokens | [CICD-SEC-5](https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-05-Insufficient-PBAC), T1552.001 | Axios npm token leak, Codecov bash uploader |
+| **Runner abuse** | Self-hosted runners on public repos allow arbitrary code execution from fork PRs | [CICD-SEC-7](https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-07-Insecure-System-Configuration) | GitHub Actions crypto-mining |
+| **Insufficient branch protection** | Missing protections allow force-push to main, bypass reviews, or inject directly | [CICD-SEC-6](https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-06-Insufficient-Access-Controls), T1199 | Trivy force-push, Codecov |
+| **Build system compromise** | Attacker compromises build infra to inject backdoors into signed artifacts | T1195.002 | SolarWinds Orion |
+| **Missing vulnerability scanning** | No code scanning, secret scanning, or dependency alerts means threats go undetected | [CICD-SEC-1](https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-01-Insufficient-Flow-Control) | Uber credential leak, SolarWinds |
+| **Workflow injection** | Untrusted input (issue title, PR body, branch name) interpolated into `run:` steps enables arbitrary command execution | [CICD-SEC-4](https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-04-Poisoned-Pipeline-Execution) | Various GitHub Actions injection exploits |
+| **Excessive permissions** | Workflows granted `write-all` or unnecessary scopes create blast radius for any compromise | [CICD-SEC-5](https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-05-Insufficient-PBAC) | Multiple incidents across ecosystem |
+
+### How checks map to this model
+
+Each `Test-*.ps1` check should:
+1. **Target one or more categories** from the table above.
+2. **Map to specific attack IDs** in `attacks.json` that demonstrate real-world exploitation.
+3. **Explain the kill chain** in the `Detail` field — not just "this is misconfigured" but "this allows an attacker to X, as seen in Y."
+4. **Provide actionable remediation** that directly closes the attack path.
+
+### Current check coverage
+
+| Check | Categories covered |
+|---|---|
+| `Test-ActionPinning` | Action/tool poisoning |
+| `Test-DangerousTrigger` | Pwn request |
+| `Test-WorkflowPermission` | Excessive permissions |
+| `Test-RunnerHygiene` | Runner abuse |
+| `Test-BranchProtection` | Insufficient branch protection |
+| `Test-SecretScanning` | Secret exfiltration, Missing scanning |
+| `Test-DependabotAlert` | Dependency confusion, Missing scanning |
+| `Test-CodeScanning` | Build system compromise, Missing scanning |
+
+### Gaps for future checks
+
+When designing new checks, prioritize these uncovered or partially covered areas:
+- **Workflow injection** — detect `${{ github.event.* }}` in `run:` steps (script injection)
+- **OIDC hardening** — verify workflows use OIDC tokens instead of long-lived secrets for cloud auth
+- **Artifact integrity** — detect unsigned releases, missing attestations, unpinned container images
+- **Fork policy** — detect overly permissive fork settings that enable runner abuse
+- **Environment protection** — verify production deployments require environment approvals and reviewers
+- **Reusable workflow trust** — detect calls to reusable workflows from untrusted external repos
+
 ## Security Requirements — MANDATORY
 
 **This is a security tool. It must not contain security vulnerabilities itself.** Every code change must be evaluated through this lens. These rules are non-negotiable:
