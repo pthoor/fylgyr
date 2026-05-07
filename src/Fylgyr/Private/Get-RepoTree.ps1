@@ -3,16 +3,18 @@
     [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Owner,
 
         [Parameter(Mandatory)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Repo,
 
         [Parameter(Mandatory)]
         [string]$Token
     )
 
-    # Fetch the default branch SHA from the repo metadata
+    # Confirm the repo exists and is not empty before fetching the tree
     try {
         $repoInfo = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo" -Token $Token
     }
@@ -23,14 +25,13 @@
         throw
     }
 
-    $defaultBranch = $repoInfo.default_branch
-    if (-not $defaultBranch) {
-        $defaultBranch = 'HEAD'
+    if (-not $repoInfo.default_branch) {
+        return [PSCustomObject]@{ tree = @(); truncated = $false; empty = $true }
     }
 
-    # Fetch the recursive tree for the default branch
+    # Use HEAD to avoid URL-encoding issues with branch names that contain slashes
     try {
-        $tree = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/git/trees/$defaultBranch`?recursive=1" -Token $Token
+        $tree = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/git/trees/HEAD?recursive=1" -Token $Token
     }
     catch {
         if ($_.Exception.Message -match '404') {

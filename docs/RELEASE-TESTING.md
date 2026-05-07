@@ -23,10 +23,14 @@ Use a **fine-grained PAT** scoped to `pthoor` (personal) and the `pthoor` org. T
 Load the token securely:
 
 ```powershell
-$env:GITHUB_TOKEN = (Read-Host -Prompt 'PAT' -AsSecureString | ConvertFrom-SecureString -AsPlainText)
+# Recommended: load from your secret manager
+$env:GITHUB_TOKEN = Get-Secret -Name 'FYLGYR_PAT' -AsPlainText  # requires SecretManagement module
+
+# Or interactively (input is masked):
+$env:GITHUB_TOKEN = Read-Host -Prompt 'PAT'
 ```
 
-**Never paste a literal token directly in the terminal.**
+**Never paste a literal token directly in the terminal. Never use `ConvertFrom-SecureString`.**
 
 ## Pass-case: personal repo (pthoor/fylgyr)
 

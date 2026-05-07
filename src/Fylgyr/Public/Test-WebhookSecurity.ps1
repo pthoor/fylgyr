@@ -78,7 +78,12 @@
                      $null -ne $hook.config.secret -and
                      $hook.config.secret -ne ''
         if (-not $hasSecret) {
-            $unsecured.Add($hook.config.url)
+            # Report only the hostname to avoid leaking credentials or tokens
+            # that may be embedded in webhook URLs as query parameters
+            $hostOnly = try {
+                ([System.Uri]$hook.config.url).Host
+            } catch { '(unknown host)' }
+            $unsecured.Add($hostOnly)
         }
     }
 
@@ -88,7 +93,7 @@
             -Status 'Fail' `
             -Severity 'Low' `
             -Resource $resource `
-            -Detail "$($unsecured.Count) webhook(s) have no secret token configured. Without a shared secret, receivers cannot verify that payloads originate from GitHub — an attacker who discovers the webhook URL can forge or replay events to trigger downstream CI, deploy, or chat automation, as in the Codecov bash uploader integrity gap. Unsecured endpoints: $($unsecured -join ', ')." `
+            -Detail "$($unsecured.Count) webhook(s) have no secret token configured. Without a shared secret, receivers cannot verify that payloads originate from GitHub — an attacker who discovers the webhook URL can forge or replay events to trigger downstream CI, deploy, or chat automation, as in the Codecov bash uploader integrity gap. Unsecured receiver hosts: $($unsecured -join ', ')." `
             -Remediation 'Set a webhook secret in Settings → Webhooks → Edit, then validate the X-Hub-Signature-256 header in the receiving service. See https://docs.github.com/webhooks/using-webhooks/validating-webhook-deliveries.' `
             -AttackMapping @('codecov-bash-uploader') `
             -Target $target))
