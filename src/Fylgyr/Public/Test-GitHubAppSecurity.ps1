@@ -118,11 +118,11 @@ function Test-GitHubAppSecurity {
             if ($msg -match '403') {
                 $results.Add((Format-FylgyrResult `
                     -CheckName 'GitHubAppSecurity' `
-                    -Status 'Error' `
-                    -Severity 'Medium' `
+                    -Status 'Info' `
+                    -Severity 'Info' `
                     -Resource $resource `
-                    -Detail 'Insufficient permissions to read user GitHub App installations.' `
-                    -Remediation 'Use a fine-grained PAT with access to the user account, or a classic token with the read:user scope.' `
+                    -Detail "The /user/installations endpoint requires an OAuth user-to-server token issued by a GitHub App or OAuth App authorization flow. Personal access tokens (classic or fine-grained) are explicitly rejected by GitHub - this is an API ceiling, not a token scope issue. Personal GitHub App installations could not be audited automatically." `
+                    -Remediation "Review personal GitHub App installations manually at https://github.com/settings/installations. Automated auditing via PAT is blocked by the GitHub API - the endpoint requires an OAuth user-to-server token." `
                     -Target $resource))
                 return $results.ToArray()
             }
@@ -145,6 +145,13 @@ function Test-GitHubAppSecurity {
     }
     elseif ($installationsResponse -is [System.Array]) {
         $appList = $installationsResponse
+    }
+
+    # /user/installations returns every installation visible to the token, including
+    # those on organisations the user belongs to. Filter to personal-account installs
+    # only; org installs are audited via the orgs/{Owner}/installations path.
+    if ($auditScope -eq 'user' -and $appList) {
+        $appList = @($appList | Where-Object { $_.target_type -eq 'User' })
     }
 
     if (-not $appList -or $appList.Count -eq 0) {
@@ -170,33 +177,43 @@ function Test-GitHubAppSecurity {
             continue
         }
 
-        $hasContentsWrite = $permissions.PSObject.Properties['contents'] -and $permissions.contents -eq 'write'
-        $hasActionsWrite = $permissions.PSObject.Properties['actions'] -and $permissions.actions -eq 'write'
-        $hasAdminPerm = $permissions.PSObject.Properties['administration'] -and $permissions.administration -in @('write', 'read')
+        $hasContentsWrite  = $permissions.PSObject.Properties['contents']       -and $permissions.contents       -eq 'write'
+        $hasActionsWrite   = $permissions.PSObject.Properties['actions']         -and $permissions.actions         -eq 'write'
+        $hasWorkflowsWrite = $permissions.PSObject.Properties['workflows']       -and $permissions.workflows       -eq 'write'
+        $hasAdminPerm      = $permissions.PSObject.Properties['administration']  -and $permissions.administration  -in @('write', 'read')
+        $hasSecretsWrite   = $permissions.PSObject.Properties['secrets']         -and $permissions.secrets         -eq 'write'
+        $hasPackagesWrite  = $permissions.PSObject.Properties['packages']        -and $permissions.packages        -eq 'write'
 
         # Apps installed against "all" repositories have the largest blast radius.
         $isAllRepos = $app.repository_selection -eq 'all'
         $scopeLabel = if ($auditScope -eq 'organization') { 'org-wide' } else { 'across all of your repositories' }
 
-        if ($isAllRepos -and $hasContentsWrite -and $hasActionsWrite) {
+        # Critical: contents:write paired with workflow manipulation = full CI injection path.
+        # workflows:write targets .github/workflows/ directly; actions:write targets the Actions API.
+        if ($isAllRepos -and $hasContentsWrite -and ($hasActionsWrite -or $hasWorkflowsWrite)) {
+            $dangerPerms = [System.Collections.Generic.List[string]]::new()
+            $dangerPerms.Add('contents:write')
+            if ($hasWorkflowsWrite) { $dangerPerms.Add('workflows:write') }
+            if ($hasActionsWrite)   { $dangerPerms.Add('actions:write') }
+            $permList = $dangerPerms -join ', '
             $findings.Add((Format-FylgyrResult `
                 -CheckName 'GitHubAppSecurity' `
                 -Status 'Fail' `
                 -Severity 'Critical' `
                 -Resource "$resource (app: $appName)" `
-                -Detail "GitHub App '$appName' is installed $scopeLabel with both contents:write and actions:write permissions. If this app is compromised, an attacker can modify workflow files and trigger them across every repository the app can reach." `
-                -Remediation "Restrict this app to specific repositories and audit whether it needs both contents:write and actions:write. Remove unnecessary permissions following the principle of least privilege." `
+                -Detail "GitHub App '$appName' is installed $scopeLabel with $permList. A compromised app can inject and trigger malicious workflows across every repository it can reach - the same attack path used in the tj-actions/changed-files and reviewdog supply chain incidents." `
+                -Remediation "Restrict this app to specific repositories and remove unnecessary permissions. An app rarely needs both contents:write and workflows:write or actions:write simultaneously." `
                 -AttackMapping @('github-app-token-theft') `
                 -Target $resource))
         }
-        elseif ($isAllRepos -and ($hasContentsWrite -or $hasActionsWrite)) {
-            $writePerm = if ($hasContentsWrite) { 'contents:write' } else { 'actions:write' }
+        elseif ($isAllRepos -and ($hasContentsWrite -or $hasActionsWrite -or $hasWorkflowsWrite)) {
+            $writePerm = if ($hasContentsWrite) { 'contents:write' } elseif ($hasWorkflowsWrite) { 'workflows:write' } else { 'actions:write' }
             $findings.Add((Format-FylgyrResult `
                 -CheckName 'GitHubAppSecurity' `
                 -Status 'Fail' `
                 -Severity 'High' `
                 -Resource "$resource (app: $appName)" `
-                -Detail "GitHub App '$appName' is installed $scopeLabel with $writePerm permission. Compromising this app grants write access across every repository the app can reach." `
+                -Detail "GitHub App '$appName' is installed $scopeLabel with $writePerm. Compromising this app grants write access across every repository the app can reach." `
                 -Remediation "Restrict this app to only the repositories that require it. Review whether $writePerm is necessary." `
                 -AttackMapping @('github-app-token-theft') `
                 -Target $resource))
@@ -219,8 +236,36 @@ function Test-GitHubAppSecurity {
                 -Status 'Fail' `
                 -Severity 'High' `
                 -Resource "$resource (app: $appName)" `
-                -Detail "GitHub App '$appName' has administration permission. This allows modifying repository settings including branch protection rules." `
-                -Remediation "Audit whether this app requires administration permission. Apps with admin access can disable branch protection, enabling direct pushes to protected branches." `
+                -Detail "GitHub App '$appName' has administration permission. This allows modifying repository settings including branch protection rules, enabling direct pushes to protected branches." `
+                -Remediation "Audit whether this app requires administration permission. Remove it if the app does not need to manage repository settings." `
+                -AttackMapping @('github-app-token-theft') `
+                -Target $resource))
+        }
+
+        if ($hasSecretsWrite) {
+            $sev       = if ($isAllRepos) { 'Critical' } else { 'High' }
+            $scopeDesc = if ($isAllRepos) { $scopeLabel } else { 'selected repositories' }
+            $findings.Add((Format-FylgyrResult `
+                -CheckName 'GitHubAppSecurity' `
+                -Status 'Fail' `
+                -Severity $sev `
+                -Resource "$resource (app: $appName)" `
+                -Detail "GitHub App '$appName' has secrets:write on $scopeDesc. A compromised app can overwrite or enumerate repository secrets, enabling credential theft - the same root cause as the Codecov and CircleCI breach patterns." `
+                -Remediation "Revoke secrets:write unless the app is an authorised secrets manager. Prefer environment-scoped secrets with deployment protection rules over repository-level secrets." `
+                -AttackMapping @('github-app-token-theft') `
+                -Target $resource))
+        }
+
+        if ($hasPackagesWrite) {
+            $sev       = if ($isAllRepos) { 'High' } else { 'Medium' }
+            $scopeDesc = if ($isAllRepos) { $scopeLabel } else { 'selected repositories' }
+            $findings.Add((Format-FylgyrResult `
+                -CheckName 'GitHubAppSecurity' `
+                -Status 'Fail' `
+                -Severity $sev `
+                -Resource "$resource (app: $appName)" `
+                -Detail "GitHub App '$appName' has packages:write on $scopeDesc. A compromised app can publish malicious package versions to the GitHub Package Registry, creating a supply chain attack vector for any consumer of those packages." `
+                -Remediation "Restrict packages:write to CI/CD apps explicitly responsible for publishing. Verify the publishing workflow is protected by environment protection rules with required reviewers." `
                 -AttackMapping @('github-app-token-theft') `
                 -Target $resource))
         }
