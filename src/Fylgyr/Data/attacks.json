@@ -13,6 +13,8 @@
       "https://www.aquasec.com/blog/",
       "https://github.com/aquasecurity/trivy-action"
     ],
+    "owaspCiCd": ["CICD-SEC-3"],
+    "mitre": ["T1195.002"],
     "detectionSignals": [
       "Workflow uses third-party actions by tag instead of commit SHA",
       "Security-sensitive actions are not pinned to immutable digests",
@@ -32,6 +34,8 @@
       "https://github.com/tj-actions/changed-files",
       "https://github.com/advisories"
     ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-5"],
+    "mitre": ["T1195.002", "T1552.001"],
     "detectionSignals": [
       "Use of affected action versions",
       "Workflows expose secrets to untrusted execution contexts",
@@ -51,6 +55,8 @@
       "https://github.com/nrwl/nx",
       "https://securitylab.github.com/research/github-actions-preventing-pwn-requests/"
     ],
+    "owaspCiCd": ["CICD-SEC-4"],
+    "mitre": ["T1059.004"],
     "detectionSignals": [
       "Unsafe use of pull_request_target with checkout of untrusted code",
       "Write-capable tokens available to PR-triggered workflows",
@@ -70,6 +76,8 @@
       "https://github.com/axios/axios",
       "https://docs.npmjs.com/using-private-packages-in-a-ci-cd-workflow"
     ],
+    "owaspCiCd": ["CICD-SEC-5"],
+    "mitre": ["T1552.001"],
     "detectionSignals": [
       "CI pipelines print environment variables or token-containing commands",
       "Long-lived npm tokens used instead of scoped automation tokens",
@@ -90,6 +98,8 @@
       "https://about.codecov.io/security-update/",
       "https://github.com/codecov/codecov-action"
     ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-6"],
+    "mitre": ["T1195.002", "T1199"],
     "detectionSignals": [
       "Default branch allows force pushes with no branch protection",
       "No required reviewers on default branch",
@@ -107,6 +117,8 @@
       "https://www.uber.com/newsroom/security-update/",
       "https://docs.github.com/code-security/secret-scanning/about-secret-scanning"
     ],
+    "owaspCiCd": ["CICD-SEC-5"],
+    "mitre": ["T1552.001"],
     "detectionSignals": [
       "Secret scanning not enabled on repository",
       "Open secret scanning alerts left unresolved",
@@ -127,6 +139,8 @@
       "https://github.com/dominictarr/event-stream/issues/116",
       "https://blog.npmjs.org/post/180565383195/details-about-the-event-stream-incident"
     ],
+    "owaspCiCd": ["CICD-SEC-3"],
+    "mitre": ["T1195.001"],
     "detectionSignals": [
       "Dependabot alerts not enabled on repository",
       "Open critical or high severity dependency vulnerability alerts",
@@ -148,6 +162,8 @@
       "https://www.solarwinds.com/sa-overview/securityadvisory",
       "https://msrc-blog.microsoft.com/2020/12/13/customer-guidance-on-recent-nation-state-cyber-attacks/"
     ],
+    "owaspCiCd": ["CICD-SEC-1", "CICD-SEC-3"],
+    "mitre": ["T1195.002"],
     "detectionSignals": [
       "Code scanning not configured on repository",
       "No recent code analysis runs",
@@ -165,6 +181,8 @@
       "https://docs.github.com/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#self-hosted-runner-security",
       "https://github.blog/security/application-security/security-hardening-for-github-actions/"
     ],
+    "owaspCiCd": ["CICD-SEC-7"],
+    "mitre": ["T1496"],
     "detectionSignals": [
       "Self-hosted runner used in workflow triggered by pull_request on a public repository",
       "Workflow triggered by pull_request_target runs on a self-hosted runner",
@@ -184,6 +202,8 @@
       "https://github.com/aquasecurity/trivy",
       "https://docs.github.com/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches"
     ],
+    "owaspCiCd": ["CICD-SEC-6"],
+    "mitre": ["T1199"],
     "detectionSignals": [
       "Default branch protection does not block force pushes",
       "Required pull request reviews are disabled on the default branch",
@@ -200,6 +220,8 @@
     "references": [
       "https://www.praetorian.com/blog/self-hosted-github-runners-are-backdoors/"
     ],
+    "owaspCiCd": ["CICD-SEC-7"],
+    "mitre": ["T1496", "T1610"],
     "detectionSignals": [
       "Org-wide runner groups available to all repositories",
       "Self-hosted runners not configured as ephemeral",
@@ -217,6 +239,8 @@
     "references": [
       "https://www.wiz.io/blog/six-accounts-one-actor-inside-the-prt-scan-supply-chain-campaign"
     ],
+    "owaspCiCd": ["CICD-SEC-4"],
+    "mitre": ["T1059.004", "T1195.002"],
     "detectionSignals": [
       "Workflows using pull_request_target that checkout untrusted PR code",
       "No first-time contributor approval gates for fork PRs",
@@ -234,6 +258,8 @@
     "references": [
       "https://github.blog/security/supply-chain-security/securing-the-open-source-supply-chain-across-github/"
     ],
+    "owaspCiCd": ["CICD-SEC-4", "CICD-SEC-5"],
+    "mitre": ["T1059.004"],
     "detectionSignals": [
       "Workflows using pull_request_target with untrusted code checkout",
       "Secrets accessible to fork PR workflows",
@@ -254,6 +280,8 @@
     "references": [
       "https://www.paloaltonetworks.com/blog/cloud-security/trivy-supply-chain-attack/"
     ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-4"],
+    "mitre": ["T1195.002", "T1059.004"],
     "detectionSignals": [
       "Pull_request_target trigger with untrusted code checkout",
       "No egress controls to detect exfiltration",
@@ -271,9 +299,14 @@
     "references": [
       "https://docs.github.com/en/apps/using-github-apps/reviewing-and-modifying-installed-github-apps"
     ],
+    "owaspCiCd": ["CICD-SEC-5", "CICD-SEC-6"],
+    "mitre": ["T1078.004", "T1552.004"],
     "detectionSignals": [
       "GitHub Apps installed org-wide with write permissions",
       "Apps with both contents:write and actions:write permissions",
+      "Apps with contents:write and workflows:write — direct workflow file injection path",
+      "Apps with secrets:write — can enumerate or overwrite repository secrets",
+      "Apps with packages:write — can publish malicious package versions to GitHub Package Registry",
       "Stale or unused app installations widening attack surface",
       "Apps with administration permission that can modify repo settings"
     ]
@@ -294,6 +327,8 @@
       "https://tukaani.org/xz-backdoor/",
       "https://research.swtch.com/xz-script"
     ],
+    "owaspCiCd": ["CICD-SEC-6"],
+    "mitre": ["T1195.002", "T1199"],
     "detectionSignals": [
       "Repository has a single maintainer with unrestricted write access",
       "CODEOWNERS absent or uses catch-all assigned to one user",
@@ -312,6 +347,8 @@
       "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment",
       "https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-04-Poisoned-Pipeline-Execution"
     ],
+    "owaspCiCd": ["CICD-SEC-4", "CICD-SEC-5"],
+    "mitre": ["T1195.002"],
     "detectionSignals": [
       "Deployment environments without required reviewers",
       "Environments with no wait timer for production deployments",
@@ -330,6 +367,8 @@
       "https://global.toyota/en/newsroom/corporate/38095972.html",
       "https://www.bleepingcomputer.com/news/security/toyota-reveals-data-breach-that-exposed-customer-details/"
     ],
+    "owaspCiCd": ["CICD-SEC-5"],
+    "mitre": ["T1213"],
     "detectionSignals": [
       "Public repositories with names suggesting internal or private use",
       "No repository visibility review process",
@@ -349,11 +388,34 @@
     "references": [
       "https://www.stepsecurity.io/"
     ],
+    "owaspCiCd": ["CICD-SEC-4"],
+    "mitre": ["T1059.004"],
     "detectionSignals": [
       "Pull_request_target trigger with checkout of untrusted PR code",
       "No egress monitoring to detect exfiltration attempts",
       "Secrets accessible in pull_request_target context",
       "No harden-runner or equivalent egress control in place"
+    ]
+  },
+  {
+    "id": "committed-credentials-exposure",
+    "name": "Committed credentials exposure",
+    "date": "2016-10-01",
+    "description": "Credentials committed to git history are permanent even after removal — git rm preserves secrets in the commit graph. Uber (2016) had AWS keys committed to a private repo accessed by attackers, breaching ~57M records. Toyota (2022) disclosed partner credentials committed in 2017 and publicly exposed for five years, affecting 296K customers. Ongoing solo-maintainer PAT leaks follow the same pattern. Once a secret lands in git, the only durable mitigations are rotation, secret scanning with push protection, and alert remediation.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://www.uber.com/newsroom/security-update/",
+      "https://global.toyota/en/newsroom/corporate/38095972.html",
+      "https://docs.github.com/code-security/secret-scanning/about-secret-scanning"
+    ],
+    "owaspCiCd": ["CICD-SEC-5"],
+    "mitre": ["T1552.001"],
+    "detectionSignals": [
+      "Secret scanning disabled on repository",
+      "Secret scanning enabled but unremediated High or Critical alerts open longer than 30 days",
+      "Push protection not enabled — allows secrets to be committed before detection",
+      "No secret rotation policy after a scanning alert fires"
     ]
   }
 ]

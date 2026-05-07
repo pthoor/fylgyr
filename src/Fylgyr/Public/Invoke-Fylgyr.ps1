@@ -255,6 +255,8 @@ function Invoke-FylgyrScan {
         @{ Name = 'Test-SignedCommit';         Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
         @{ Name = 'Test-EnvironmentProtection'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
         @{ Name = 'Test-RepoVisibility';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-WebhookSecurity';      Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-BinaryArtifact';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
     )
 
     foreach ($entry in $repoChecks) {

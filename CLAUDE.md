@@ -138,16 +138,52 @@ Each `Test-*.ps1` check should:
 | `Test-SecretScanning` | Secret exfiltration, Missing scanning |
 | `Test-DependabotAlert` | Dependency confusion, Missing scanning |
 | `Test-CodeScanning` | Build system compromise, Missing scanning |
+| `Test-CodeOwner` | Insufficient branch protection (single-maintainer compromise) |
+| `Test-SignedCommit` | Insufficient branch protection (commit impersonation) |
+| `Test-ForkPullPolicy` | Pwn request (fork trust boundary) |
+| `Test-EnvironmentProtection` | Excessive permissions (unprotected production deploys) |
+| `Test-RepoVisibility` | Secret exfiltration (accidental public exposure) |
+| `Test-EgressControl` | Runner abuse, Build system compromise (C2 prevention) |
+| `Test-ForkSecretExposure` | Secret exfiltration, Pwn request (fork PR secret access) |
+| `Test-GitHubAppSecurity` | Excessive permissions (GitHub App token theft / org takeover) |
+| `Test-WebhookSecurity` | Secret exfiltration (webhook payload forgery / replay) |
+| `Test-BinaryArtifact` | Build system compromise (committed binary backdoors) |
 
 ### Gaps for future checks
 
-When designing new checks, prioritize these uncovered or partially covered areas:
-- **Workflow injection** — detect `${{ github.event.* }}` in `run:` steps (script injection)
-- **OIDC hardening** — verify workflows use OIDC tokens instead of long-lived secrets for cloud auth
-- **Artifact integrity** — detect unsigned releases, missing attestations, unpinned container images
-- **Fork policy** — detect overly permissive fork settings that enable runner abuse
-- **Environment protection** — verify production deployments require environment approvals and reviewers
-- **Reusable workflow trust** — detect calls to reusable workflows from untrusted external repos
+When designing new checks, prioritize these still-open areas:
+- **Workflow injection** — detect `${{ github.event.* }}` in `run:` steps (Phase 8: `Test-ScriptInjection`)
+- **OIDC hardening** — verify workflows scope OIDC trust correctly (Phase 8: `Test-OidcTrust`)
+- **Artifact integrity** — detect unsigned releases, missing attestations, unpinned container images (Phase 8: `Test-ArtifactAttestation`, `Test-ArtifactPoisoning`)
+- **Cache poisoning** — detect cache keys derived from attacker-controlled refs (Phase 8: `Test-CacheIntegrity`)
+- **Reusable workflow trust** — detect calls to reusable workflows from untrusted external repos (unplanned)
+- **Org-level policy gaps** — MFA, default permissions, PAT policy, outside collaborators, action restrictions (Phase 7)
+- **Publish integrity** — long-lived publish tokens vs OIDC trusted publishing for npm/PyPI/containers (Phase 6.2: `Test-PublishIntegrity`)
+
+## Release process
+
+Every tagged release must be validated through the manual test plan documented in `docs/RELEASE-TESTING.md` in addition to automated CI. The manual plan catches category of issues that mocked Pester tests cannot:
+
+- PAT scope / permission handling against real GitHub API responses
+- Personal-account vs organization-account code paths (the `users/{owner}` type check)
+- Real-world rate limiting and pagination behavior
+- Severity calibration against repos you know the state of
+
+The release checklist lives at `docs/RELEASE-TESTING.md` and Pierre runs it against his personal repos and the `pthoor` org before tagging. Do not tag a release without signing off that checklist.
+
+## Catalog maintenance
+
+The attack catalog (`attacks.json`) is Fylgyr's primary differentiator. Maintenance cadence, sources to watch, triage rubric, and the catalog-only release policy are documented in `docs/CATALOG-MAINTENANCE.md`. Every entry must carry populated `owaspCiCd` and `mitre` arrays — Pester enforces this at test time.
+
+## Scope discipline
+
+Emergent checks driven by real-world incidents (red-team engagements, new disclosures, customer escalations) may ship outside the current phase plan, provided:
+
+1. The phase retrospective section documents what was added and why (sanitized — no client identifiers).
+2. The emergent check follows the standard pattern (`Format-FylgyrResult`, attack mapping, Pester tests).
+3. Affected downstream phase plans are updated so the same check is not re-planned.
+
+v0.4.0 shipped three emergent checks (`Test-EgressControl`, `Test-ForkSecretExposure`, `Test-GitHubAppSecurity`) under this rule. See [plans/PHASE-6-EXPANDED-CHECKS.md](plans/PHASE-6-EXPANDED-CHECKS.md) retrospective for the precedent.
 
 ## Security Requirements — MANDATORY
 

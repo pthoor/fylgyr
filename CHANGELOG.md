@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.4.1] - 2026-05-07
+
+### Added
+
+- `Test-WebhookSecurity` check — audits repository webhooks for missing shared secrets. Without a secret, receivers cannot authenticate payloads and an attacker who learns the webhook URL can forge or replay events to downstream CI, chat, or deploy automation. Degrades gracefully to Info on 403 (requires Webhooks:read scope). Maps to `codecov-bash-uploader`.
+- `Test-BinaryArtifact` check — walks the default branch tree via the git trees API and flags committed binary files (`.exe`, `.dll`, `.so`, `.dylib`, `.bin`, `.jar`, `.war`, `.a`, `.o`, `.pyc`, `.class`). Handles truncated trees (>100 k entries) with an Info result. Maps to `solarwinds-orion`.
+- `Get-RepoTree` private helper — fetches the recursive git tree for the default branch, used by `Test-BinaryArtifact`.
+- `committed-credentials-exposure` attack catalog entry — covers Uber 2016 (AWS keys in private repo, 57M records) and Toyota 2022 (partner credentials exposed five years). Maps to `CICD-SEC-5`, `T1552.001`. Seeded for Phase 6.2's `Test-SecretScanning` enhancement.
+- `owaspCiCd` and `mitre` fields added to all 20 attack catalog entries. Pester now enforces both fields are present and non-empty for every entry.
+- `docs/COVERAGE.md` — OWASP CI/CD Top 10 × MITRE ATT&CK supply-chain technique coverage matrix with roadmap signal for open gaps.
+- `docs/CATALOG-MAINTENANCE.md` — monthly triage cadence, sources to watch, triage rubric, schema requirements, and catalog-only release policy.
+- `docs/RELEASE-TESTING.md` — manual test checklist (PAT scope matrix, pass-case commands, edge cases, signoff gate) executed before every tagged release.
+- `release.yml` now emits SLSA build provenance via `actions/attest-build-provenance@v2` (SHA-pinned). Publish job gains `id-token: write` and `attestations: write` permissions. Module is packaged as a zip artifact and attached to the GitHub Release.
+
+### Changed
+
+- `Test-GitHubAppSecurity` extended: now detects `workflows:write` (direct workflow injection path), `secrets:write` (Critical when org-wide), and `packages:write` (High when org-wide). Filters `user/installations` response to personal-account installs only (excludes org-type installations that are audited via the org endpoint). New Pester cases cover all added permission combinations and the org-type filter.
+- `attacks.json` `github-app-token-theft` entry enriched with three additional `detectionSignals` for `workflows:write`, `secrets:write`, and `packages:write`.
+- `CLAUDE.md` updated: check coverage table extended to all 18 shipped checks; gaps section trimmed to only still-open items; Release process, Catalog maintenance, and Scope discipline sections added; WebhookSecurity and BinaryArtifact moved from Gaps to the coverage table.
+- `README.md` updated: WebhookSecurity and BinaryArtifact rows added to check reference table; architecture tree updated; check count updated to 18; GHES compatibility statement added; attestation verification snippet added; `committed-credentials-exposure` added to attack catalog table.
+
 ## [0.4.0] - 2026-04-12
 
 ### Added

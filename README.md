@@ -62,7 +62,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -OutputFormat Console
 Invoke-Fylgyr -Owner 'myorg' -OutputFormat Console
 ```
 
-Abridged example (a real scan runs ~14 checks per repo):
+Abridged example (a real scan runs ~18 checks per repo):
 
 ```
   Fylgyr Supply-Chain Audit: myorg
@@ -276,6 +276,26 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `ForkPullPolicy` | `pull_request_target` combined with checkout of fork-controlled `head.sha`/`head.ref`/`github.head_ref` | High | `nx-pwn-request`, `tj-actions-shai-hulud`, `prt-scan-ai-automated` |
 | `EnvironmentProtection` | Deployment environments without required reviewers or branch policies | High | `unauthorized-env-deployment`, `prt-scan-ai-automated` |
 | `RepoVisibility` | Public repositories with internal/private naming patterns | Medium | `toyota-source-exposure` |
+| `WebhookSecurity` | Repository webhooks configured without a secret for payload authentication | Low | `codecov-bash-uploader` |
+| `BinaryArtifact` | Binary files (`.exe`, `.dll`, `.so`, `.jar`, etc.) committed in the repository tree | Low | `solarwinds-orion` |
+
+## Compatibility
+
+Fylgyr targets `github.com`. GitHub Enterprise Server (GHES) is **not supported in v1.x** — API path differences (`/api/v3/`) and feature-availability variance make it a v2.0 goal. Fylgyr may incidentally work against GHES for a subset of checks; this configuration is not tested or supported.
+
+## Verify your install
+
+Starting from v0.4.1 every Fylgyr release includes a [SLSA build provenance attestation](https://slsa.dev/provenance/v1). You can verify the published module was built from the expected source:
+
+```bash
+gh attestation verify --owner pthoor oci://ghcr.io/pthoor/fylgyr:<version>
+```
+
+Or verify the PSGallery nupkg directly after downloading it:
+
+```bash
+gh attestation verify fylgyr.<version>.nupkg --owner pthoor
+```
 
 ## Attack Catalog
 
@@ -302,6 +322,7 @@ Every finding maps to a real-world supply chain incident. The full catalog lives
 | `xz-utils-backdoor` | XZ Utils (liblzma) maintainer backdoor | 2024-03 |
 | `unauthorized-env-deployment` | Unauthorized deployment via unprotected environment | pattern |
 | `toyota-source-exposure` | Toyota source code public repository exposure | 2022-10 |
+| `committed-credentials-exposure` | Committed credentials exposure (Uber 2016, Toyota 2022) | 2016-ongoing |
 
 ## Security Posture
 
@@ -344,6 +365,8 @@ src/Fylgyr/
 │   ├── Test-RunnerHygiene.ps1
 │   ├── Test-SecretScanning.ps1
 │   ├── Test-SignedCommit.ps1
+│   ├── Test-WebhookSecurity.ps1
+│   ├── Test-BinaryArtifact.ps1
 │   └── Test-WorkflowPermission.ps1
 ├── Private/
 │   ├── Invoke-GitHubApi.ps1       # REST/GraphQL wrapper with pagination

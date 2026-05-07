@@ -52,6 +52,7 @@ Create at <https://github.com/settings/personal-access-tokens/new>.
   - Code scanning alerts
   - Secret scanning alerts
   - Commit statuses
+  - Webhooks (required for `Test-WebhookSecurity`; degrades gracefully to Info without it)
 - **Organization permissions** (all *Read-only*):
   - Administration
   - Members
@@ -78,11 +79,13 @@ Required classic scopes: `repo` (full), `read:org`, `security_events`, `workflow
 | `Test-EnvironmentProtection` | `repos/{o}/{r}/environments` | Environments: read, Administration: read |
 | `Test-ForkPullPolicy` | Workflow files (`.github/workflows/*`) | Contents: read |
 | `Test-ForkSecretExposure` | `repos/{o}/{r}/environments`, `orgs/{o}/actions/secrets` | Environments: read, **Org Secrets: read** |
+| `Test-BinaryArtifact` | `repos/{o}/{r}`, `repos/{o}/{r}/git/trees/{sha}?recursive=1` | Contents: read |
 | `Test-GitHubAppSecurity` | `orgs/{o}/installations`, `user/installations` | Org Administration: read |
 | `Test-RepoVisibility` | `repos/{o}/{r}` | Metadata: read |
 | `Test-RunnerHygiene` | `repos/{o}/{r}/actions/runners`, `orgs/{o}/actions/runners`, `orgs/{o}/actions/runner-groups` | Administration: read (repo + org) |
 | `Test-SecretScanning` | `repos/{o}/{r}/secret-scanning/alerts` | Secret scanning alerts: read |
 | `Test-SignedCommit` | `repos/{o}/{r}/branches/{branch}/protection/required_signatures` | Administration: read |
+| `Test-WebhookSecurity` | `repos/{o}/{r}/hooks` | Webhooks: read (requires `admin:repo_hook` on classic PAT) |
 | `Test-WorkflowPermission` | Workflow files (`.github/workflows/*`) | Contents: read |
 
 All checks additionally require **Metadata: read** — this is mandatory for every fine-grained PAT and cannot be disabled.

@@ -38,6 +38,17 @@ Describe 'Fylgyr foundation' {
             }
         }
     }
+
+    It 'has attacks.json with owaspCiCd and mitre fields populated for every entry' {
+        $attacks = Get-Content -Path $attacksPath -Raw | ConvertFrom-Json
+
+        foreach ($attack in $attacks) {
+            $attack.PSObject.Properties.Name | Should -Contain 'owaspCiCd' -Because "entry '$($attack.id)' is missing owaspCiCd"
+            $attack.PSObject.Properties.Name | Should -Contain 'mitre' -Because "entry '$($attack.id)' is missing mitre"
+            $attack.owaspCiCd | Should -Not -BeNullOrEmpty -Because "entry '$($attack.id)' has empty owaspCiCd"
+            $attack.mitre | Should -Not -BeNullOrEmpty -Because "entry '$($attack.id)' has empty mitre"
+        }
+    }
 }
 
 Describe 'Test-ActionPinning' {
@@ -387,6 +398,8 @@ Describe 'Invoke-Fylgyr' {
         Mock -ModuleName Fylgyr Test-RepoVisibility       { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-ForkSecretExposure   { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-GitHubAppSecurity    { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-WebhookSecurity      { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-BinaryArtifact       { return @($stubResult) }
     }
 
     It 'returns an Error result when workflow fetch fails' {
@@ -1248,6 +1261,7 @@ Describe 'Test-GitHubAppSecurity user accounts' {
                         [PSCustomObject]@{
                             id                   = 1
                             app_slug             = 'dangerous-app'
+                            target_type          = 'User'
                             repository_selection = 'all'
                             permissions          = [PSCustomObject]@{
                                 contents = 'write'
@@ -1265,6 +1279,121 @@ Describe 'Test-GitHubAppSecurity user accounts' {
         $fail | Should -Not -BeNullOrEmpty
         $fail[0].Severity | Should -Be 'Critical'
         $fail[0].Detail | Should -Match 'across all of your repositories'
+    }
+
+    It 'detects Critical when contents:write and workflows:write are combined' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
+            if ($Endpoint -eq 'user')        { return [PSCustomObject]@{ login = 'alice' } }
+            if ($Endpoint -eq 'user/installations') {
+                return [PSCustomObject]@{
+                    installations = @(
+                        [PSCustomObject]@{
+                            id                   = 2
+                            app_slug             = 'workflow-injector'
+                            target_type          = 'User'
+                            repository_selection = 'all'
+                            permissions          = [PSCustomObject]@{
+                                contents  = 'write'
+                                workflows = 'write'
+                            }
+                        }
+                    )
+                }
+            }
+            throw '404 Not Found'
+        }
+
+        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
+        $fail = $results | Where-Object Status -EQ 'Fail'
+        $fail | Should -Not -BeNullOrEmpty
+        $fail[0].Severity | Should -Be 'Critical'
+        $fail[0].Detail | Should -Match 'workflows:write'
+    }
+
+    It 'detects secrets:write as Critical when installed on all repos' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
+            if ($Endpoint -eq 'user')        { return [PSCustomObject]@{ login = 'alice' } }
+            if ($Endpoint -eq 'user/installations') {
+                return [PSCustomObject]@{
+                    installations = @(
+                        [PSCustomObject]@{
+                            id                   = 3
+                            app_slug             = 'secret-stealer'
+                            target_type          = 'User'
+                            repository_selection = 'all'
+                            permissions          = [PSCustomObject]@{ secrets = 'write' }
+                        }
+                    )
+                }
+            }
+            throw '404 Not Found'
+        }
+
+        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
+        $fail = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Detail -match 'secrets:write' }
+        $fail | Should -Not -BeNullOrEmpty
+        $fail[0].Severity | Should -Be 'Critical'
+    }
+
+    It 'detects packages:write as High when installed on all repos' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
+            if ($Endpoint -eq 'user')        { return [PSCustomObject]@{ login = 'alice' } }
+            if ($Endpoint -eq 'user/installations') {
+                return [PSCustomObject]@{
+                    installations = @(
+                        [PSCustomObject]@{
+                            id                   = 4
+                            app_slug             = 'package-publisher'
+                            target_type          = 'User'
+                            repository_selection = 'all'
+                            permissions          = [PSCustomObject]@{ packages = 'write' }
+                        }
+                    )
+                }
+            }
+            throw '404 Not Found'
+        }
+
+        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
+        $fail = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Detail -match 'packages:write' }
+        $fail | Should -Not -BeNullOrEmpty
+        $fail[0].Severity | Should -Be 'High'
+    }
+
+    It 'filters out org-type installations from user/installations response' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
+            if ($Endpoint -eq 'user')        { return [PSCustomObject]@{ login = 'alice' } }
+            if ($Endpoint -eq 'user/installations') {
+                return [PSCustomObject]@{
+                    installations = @(
+                        # Org installation — must be filtered out
+                        [PSCustomObject]@{
+                            id                   = 10
+                            app_slug             = 'risky-org-app'
+                            target_type          = 'Organization'
+                            repository_selection = 'all'
+                            permissions          = [PSCustomObject]@{
+                                contents = 'write'
+                                actions  = 'write'
+                            }
+                        }
+                    )
+                }
+            }
+            throw '404 Not Found'
+        }
+
+        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
+        # After filtering, no installations remain — should Pass
+        $results[0].Status | Should -Be 'Pass'
     }
 
     It 'returns Info when token does not belong to the user owner' {
@@ -1316,5 +1445,181 @@ Describe 'Test-GitHubAppSecurity user accounts' {
 
         $results = Test-GitHubAppSecurity -Owner 'acme' -Token 'fake'
         $results[0].Status | Should -Be 'Pass'
+    }
+}
+
+Describe 'Test-WebhookSecurity' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'passes when all hooks have a secret configured' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return @(
+                [PSCustomObject]@{
+                    config = [PSCustomObject]@{
+                        url    = 'https://ci.example.com/hook'
+                        secret = 's3cret'
+                    }
+                }
+            )
+        }
+
+        $results = Test-WebhookSecurity -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'fails when a hook has no secret configured' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return @(
+                [PSCustomObject]@{
+                    config = [PSCustomObject]@{
+                        url = 'https://ci.example.com/hook'
+                    }
+                }
+            )
+        }
+
+        $results = Test-WebhookSecurity -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Fail'
+        $results[0].Severity | Should -Be 'Low'
+        $results[0].AttackMapping | Should -Contain 'codecov-bash-uploader'
+    }
+
+    It 'passes when no hooks exist (empty list)' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return @()
+        }
+
+        $results = Test-WebhookSecurity -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'passes when no hooks exist (404)' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            throw '404 Not Found'
+        }
+
+        $results = Test-WebhookSecurity -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'degrades to Info on 403 (insufficient scope)' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            throw '403 Forbidden'
+        }
+
+        $results = Test-WebhookSecurity -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Info'
+        $results[0].Detail | Should -BeLike '*admin:repo_hook*'
+    }
+
+    It 'returns Error on unexpected API failure' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            throw 'connection timeout'
+        }
+
+        $results = Test-WebhookSecurity -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Error'
+    }
+}
+
+Describe 'Test-BinaryArtifact' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'passes when no binary files are present' {
+        Mock -ModuleName Fylgyr Get-RepoTree {
+            return [PSCustomObject]@{
+                truncated = $false
+                tree      = @(
+                    [PSCustomObject]@{ path = 'src/main.go';      type = 'blob' }
+                    [PSCustomObject]@{ path = 'README.md';        type = 'blob' }
+                    [PSCustomObject]@{ path = 'src';              type = 'tree' }
+                )
+            }
+        }
+
+        $results = Test-BinaryArtifact -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'fails when binary files are present' {
+        Mock -ModuleName Fylgyr Get-RepoTree {
+            return [PSCustomObject]@{
+                truncated = $false
+                tree      = @(
+                    [PSCustomObject]@{ path = 'src/main.go';       type = 'blob' }
+                    [PSCustomObject]@{ path = 'bin/tool.exe';       type = 'blob' }
+                    [PSCustomObject]@{ path = 'lib/native.dll';     type = 'blob' }
+                )
+            }
+        }
+
+        $results = Test-BinaryArtifact -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Fail'
+        $results[0].Severity | Should -Be 'Low'
+        $results[0].AttackMapping | Should -Contain 'solarwinds-orion'
+        $results[0].Detail | Should -BeLike '*2 binary file*'
+    }
+
+    It 'returns Info when tree is truncated' {
+        Mock -ModuleName Fylgyr Get-RepoTree {
+            return [PSCustomObject]@{
+                truncated = $true
+                tree      = @(
+                    [PSCustomObject]@{ path = 'src/main.go'; type = 'blob' }
+                )
+            }
+        }
+
+        $results = Test-BinaryArtifact -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Info'
+        $results[0].Detail | Should -BeLike '*truncated*'
+    }
+
+    It 'passes when repository is empty' {
+        Mock -ModuleName Fylgyr Get-RepoTree {
+            return [PSCustomObject]@{ tree = @(); truncated = $false; empty = $true }
+        }
+
+        $results = Test-BinaryArtifact -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'degrades to Error on 403' {
+        Mock -ModuleName Fylgyr Get-RepoTree {
+            throw '403 Forbidden'
+        }
+
+        $results = Test-BinaryArtifact -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Error'
+        $results[0].Detail | Should -BeLike '*Insufficient permissions*'
+    }
+
+    It 'returns Error on unexpected API failure' {
+        Mock -ModuleName Fylgyr Get-RepoTree {
+            throw 'connection timeout'
+        }
+
+        $results = Test-BinaryArtifact -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Error'
     }
 }
