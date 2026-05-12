@@ -1,0 +1,50 @@
+# Fylgyr maintainer workflow
+#
+# This template is optimized for solo maintainers.
+# Some checks may return Info or Error on free-tier private repositories where
+# GitHub Advanced Security features are unavailable.
+
+name: Fylgyr Maintainer Scan
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/*.yml'
+      - '.github/workflows/*.yaml'
+  schedule:
+    - cron: '17 3 * * 1' # Weekly, Monday 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  fylgyr:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install Fylgyr
+        shell: pwsh
+        run: Install-Module -Name Fylgyr -Repository PSGallery -Force -Scope CurrentUser
+
+      - name: Run Fylgyr scan (SARIF)
+        shell: pwsh
+        run: |
+          # This intentionally does not fail the workflow on findings.
+          Invoke-Fylgyr -Owner '${{ github.repository_owner }}' `
+                        -Repo '${{ github.event.repository.name }}' `
+                        -OutputFormat SARIF `
+            | Out-File -FilePath fylgyr.sarif -Encoding utf8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload SARIF
+        if: always() && hashFiles('fylgyr.sarif') != ''
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13
+        with:
+          sarif_file: fylgyr.sarif

@@ -12,7 +12,7 @@ Use a **fine-grained PAT** scoped to `pthoor` (personal) and the `pthoor` org. T
 |---|---|---|
 | Contents | Read | `Test-BinaryArtifact`, `Test-CodeOwner` |
 | Administration | Read | `Test-BranchProtection`, `Test-SignedCommit` |
-| Secret scanning alerts | Read | `Test-SecretScanning` |
+| Secret scanning alerts (`secret_scanning_alerts:read`) | Read | `Test-SecretScanning` |
 | Dependabot alerts | Read | `Test-DependabotAlert` |
 | Code scanning alerts | Read | `Test-CodeScanning` |
 | Environments | Read | `Test-EnvironmentProtection`, `Test-ForkSecretExposure` |
@@ -49,8 +49,9 @@ $results | Format-Table CheckName, Status, Severity, Detail -Wrap
 | `ActionPinning` | Pass | All actions SHA-pinned |
 | `DangerousTrigger` | Pass | No pull_request_target misuse |
 | `WorkflowPermission` | Pass | Workflow-level permissions declared |
+| `PublishIntegrity` | Pass | No insecure publish pattern in release workflows |
 | `BranchProtection` | Pass or Warning | Depends on current branch rules |
-| `SecretScanning` | Pass | Secret scanning enabled |
+| `SecretScanning` | Pass / Warning / Fail / Info | Depends on open-alert severity and token scope |
 | `DependabotAlert` | Pass | No open critical/high alerts |
 | `CodeScanning` | Pass | SARIF upload configured |
 | `RunnerHygiene` | Pass | GitHub-hosted runners only |
@@ -64,6 +65,25 @@ $results | Format-Table CheckName, Status, Severity, Detail -Wrap
 | `GitHubAppSecurity` | Info | Personal account — token mismatch expected |
 | `WebhookSecurity` | Pass or Info | Requires admin:repo_hook scope |
 | `BinaryArtifact` | Pass | No binaries committed |
+
+## Personal-account behavior validation
+
+Run this section against at least one personal repository under your own account to verify maintainer-track behavior.
+
+```powershell
+Import-Module ./src/Fylgyr/Fylgyr.psm1 -Force
+$results = Invoke-Fylgyr -Owner pthoor -Repo <personal-repo>
+$results | Format-Table CheckName, Status, Severity, Detail -Wrap
+```
+
+Validate these expected personal-account outcomes:
+- `Test-CodeOwner` downgrades structural single-maintainer findings to `Warning` (not `Fail`).
+- `Test-GitHubAppSecurity` returns `Info` when the token owner does not match the scanned personal account.
+- `Test-SecretScanning` behavior is calibrated:
+	- `Pass` when no open alerts exist
+	- `Warning` when open alerts exist but highest severity is below High
+	- `Fail` when open High/Critical alerts exist
+	- `Info` when secret scanning alert telemetry is blocked by token scope and `secret_scanning_alerts:read` is missing
 
 ## Fail-case: deliberate misconfiguration
 

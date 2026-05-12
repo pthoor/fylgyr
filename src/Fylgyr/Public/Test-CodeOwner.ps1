@@ -20,15 +20,12 @@ function Test-CodeOwner {
     # Personal GitHub accounts cannot create teams, so CODEOWNERS gaps can't be
     # fully closed - downgrade findings to Warning to keep the signal without
     # failing dogfood on a structural limitation.
-    $ownerType = 'Organization'
-    try {
-        $ownerInfo = Invoke-GitHubApi -Endpoint "users/$Owner" -Token $Token
-        if ($ownerInfo -and $ownerInfo.PSObject.Properties['type']) {
-            $ownerType = $ownerInfo.type
-        }
+    $ownerContext = Get-FylgyrOwnerContext -Owner $Owner -Token $Token
+    $ownerType = if ($ownerContext -and $ownerContext.PSObject.Properties['Type']) {
+        $ownerContext.Type
     }
-    catch {
-        Write-Debug "Could not determine owner type for '$Owner': $($_.Exception.Message)"
+    else {
+        'Unknown'
     }
 
     $gapStatus = if ($ownerType -eq 'User') { 'Warning' } else { 'Fail' }
