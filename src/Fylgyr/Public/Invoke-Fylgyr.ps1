@@ -28,9 +28,12 @@ function Invoke-Fylgyr {
         # inside the same session do not reuse stale data.
         # - FylgyrOwnerRunnerGroupsChecked: Test-RunnerHygiene consults this to skip the
         #   `orgs/{Owner}/...` block on second and later repos in an org-wide scan.
+        # - FylgyrOwnerContextCache: owner type/token-owner/plan cache used by
+        #   Get-FylgyrOwnerContext to avoid repeated users/{owner} and user calls.
         # - FylgyrOwnerAppSecurityResults: Test-GitHubAppSecurity results cached per owner
         #   so we emit them exactly once per owner instead of once per repository.
         $script:FylgyrOwnerRunnerGroupsChecked = @{}
+        $script:FylgyrOwnerContextCache = @{}
         $script:FylgyrOwnerAppSecurityResults = @{}
         $script:FylgyrOwnerAppSecurityEmitted = @{}
     }
@@ -191,6 +194,7 @@ function Invoke-FylgyrScan {
             @{ Name = 'Test-WorkflowPermission'; Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-RunnerHygiene';      Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-EgressControl';      Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-PublishIntegrity';   Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-ForkPullPolicy';     Params = @{ WorkflowFiles = $workflowFiles } }
         )
 

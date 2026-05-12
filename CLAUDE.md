@@ -53,7 +53,8 @@ src/Fylgyr/
 ├── Public/              # Exported functions (Invoke-Fylgyr + check implementations: Test-*.ps1)
 ├── Private/
 │   ├── Invoke-GitHubApi.ps1      # GitHub REST/GraphQL wrapper with rate-limit handling and 30s default timeout
-│   ├── Get-WorkflowFile.ps1      # Fetches workflow YAML files from a repo via the GitHub Contents API
+│   ├── Get-WorkflowFile.ps1      # Fetches workflow YAML files from a repo via the Git Trees API
+│   ├── Get-FylgyrOwnerContext.ps1 # Shared owner/persona context helper
 │   └── Format-FylgyrResult.ps1   # Standardizes output schema for all checks
 └── Data/
     └── attacks.json     # Attack campaign catalog (id, name, date, detectionSignals, …)
@@ -148,6 +149,7 @@ Each `Test-*.ps1` check should:
 | `Test-GitHubAppSecurity` | Excessive permissions (GitHub App token theft / org takeover) |
 | `Test-WebhookSecurity` | Secret exfiltration (webhook payload forgery / replay) |
 | `Test-BinaryArtifact` | Build system compromise (committed binary backdoors) |
+| `Test-PublishIntegrity` | Build system compromise (package/release publish trust and provenance) |
 
 ### Gaps for future checks
 
@@ -158,7 +160,6 @@ When designing new checks, prioritize these still-open areas:
 - **Cache poisoning** — detect cache keys derived from attacker-controlled refs (Phase 8: `Test-CacheIntegrity`)
 - **Reusable workflow trust** — detect calls to reusable workflows from untrusted external repos (unplanned)
 - **Org-level policy gaps** — MFA, default permissions, PAT policy, outside collaborators, action restrictions (Phase 7)
-- **Publish integrity** — long-lived publish tokens vs OIDC trusted publishing for npm/PyPI/containers (Phase 6.2: `Test-PublishIntegrity`)
 
 ## Release process
 

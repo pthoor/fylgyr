@@ -136,6 +136,7 @@ Describe 'Test-SecretScanning' {
         $results = Test-SecretScanning -Owner 'org' -Repo 'repo' -Token 'fake-token'
         $results | Should -HaveCount 1
         $results[0].Status | Should -Be 'Pass'
+        $results[0].AttackMapping | Should -Contain 'committed-credentials-exposure'
     }
 
     It 'fails when secret scanning is not enabled (404)' {
@@ -145,14 +146,30 @@ Describe 'Test-SecretScanning' {
         $results | Should -HaveCount 1
         $results[0].Status | Should -Be 'Fail'
         $results[0].Severity | Should -Be 'Medium'
-        $results[0].AttackMapping | Should -Contain 'axios-npm-token-leak'
+        $results[0].AttackMapping | Should -Contain 'committed-credentials-exposure'
     }
 
-    It 'fails when open alerts are present' {
+    It 'warns when open alerts are present with no High/Critical severity' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             return @(
-                [PSCustomObject]@{ secret_type = 'github_personal_access_token'; state = 'open' }
-                [PSCustomObject]@{ secret_type = 'aws_access_key_id'; state = 'open' }
+                [PSCustomObject]@{ secret_type = 'github_personal_access_token'; state = 'open'; severity = 'medium'; created_at = '2024-01-01T00:00:00Z' }
+                [PSCustomObject]@{ secret_type = 'aws_access_key_id'; state = 'open'; severity = 'low'; created_at = '2024-02-01T00:00:00Z' }
+            )
+        }
+
+        $results = Test-SecretScanning -Owner 'org' -Repo 'repo' -Token 'fake-token'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Warning'
+        $results[0].Severity | Should -Be 'Medium'
+        $results[0].Detail | Should -BeLike '*2 open*'
+        $results[0].Detail | Should -BeLike '*Highest severity: medium*'
+    }
+
+    It 'fails when open alerts include High or Critical severity' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return @(
+                [PSCustomObject]@{ secret_type = 'github_personal_access_token'; state = 'open'; severity = 'critical'; created_at = '2024-01-01T00:00:00Z' }
+                [PSCustomObject]@{ secret_type = 'aws_access_key_id'; state = 'open'; severity = 'medium'; created_at = '2024-02-01T00:00:00Z' }
             )
         }
 
@@ -160,15 +177,30 @@ Describe 'Test-SecretScanning' {
         $results | Should -HaveCount 1
         $results[0].Status | Should -Be 'Fail'
         $results[0].Severity | Should -Be 'High'
-        $results[0].Detail | Should -BeLike '*2 open*'
     }
 
-    It 'returns Error when access is forbidden (403)' {
-        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '403 Forbidden' }
+    It 'returns Info when alerts scope is missing but scanning appears enabled' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'secret-scanning/alerts') {
+                throw '403 Forbidden'
+            }
+
+            if ($Endpoint -eq 'repos/org/repo') {
+                return [PSCustomObject]@{
+                    security_and_analysis = [PSCustomObject]@{
+                        secret_scanning = [PSCustomObject]@{ status = 'enabled' }
+                    }
+                }
+            }
+
+            throw '404 Not Found'
+        }
 
         $results = Test-SecretScanning -Owner 'org' -Repo 'repo' -Token 'fake-token'
         $results | Should -HaveCount 1
-        $results[0].Status | Should -Be 'Error'
+        $results[0].Status | Should -Be 'Info'
+        $results[0].Severity | Should -Be 'Info'
     }
 }
 

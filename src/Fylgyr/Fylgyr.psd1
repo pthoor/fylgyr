@@ -1,6 +1,6 @@
 @{
     RootModule = 'Fylgyr.psm1'
-    ModuleVersion = '0.4.1'
+    ModuleVersion = '0.4.2'
     GUID = 'f3e1c20d-3f0d-4a40-a4e3-9dca27b6bd4a'
     Author = 'Pierre Thoor'
     CompanyName = 'Community'
@@ -22,6 +22,7 @@
         'Test-GitHubAppSecurity'
         'Test-RepoVisibility'
         'Test-RunnerHygiene'
+        'Test-PublishIntegrity'
         'Test-SecretScanning'
         'Test-SignedCommit'
         'Test-WebhookSecurity'

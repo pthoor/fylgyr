@@ -13,35 +13,17 @@ function Test-GitHubAppSecurity {
     $results = [System.Collections.Generic.List[PSCustomObject]]::new()
     $resource = $Owner
 
-    # Determine whether the owner is an Organization or a User.
-    $ownerType = $null
-    try {
-        $ownerInfo = Invoke-GitHubApi -Endpoint "users/$Owner" -Token $Token
-        if ($ownerInfo -and $ownerInfo.PSObject.Properties['type']) {
-            $ownerType = $ownerInfo.type
-        }
-    }
-    catch {
-        $msg = $_.Exception.Message
-        if ($msg -match '404') {
-            $results.Add((Format-FylgyrResult `
-                -CheckName 'GitHubAppSecurity' `
-                -Status 'Error' `
-                -Severity 'Medium' `
-                -Resource $resource `
-                -Detail "Owner '$Owner' not found." `
-                -Remediation 'Verify the owner name.' `
-                -Target $resource))
-            return $results.ToArray()
-        }
+    $ownerContext = Get-FylgyrOwnerContext -Owner $Owner -Token $Token
+    $ownerType = $ownerContext.Type
 
+    if ($ownerType -eq 'Unknown') {
         $results.Add((Format-FylgyrResult `
             -CheckName 'GitHubAppSecurity' `
             -Status 'Error' `
             -Severity 'Medium' `
             -Resource $resource `
-            -Detail "Failed to resolve owner type: $($_.Exception.Message)" `
-            -Remediation 'Re-run with a valid token and verify network access to api.github.com.' `
+            -Detail "Could not resolve owner type for '$Owner'. GitHub App installation audit cannot determine whether to use user or organization endpoints." `
+            -Remediation 'Verify the owner name is correct and the token can access owner metadata, then rerun the check.' `
             -Target $resource))
         return $results.ToArray()
     }
@@ -49,7 +31,7 @@ function Test-GitHubAppSecurity {
     $installationsResponse = $null
     $auditScope = $null
 
-    if ($ownerType -eq 'Organization') {
+    if ($ownerType -ne 'User') {
         $auditScope = 'organization'
         try {
             $installationsResponse = Invoke-GitHubApi -Endpoint "orgs/$Owner/installations" -Token $Token
@@ -86,24 +68,13 @@ function Test-GitHubAppSecurity {
         # which requires that the supplied token belong to that user.
         $auditScope = 'user'
 
-        $authenticatedLogin = $null
-        try {
-            $authed = Invoke-GitHubApi -Endpoint 'user' -Token $Token
-            if ($authed -and $authed.PSObject.Properties['login']) {
-                $authenticatedLogin = $authed.login
-            }
-        }
-        catch {
-            Write-Debug "Failed to resolve authenticated user: $($_.Exception.Message)"
-        }
-
-        if (-not $authenticatedLogin -or ($authenticatedLogin -ne $Owner)) {
+        if (-not $ownerContext.TokenMatchesOwner) {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'GitHubAppSecurity' `
                 -Status 'Info' `
                 -Severity 'Info' `
                 -Resource $resource `
-                -Detail "Owner '$Owner' is a personal GitHub account. Auditing GitHub App installations on a user account requires a token belonging to that user; the supplied token belongs to '$authenticatedLogin'. Personal account App audit skipped." `
+                -Detail "Owner '$Owner' is a personal GitHub account. Auditing GitHub App installations on a user account requires a token belonging to that user; the supplied token belongs to '$($ownerContext.TokenOwner)'. Personal account App audit skipped." `
                 -Remediation "Re-run with a token owned by '$Owner' (fine-grained PAT or classic token) to audit personal GitHub App installations. For organizations, use a token with admin:org access." `
                 -Target $resource))
             return $results.ToArray()

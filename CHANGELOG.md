@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [0.4.2] - 2026-05-08
+
+### Added
+
+- `Test-PublishIntegrity` check — detects insecure release publishing patterns in workflow YAML:
+	- npm publish without `--provenance`
+	- PyPI publish using static `password:` token auth instead of trusted publishing
+	- container/image publish without signing or build provenance attestation
+	- GitHub Release publishing without attestation signals
+- `Get-FylgyrOwnerContext` private helper — shared owner/persona context (`Type`, `Login`, `PlanName`, `TokenOwner`, `TokenMatchesOwner`) with per-invocation cache.
+- Four attack catalog entries:
+	- `shai-hulud-npm-worm`
+	- `lottie-player-npm-compromise`
+	- `ua-parser-js-npm-compromise`
+	- `bitwarden-cli-2026-04`
+- `docs/MAINTAINER-GUIDE.md` — solo-maintainer quickstart, personal-account behavior matrix, and complementary-tool guidance.
+- `examples/maintainer/fylgyr.yml` — SHA-pinned drop-in workflow for weekly maintainer scans and SARIF upload.
+
+### Changed
+
+- `Test-CodeOwner` now consumes `Get-FylgyrOwnerContext` instead of calling `users/{owner}` inline.
+- `Test-GitHubAppSecurity` now consumes `Get-FylgyrOwnerContext` for owner type and token-owner matching.
+- `Test-SecretScanning` behavior now surfaces richer risk signals:
+	- Pass: scanning enabled and zero open alerts
+	- Warning: open alerts with highest severity below High
+	- Fail: open High/Critical alerts
+	- Info fallback on alert-scope gaps with actionable `secret_scanning_alerts:read` remediation
+	- detail now includes open-alert count, highest severity, and oldest alert age
+- README expanded with maintainer quickstart and check/reference updates for 19 checks.
+
+### Security
+
+- Owner-context cache hardened to key on owner + token hash to prevent stale cross-token identity assumptions.
+- Secret alert date parsing hardened to avoid runtime parsing failures while preserving safe error handling.
+
 ## [0.4.1] - 2026-05-07
 
 ### Added

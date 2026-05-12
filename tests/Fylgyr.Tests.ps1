@@ -1250,6 +1250,29 @@ Describe 'Test-GitHubAppSecurity user accounts' {
         Import-Module -Name $modulePath -Force
     }
 
+    BeforeEach {
+        InModuleScope Fylgyr {
+            $script:FylgyrOwnerContextCache = @{}
+        }
+    }
+
+    It 'returns Error when owner type cannot be resolved and does not call org endpoint' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/missing-owner') { throw '404 Not Found' }
+            throw "unexpected endpoint: $Endpoint"
+        }
+
+        $results = Test-GitHubAppSecurity -Owner 'missing-owner' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Error'
+        $results[0].Detail | Should -Match 'Could not resolve owner type'
+
+        Assert-MockCalled -ModuleName Fylgyr Invoke-GitHubApi -Times 0 -ParameterFilter {
+            $Endpoint -eq 'orgs/missing-owner/installations'
+        }
+    }
+
     It 'audits personal account when token owner matches' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             param($Endpoint)
@@ -1428,6 +1451,8 @@ Describe 'Test-GitHubAppSecurity user accounts' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             param($Endpoint)
             if ($Endpoint -eq 'users/acme')         { return [PSCustomObject]@{ type = 'Organization'; login = 'acme' } }
+            if ($Endpoint -eq 'user')               { return [PSCustomObject]@{ login = 'auditor' } }
+            if ($Endpoint -eq 'orgs/acme')          { return [PSCustomObject]@{ plan = [PSCustomObject]@{ name = 'team' } } }
             if ($Endpoint -eq 'orgs/acme/installations') {
                 return [PSCustomObject]@{
                     installations = @(
@@ -1622,4 +1647,252 @@ Describe 'Test-BinaryArtifact' {
         $results | Should -HaveCount 1
         $results[0].Status | Should -Be 'Error'
     }
+}
+
+Describe 'Get-FylgyrOwnerContext' {
+        BeforeAll {
+                $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+                $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+                Import-Module -Name $modulePath -Force
+        }
+
+        BeforeEach {
+                InModuleScope Fylgyr {
+                        $script:FylgyrOwnerContextCache = @{}
+                }
+        }
+
+        It 'returns User context when owner is a personal account' {
+                Mock -ModuleName Fylgyr Invoke-GitHubApi {
+                        param($Endpoint)
+                        if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
+                        if ($Endpoint -eq 'user') { return [PSCustomObject]@{ login = 'alice'; plan = [PSCustomObject]@{ name = 'Pro' } } }
+                        throw 'unexpected endpoint'
+                }
+
+                $ctx = InModuleScope Fylgyr {
+                        Get-FylgyrOwnerContext -Owner 'alice' -Token 'fake-token'
+                }
+
+                $ctx.Type | Should -Be 'User'
+                $ctx.Login | Should -Be 'alice'
+                $ctx.TokenOwner | Should -Be 'alice'
+                $ctx.TokenMatchesOwner | Should -BeTrue
+                $ctx.PlanName | Should -Be 'pro'
+        }
+
+        It 'returns Organization context when owner is an organization' {
+                Mock -ModuleName Fylgyr Invoke-GitHubApi {
+                        param($Endpoint)
+                        if ($Endpoint -eq 'users/acme') { return [PSCustomObject]@{ type = 'Organization'; login = 'acme' } }
+                        if ($Endpoint -eq 'user') { return [PSCustomObject]@{ login = 'auditor' } }
+                        if ($Endpoint -eq 'orgs/acme') { return [PSCustomObject]@{ plan = [PSCustomObject]@{ name = 'Enterprise' } } }
+                        throw 'unexpected endpoint'
+                }
+
+                $ctx = InModuleScope Fylgyr {
+                        Get-FylgyrOwnerContext -Owner 'acme' -Token 'fake-token'
+                }
+
+                $ctx.Type | Should -Be 'Organization'
+                $ctx.Login | Should -Be 'acme'
+                $ctx.TokenOwner | Should -Be 'auditor'
+                $ctx.TokenMatchesOwner | Should -BeFalse
+                $ctx.PlanName | Should -Be 'enterprise'
+        }
+
+        It 'returns Unknown context on 404 owner lookup failure' {
+                Mock -ModuleName Fylgyr Invoke-GitHubApi {
+                        param($Endpoint)
+                        if ($Endpoint -eq 'users/missing-owner') { throw '404 Not Found' }
+                        throw 'unexpected endpoint'
+                }
+
+                $ctx = InModuleScope Fylgyr {
+                        Get-FylgyrOwnerContext -Owner 'missing-owner' -Token 'fake-token'
+                }
+
+                $ctx.Type | Should -Be 'Unknown'
+                $ctx.Login | Should -Be 'missing-owner'
+                $ctx.PlanName | Should -Be 'unknown'
+                $ctx.TokenOwner | Should -Be 'unknown'
+        }
+
+        It 'returns Unknown context on 403 owner lookup failure' {
+                Mock -ModuleName Fylgyr Invoke-GitHubApi {
+                        param($Endpoint)
+                        if ($Endpoint -eq 'users/locked-owner') { throw '403 Forbidden' }
+                        throw 'unexpected endpoint'
+                }
+
+                $ctx = InModuleScope Fylgyr {
+                        Get-FylgyrOwnerContext -Owner 'locked-owner' -Token 'fake-token'
+                }
+
+                $ctx.Type | Should -Be 'Unknown'
+                $ctx.Login | Should -Be 'locked-owner'
+                $ctx.PlanName | Should -Be 'unknown'
+        }
+
+        It 'uses cache for repeated owner lookups in the same invocation' {
+                Mock -ModuleName Fylgyr Invoke-GitHubApi {
+                        param($Endpoint)
+                        if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
+                        if ($Endpoint -eq 'user') { return [PSCustomObject]@{ login = 'alice' } }
+                        throw 'unexpected endpoint'
+                }
+
+                InModuleScope Fylgyr {
+                        $null = Get-FylgyrOwnerContext -Owner 'alice' -Token 'fake-token'
+                        $null = Get-FylgyrOwnerContext -Owner 'alice' -Token 'fake-token'
+                }
+
+                Assert-MockCalled -ModuleName Fylgyr Invoke-GitHubApi -Times 1 -ParameterFilter { $Endpoint -eq 'users/alice' }
+                Assert-MockCalled -ModuleName Fylgyr Invoke-GitHubApi -Times 1 -ParameterFilter { $Endpoint -eq 'user' }
+        }
+}
+
+Describe 'Test-PublishIntegrity' {
+        BeforeAll {
+                $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+                $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+                Import-Module -Name $modulePath -Force
+        }
+
+        It 'passes for npm publish with provenance and id-token write' {
+                $wf = @([PSCustomObject]@{
+                        Name = 'release.yml'
+                        Path = '.github/workflows/release.yml'
+                        Content = @'
+name: Release
+on: push
+permissions:
+    contents: read
+    id-token: write
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        steps:
+            - run: npm publish --provenance
+'@
+                })
+
+                $results = Test-PublishIntegrity -WorkflowFiles $wf
+                $results | Should -HaveCount 1
+                $results[0].Status | Should -Be 'Pass'
+                $results[0].Detail | Should -Match 'OIDC trust hardening'
+                $results[0].Detail | Should -Not -Match 'Test-OidcTrust'
+        }
+
+        It 'fails for npm publish without provenance when token auth is present' {
+                $wf = @([PSCustomObject]@{
+                        Name = 'release.yml'
+                        Path = '.github/workflows/release.yml'
+                        Content = @'
+name: Release
+on: push
+env:
+    NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        steps:
+            - run: npm publish
+'@
+                })
+
+                $results = Test-PublishIntegrity -WorkflowFiles $wf
+                $results | Should -HaveCount 1
+                $results[0].Status | Should -Be 'Fail'
+                $results[0].Severity | Should -Be 'High'
+                $results[0].AttackMapping | Should -Contain 'shai-hulud-npm-worm'
+        }
+
+        It 'passes for PyPI trusted publishing without password' {
+                $wf = @([PSCustomObject]@{
+                        Name = 'publish-pypi.yml'
+                        Path = '.github/workflows/publish-pypi.yml'
+                        Content = @'
+name: Publish
+on: release
+permissions:
+    id-token: write
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: pypa/gh-action-pypi-publish@release/v1
+'@
+                })
+
+                $results = Test-PublishIntegrity -WorkflowFiles $wf
+                $results[0].Status | Should -Be 'Pass'
+        }
+
+        It 'fails for PyPI publish when password input is used' {
+                $wf = @([PSCustomObject]@{
+                        Name = 'publish-pypi.yml'
+                        Path = '.github/workflows/publish-pypi.yml'
+                        Content = @'
+name: Publish
+on: release
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: pypa/gh-action-pypi-publish@release/v1
+                with:
+                    password: ${{ secrets.PYPI_API_TOKEN }}
+'@
+                })
+
+                $results = Test-PublishIntegrity -WorkflowFiles $wf
+                $results[0].Status | Should -Be 'Fail'
+        }
+
+        It 'fails when docker push is configured without attestation' {
+                $wf = @([PSCustomObject]@{
+                        Name = 'container.yml'
+                        Path = '.github/workflows/container.yml'
+                        Content = @'
+name: Container
+on: push
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: docker/build-push-action@v6
+                with:
+                    push: true
+'@
+                })
+
+                $results = Test-PublishIntegrity -WorkflowFiles $wf
+                $results[0].Status | Should -Be 'Fail'
+                $results[0].Detail | Should -Match 'docker/build-push-action'
+        }
+
+        It 'fails mixed workflows when one publish path lacks integrity controls' {
+                $wf = @([PSCustomObject]@{
+                        Name = 'mixed.yml'
+                        Path = '.github/workflows/mixed.yml'
+                        Content = @'
+name: Mixed
+on: push
+permissions:
+    id-token: write
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        steps:
+            - run: npm publish --provenance
+            - uses: docker/build-push-action@v6
+                with:
+                    push: true
+'@
+                })
+
+                $results = Test-PublishIntegrity -WorkflowFiles $wf
+                $results[0].Status | Should -Be 'Fail'
+        }
 }

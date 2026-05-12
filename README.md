@@ -29,14 +29,79 @@ Invoke-Fylgyr -Owner 'myorg'
 > Requires PowerShell 7+ and a GitHub token. Fylgyr reads `$env:GITHUB_TOKEN` by default, or you can pass `-Token` explicitly:
 >
 > ```powershell
-> $env:GITHUB_TOKEN = 'github_pat_...'
+> # Preferred: load from SecretManagement (or your secret manager)
+> $env:GITHUB_TOKEN = Get-Secret -Name 'FYLGYR_PAT' -AsPlainText
 > Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo'
+>
+> # Fallback: masked interactive prompt
+> # $env:GITHUB_TOKEN = Read-Host -Prompt 'GitHub token' -MaskInput
 >
 > # Or pass a different token for a single call
 > Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Token $otherToken
 > ```
 >
 > **Fylgyr strongly recommends [fine-grained PATs](docs/PERMISSIONS.md#recommended-token--fine-grained-pat)** — every check works with least-privilege fine-grained permissions, and no feature requires a classic PAT. Never hardcode tokens; load them from a secret manager.
+
+## Maintainer Quickstart
+
+If you maintain a personal open-source repo, start here.
+
+1. Install and run once locally:
+
+```powershell
+Install-Module Fylgyr -Repository PSGallery -Force
+$env:GITHUB_TOKEN = Get-Secret -Name 'FYLGYR_PAT' -AsPlainText
+Invoke-Fylgyr -Owner 'your-user-or-org' -Repo 'your-repo' -OutputFormat Console
+Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
+```
+
+2. Add the drop-in workflow from `examples/maintainer/fylgyr.yml`.
+
+```yaml
+name: Fylgyr Maintainer Scan
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/*.yml'
+      - '.github/workflows/*.yaml'
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  fylgyr:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Install Fylgyr
+        shell: pwsh
+        run: Install-Module -Name Fylgyr -Repository PSGallery -Force -Scope CurrentUser
+      - name: Run Fylgyr scan (SARIF)
+        shell: pwsh
+        run: |
+          Invoke-Fylgyr -Owner '${{ github.repository_owner }}' `
+                        -Repo '${{ github.event.repository.name }}' `
+                        -OutputFormat SARIF `
+            | Out-File -FilePath fylgyr.sarif -Encoding utf8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload SARIF
+        if: always() && hashFiles('fylgyr.sarif') != ''
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13
+        with:
+          sarif_file: fylgyr.sarif
+```
+
+This workflow intentionally does not fail PRs on findings. It uploads findings to Security > Code scanning for triage.
+
+Read the full maintainer guide: [docs/MAINTAINER-GUIDE.md](docs/MAINTAINER-GUIDE.md).
 
 ## Sample Output
 
@@ -62,7 +127,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -OutputFormat Console
 Invoke-Fylgyr -Owner 'myorg' -OutputFormat Console
 ```
 
-Abridged example (a real scan runs ~18 checks per repo):
+Abridged example (a real scan runs ~19 checks per repo):
 
 ```
   Fylgyr Supply-Chain Audit: myorg
@@ -176,7 +241,7 @@ The workflow uses the built-in `GITHUB_TOKEN` with minimal permissions:
 | `contents: read` | Read workflow files and repository content |
 | `security-events: write` | Upload SARIF results to Code Scanning |
 
-These two permissions are the only valid `GITHUB_TOKEN` scopes needed. They cover the workflow-based checks (ActionPinning, DangerousTrigger, WorkflowPermission, RunnerHygiene, EgressControl, ForkPullPolicy, CodeScanning).
+These two permissions are the only valid `GITHUB_TOKEN` scopes needed. They cover the workflow-based checks (ActionPinning, DangerousTrigger, WorkflowPermission, RunnerHygiene, PublishIntegrity, EgressControl, ForkPullPolicy, CodeScanning).
 
 #### Repo-level checks that need a PAT
 
@@ -263,11 +328,12 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud` |
 | `DangerousTrigger` | `pull_request_target` / `workflow_run` with untrusted code checkout, missing actor restrictions, secret exposure in PRT context | Critical | `nx-pwn-request`, `prt-scan-ai-automated`, `trivy-supply-chain-2026`, `azure-karpenter-pwn-request`, `hackerbot-claw` |
 | `WorkflowPermission` | Missing top-level `permissions:` block in workflow files | Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
+| `PublishIntegrity` | Publish workflows missing provenance, trusted publishing, or artifact signing signals | High | `shai-hulud-npm-worm`, `lottie-player-npm-compromise`, `ua-parser-js-npm-compromise`, `bitwarden-cli-2026-04`, `event-stream-hijack` |
 | `EgressControl` | Missing or audit-only network egress filtering in workflows | Medium | `tj-actions-shai-hulud`, `trivy-supply-chain-2026`, `codecov-bash-uploader` |
 | `ForkSecretExposure` | Secrets accessible to fork PRs, unprotected environments, unrestricted org secrets | Critical | `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request` |
 | `GitHubAppSecurity` | Overly permissive GitHub App installations (org or user account) | Critical | `github-app-token-theft` |
 | `BranchProtection` | Weak or missing default branch protection rules | High | `codecov-bash-uploader` |
-| `SecretScanning` | Secret Scanning not enabled or unresolved alerts | High | `uber-credential-leak` |
+| `SecretScanning` | Secret Scanning disabled, high/critical open alerts, or alert telemetry unavailable to token scope | High | `committed-credentials-exposure`, `uber-credential-leak`, `axios-npm-token-leak` |
 | `DependabotAlert` | Open critical/high Dependabot vulnerability alerts | High | `event-stream-hijack`, `solarwinds-orion` |
 | `CodeScanning` | Code Scanning not configured or stale analyses | Medium | `solarwinds-orion` |
 | `RunnerHygiene` | Risky self-hosted runner configurations, org-wide runner groups, non-ephemeral runners, public repo runners | High | `github-actions-cryptomining`, `praetorian-runner-pivot` |
@@ -323,6 +389,10 @@ Every finding maps to a real-world supply chain incident. The full catalog lives
 | `unauthorized-env-deployment` | Unauthorized deployment via unprotected environment | pattern |
 | `toyota-source-exposure` | Toyota source code public repository exposure | 2022-10 |
 | `committed-credentials-exposure` | Committed credentials exposure (Uber 2016, Toyota 2022) | 2016-ongoing |
+| `shai-hulud-npm-worm` | Shai-Hulud npm worm | 2025-09 |
+| `lottie-player-npm-compromise` | lottie-player npm compromise | 2024-10 |
+| `ua-parser-js-npm-compromise` | ua-parser-js npm compromise | 2021-10 |
+| `bitwarden-cli-2026-04` | Bitwarden CLI npm compromise | 2026-04 |
 
 ## Security Posture
 
@@ -363,6 +433,7 @@ src/Fylgyr/
 │   ├── Test-GitHubAppSecurity.ps1
 │   ├── Test-RepoVisibility.ps1
 │   ├── Test-RunnerHygiene.ps1
+│   ├── Test-PublishIntegrity.ps1
 │   ├── Test-SecretScanning.ps1
 │   ├── Test-SignedCommit.ps1
 │   ├── Test-WebhookSecurity.ps1
@@ -371,6 +442,7 @@ src/Fylgyr/
 ├── Private/
 │   ├── Invoke-GitHubApi.ps1       # REST/GraphQL wrapper with pagination
 │   ├── Get-WorkflowFile.ps1       # Fetches workflows via Git Trees API
+│   ├── Get-FylgyrOwnerContext.ps1 # Owner/persona context helper (type, plan, token owner)
 │   ├── Format-FylgyrResult.ps1    # Standardized result schema
 │   ├── ConvertTo-FylgyrJson.ps1   # JSON output formatter
 │   ├── ConvertTo-FylgyrSarif.ps1  # SARIF 2.1.0 output formatter

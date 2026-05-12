@@ -398,6 +398,90 @@
     ]
   },
   {
+    "id": "shai-hulud-npm-worm",
+    "name": "Shai-Hulud npm worm",
+    "date": "2025-09-01",
+    "description": "A self-propagating npm supply chain campaign that compromised maintainer publish tokens, pushed malicious versions of legitimate packages, and harvested additional credentials from CI environments. The package-registry phase relied on token-backed publishing without strong provenance controls.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://sysdig.com/blog/shai-hulud-npm-supply-chain-attack/",
+      "https://www.aikido.dev/blog/shai-hulud-npm-worm"
+    ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-5"],
+    "mitre": ["T1195.002", "T1552.001"],
+    "detectionSignals": [
+      "npm publish in CI without --provenance",
+      "Long-lived NPM_TOKEN or NODE_AUTH_TOKEN used for publishing",
+      "No OIDC trusted publishing relationship for npm",
+      "Publish pipeline changes without workflow path ownership controls"
+    ]
+  },
+  {
+    "id": "lottie-player-npm-compromise",
+    "name": "lottie-player npm compromise",
+    "date": "2024-10-31",
+    "description": "Compromised maintainer npm credentials were used to publish malicious lottie-player versions containing wallet-drainer behavior. The incident demonstrated how token theft on a single maintainer account can cascade to hundreds of thousands of downstream websites.",
+    "affectedPackages": [
+      "lottie-player"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.lottiefiles.com/blog/working-with-lottie/lottie-player-security-incident"
+    ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-5"],
+    "mitre": ["T1195.002", "T1552.001"],
+    "detectionSignals": [
+      "npm publish jobs rely on static publish tokens",
+      "No provenance emitted on npm releases",
+      "No environment approval gate for release workflows",
+      "Publishing from mutable branch pushes instead of controlled release refs"
+    ]
+  },
+  {
+    "id": "ua-parser-js-npm-compromise",
+    "name": "ua-parser-js npm compromise",
+    "date": "2021-10-22",
+    "description": "The ua-parser-js maintainer account was compromised and malicious versions were published to npm with credential-stealing and cryptomining payloads. This incident highlighted that highly downloaded packages need hardened publish pipelines and short-lived credentials.",
+    "affectedPackages": [
+      "ua-parser-js"
+    ],
+    "cves": [],
+    "references": [
+      "https://github.com/advisories/GHSA-pjwm-rvh2-c87w",
+      "https://www.sonatype.com/blog/ua-parser-js-npm-package-hacked"
+    ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-5"],
+    "mitre": ["T1195.002", "T1078.004"],
+    "detectionSignals": [
+      "Maintainer uses long-lived publish credentials",
+      "No trusted publishing via OIDC",
+      "No release provenance on published artifacts",
+      "No mandatory review controls for publish workflow changes"
+    ]
+  },
+  {
+    "id": "bitwarden-cli-2026-04",
+    "name": "Bitwarden CLI npm compromise (2026-04)",
+    "date": "2026-04-23",
+    "description": "An attacker compromised a maintainer account, modified the publish workflow, exchanged GitHub Actions OIDC for npm credentials via Trusted Publishing, and released a malicious Bitwarden CLI package with staged credential theft. The campaign targeted developer secrets, cloud tokens, and AI tool configuration files, then propagated through compromised GitHub tokens.",
+    "affectedPackages": [
+      "@bitwarden/cli"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.stepsecurity.io/blog/bitwarden-cli-hijacked-on-npm-bun-staged-credential-stealer-targets-developers-github-actions-and-ai-tools"
+    ],
+    "owaspCiCd": ["CICD-SEC-4", "CICD-SEC-5", "CICD-SEC-3"],
+    "mitre": ["T1195.002", "T1552.001", "T1078.004"],
+    "detectionSignals": [
+      "Publish workflow has id-token: write without environment gating",
+      "Publish workflow triggered by push instead of release or tag",
+      "Workflow path changes are not protected by CODEOWNERS",
+      "Trusted publishing enabled but lacking human approval guardrails"
+    ]
+  },
+  {
     "id": "committed-credentials-exposure",
     "name": "Committed credentials exposure",
     "date": "2016-10-01",
