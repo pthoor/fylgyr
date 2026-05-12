@@ -16,6 +16,18 @@ function Test-GitHubAppSecurity {
     $ownerContext = Get-FylgyrOwnerContext -Owner $Owner -Token $Token
     $ownerType = $ownerContext.Type
 
+    if ($ownerType -eq 'Unknown') {
+        $results.Add((Format-FylgyrResult `
+            -CheckName 'GitHubAppSecurity' `
+            -Status 'Error' `
+            -Severity 'Medium' `
+            -Resource $resource `
+            -Detail "Could not resolve owner type for '$Owner'. GitHub App installation audit cannot determine whether to use user or organization endpoints." `
+            -Remediation 'Verify the owner name is correct and the token can access owner metadata, then rerun the check.' `
+            -Target $resource))
+        return $results.ToArray()
+    }
+
     $installationsResponse = $null
     $auditScope = $null
 

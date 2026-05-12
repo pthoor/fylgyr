@@ -1256,6 +1256,23 @@ Describe 'Test-GitHubAppSecurity user accounts' {
         }
     }
 
+    It 'returns Error when owner type cannot be resolved and does not call org endpoint' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/missing-owner') { throw '404 Not Found' }
+            throw "unexpected endpoint: $Endpoint"
+        }
+
+        $results = Test-GitHubAppSecurity -Owner 'missing-owner' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Error'
+        $results[0].Detail | Should -Match 'Could not resolve owner type'
+
+        Assert-MockCalled -ModuleName Fylgyr Invoke-GitHubApi -Times 0 -ParameterFilter {
+            $Endpoint -eq 'orgs/missing-owner/installations'
+        }
+    }
+
     It 'audits personal account when token owner matches' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             param($Endpoint)
@@ -1763,7 +1780,8 @@ jobs:
                 $results = Test-PublishIntegrity -WorkflowFiles $wf
                 $results | Should -HaveCount 1
                 $results[0].Status | Should -Be 'Pass'
-                $results[0].Detail | Should -Match 'Test-OidcTrust'
+                $results[0].Detail | Should -Match 'OIDC trust hardening'
+                $results[0].Detail | Should -Not -Match 'Test-OidcTrust'
         }
 
         It 'fails for npm publish without provenance when token auth is present' {

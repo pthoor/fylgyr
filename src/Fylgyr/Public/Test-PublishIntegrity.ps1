@@ -126,7 +126,7 @@ function Test-PublishIntegrity {
 
         $crossCheckNote = ''
         if ($hasNpmPublish -and $hasNpmProvenance -and $hasIdTokenWrite) {
-            $crossCheckNote = ' npm publish uses OIDC-oriented provenance controls. Also verify Test-OidcTrust passes; OIDC without environment gating was exploited in the Bitwarden CLI 2026-04 compromise.'
+            $crossCheckNote = ' npm publish uses OIDC-oriented provenance controls. Also verify OIDC trust hardening on publish jobs: use protected environments with required reviewers and trusted ref restrictions; OIDC without environment gating was exploited in the Bitwarden CLI 2026-04 compromise.'
         }
 
         $results.Add((Format-FylgyrResult `
