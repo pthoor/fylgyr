@@ -162,6 +162,30 @@ Describe 'Test-BranchProtection' {
         $results[0].Status | Should -Be 'Error'
     }
 
+    It 'returns Error when classic protection is forbidden and rulesets are readable but inconclusive' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'repos/org/repo') {
+                return [PSCustomObject]@{ default_branch = 'main' }
+            }
+
+            if ($Endpoint -eq 'repos/org/repo/branches/main/protection') {
+                throw '403 Forbidden'
+            }
+
+            if ($Endpoint -eq 'repos/org/repo/rulesets') {
+                return @()
+            }
+
+            throw 'unexpected endpoint'
+        }
+
+        $results = Test-BranchProtection -Owner 'org' -Repo 'repo' -Token 'fake-token'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Error'
+        $results[0].Detail | Should -BeLike '*Insufficient permissions*'
+    }
+
     It 'fails when force pushes are allowed' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             param($Endpoint)

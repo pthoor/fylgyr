@@ -154,6 +154,25 @@
             }
         }
 
+        if ($classicProtectionState -eq 'Forbidden') {
+            $rulesetContext = if ($activeBranchRulesets.Count -gt 0) {
+                "Detected $($activeBranchRulesets.Count) active branch ruleset(s) for '$defaultBranch', but classic branch protection could not be read."
+            }
+            else {
+                "No active branch rulesets targeting '$defaultBranch' were readable."
+            }
+
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'BranchProtection' `
+                -Status 'Error' `
+                -Severity 'High' `
+                -Resource $resource `
+                -Detail "Insufficient permissions to fully evaluate branch protection (classic branch protection endpoint returned 403). $rulesetContext" `
+                -Remediation 'Use a fine-grained token with Administration:read permission, or a classic token with repo scope.' `
+                -Target $target))
+            return $results.ToArray()
+        }
+
         if ($activeBranchRulesets.Count -eq 0) {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'BranchProtection' `
