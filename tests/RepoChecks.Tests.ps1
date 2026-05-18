@@ -27,6 +27,111 @@ Describe 'Test-BranchProtection' {
         $results[0].Status | Should -Be 'Pass'
     }
 
+    It 'passes when classic protection is absent but branch ruleset provides equivalent controls' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'repos/org/repo') {
+                return [PSCustomObject]@{ default_branch = 'main' }
+            }
+
+            if ($Endpoint -eq 'repos/org/repo/branches/main/protection') {
+                throw '404 Not Found'
+            }
+
+            if ($Endpoint -eq 'repos/org/repo/rulesets') {
+                return @(
+                    [PSCustomObject]@{
+                        target = 'branch'
+                        enforcement = 'active'
+                        conditions = [PSCustomObject]@{
+                            ref_name = [PSCustomObject]@{
+                                include = @('refs/heads/main')
+                            }
+                        }
+                        rules = @(
+                            [PSCustomObject]@{ type = 'non_fast_forward' }
+                            [PSCustomObject]@{ type = 'deletion' }
+                            [PSCustomObject]@{
+                                type = 'pull_request'
+                                parameters = [PSCustomObject]@{
+                                    required_approving_review_count = 1
+                                    dismiss_stale_reviews_on_push = $true
+                                }
+                            }
+                            [PSCustomObject]@{ type = 'required_status_checks' }
+                        )
+                    }
+                )
+            }
+
+            throw 'unexpected endpoint'
+        }
+
+        $results = Test-BranchProtection -Owner 'org' -Repo 'repo' -Token 'fake-token'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+        $results[0].Detail | Should -BeLike '*ruleset*'
+    }
+
+    It 'passes when ruleset list omits rules but detail endpoint contains required controls' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'repos/org/repo') {
+                return [PSCustomObject]@{ default_branch = 'main' }
+            }
+
+            if ($Endpoint -eq 'repos/org/repo/branches/main/protection') {
+                throw '404 Not Found'
+            }
+
+            if ($Endpoint -eq 'repos/org/repo/rulesets') {
+                return @(
+                    [PSCustomObject]@{
+                        id = 42
+                        target = 'branch'
+                        enforcement = 'active'
+                        conditions = [PSCustomObject]@{
+                            ref_name = [PSCustomObject]@{
+                                include = @('refs/heads/main')
+                            }
+                        }
+                    }
+                )
+            }
+
+            if ($Endpoint -eq 'repos/org/repo/rulesets/42') {
+                return [PSCustomObject]@{
+                    id = 42
+                    target = 'branch'
+                    enforcement = 'active'
+                    conditions = [PSCustomObject]@{
+                        ref_name = [PSCustomObject]@{
+                            include = @('refs/heads/main')
+                        }
+                    }
+                    rules = @(
+                        [PSCustomObject]@{ type = 'non_fast_forward' }
+                        [PSCustomObject]@{ type = 'deletion' }
+                        [PSCustomObject]@{
+                            type = 'pull_request'
+                            parameters = [PSCustomObject]@{
+                                required_approving_review_count = 1
+                                dismiss_stale_reviews_on_push = $true
+                            }
+                        }
+                        [PSCustomObject]@{ type = 'required_status_checks' }
+                    )
+                }
+            }
+
+            throw 'unexpected endpoint'
+        }
+
+        $results = Test-BranchProtection -Owner 'org' -Repo 'repo' -Token 'fake-token'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
     It 'fails when no branch protection exists (404)' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             param($Endpoint)

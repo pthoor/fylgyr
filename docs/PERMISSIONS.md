@@ -26,7 +26,7 @@ Fylgyr authenticates to GitHub using a token from `$env:GITHUB_TOKEN` (or `-Toke
 Fylgyr is **read-only**. It never writes to GitHub, never modifies settings, and never stores tokens. All permissions below are *Read-only*.
 
 - ✅ **Repository read access to** actions, administration, code (contents), code scanning alerts, commit statuses, dependabot alerts, environments, metadata, pull requests, and secret scanning alerts
-- ✅ **Organization read access to** administration, members, and (optionally) Actions secrets — only required for org-level checks such as `Test-RunnerHygiene`, `Test-GitHubAppSecurity`, and `Test-ForkSecretExposure`
+- ✅ **Organization read access to** administration, members, and (optionally) Actions secrets — required for org-level checks such as `Test-OrgMfaPolicy`, `Test-OrgDefaultPermissions`, `Test-IpAllowlist`, `Test-AuditLogStreaming`, `Test-OAuthAppPolicy`, `Test-OrgActionRestrictions`, `Test-OutsideCollaborators`, `Test-PatPolicy`, and `Test-GitHubAppSecurity`
 - 🚫 **No write access** to any resource
 - 🚫 **No access to** user email, followers, gists, personal profile data, billing, or any resource not listed above
 
@@ -65,6 +65,9 @@ Create at <https://github.com/settings/personal-access-tokens/new>.
 
 Required classic scopes: `repo` (full), `read:org`, `security_events`, `workflow`. Create at <https://github.com/settings/tokens/new>.
 
+> [!NOTE]
+> `Test-IpAllowlist` uses the GitHub GraphQL API. If REST endpoints appear to work but this check returns permission errors, validate that your token has org-level read/admin visibility compatible with GraphQL org queries.
+
 ## Per-check permission matrix
 
 | Check | GitHub API endpoints used | Fine-grained PAT permissions |
@@ -80,8 +83,17 @@ Required classic scopes: `repo` (full), `read:org`, `security_events`, `workflow
 | `Test-EnvironmentProtection` | `repos/{o}/{r}/environments` | Environments: read, Administration: read |
 | `Test-ForkPullPolicy` | Workflow files (`.github/workflows/*`) | Contents: read |
 | `Test-ForkSecretExposure` | `repos/{o}/{r}/environments`, `orgs/{o}/actions/secrets` | Environments: read, **Org Secrets: read** |
+| `Test-IpAllowlist` | GraphQL `organization { ipAllowListEntries }` | Organization Administration: read |
+| `Test-OrgMfaPolicy` | `orgs/{o}` | Organization Administration: read |
+| `Test-OrgDefaultPermissions` | `orgs/{o}` | Organization Administration: read |
+| `Test-AuditLogStreaming` | `orgs/{o}/audit-log/stream-key` | Organization Administration: read |
+| `Test-Rulesets` | `repos/{o}/{r}/rulesets`, `orgs/{o}/rulesets`, `repos/{o}/{r}/tags/protection` | Administration: read (repo + org) |
+| `Test-OAuthAppPolicy` | `orgs/{o}/third-party-application-policy` | Organization Administration: read |
+| `Test-OrgActionRestrictions` | `orgs/{o}/actions/permissions` | Organization Administration: read |
+| `Test-OutsideCollaborators` | `orgs/{o}/outside_collaborators`, `repos/{o}/{r}/collaborators/{u}/permission` | Organization Members: read, Repository Administration: read |
+| `Test-PatPolicy` | `orgs/{o}/personal-access-token-requests`, `orgs/{o}/personal-access-tokens` | Organization Administration: read |
 | `Test-BinaryArtifact` | `repos/{o}/{r}`, `repos/{o}/{r}/git/trees/{sha}?recursive=1` | Contents: read |
-| `Test-GitHubAppSecurity` | `orgs/{o}/installations`, `user/installations` | Org Administration: read |
+| `Test-GitHubAppSecurity` | `orgs/{o}/installations` | Organization Administration: read |
 | `Test-RepoVisibility` | `repos/{o}/{r}` | Metadata: read |
 | `Test-RunnerHygiene` | `repos/{o}/{r}/actions/runners`, `orgs/{o}/actions/runners`, `orgs/{o}/actions/runner-groups` | Administration: read (repo + org) |
 | `Test-SecretScanning` | `repos/{o}/{r}/secret-scanning/alerts` | Secret scanning alerts: read |
@@ -98,7 +110,7 @@ All checks additionally require **Metadata: read** — this is mandatory for eve
 | `Failed to retrieve repository info ... 404 Not Found` on a repo you know exists | Fine-grained PAT not approved by the target org | Ask an org owner to approve the token in **Org settings → Personal access tokens → Pending requests** |
 | `403 Resource not accessible by personal access token` | Missing permission for that specific endpoint | Check the matrix above and add the corresponding permission |
 | `401 Bad credentials` | Token expired, revoked, or not exported | Regenerate and set `$env:GITHUB_TOKEN` |
-| Org-level checks (`Test-RunnerHygiene`, `Test-GitHubAppSecurity`) return `Error` while repo-level checks pass | Token has repo permissions but no org permissions | Add **Org Administration: read** |
+| Org-level checks (`Test-OrgMfaPolicy`, `Test-OrgDefaultPermissions`, `Test-IpAllowlist`, `Test-AuditLogStreaming`, `Test-OAuthAppPolicy`, `Test-OrgActionRestrictions`, `Test-OutsideCollaborators`, `Test-PatPolicy`, `Test-GitHubAppSecurity`, `Test-RunnerHygiene`) return `Error` while repo-level checks pass | Token has repo permissions but no org permissions | Add **Org Administration: read** and **Org Members: read** as needed |
 | `Test-ForkSecretExposure` skips org-secret enumeration | Missing **Org Secrets: read** | Optional — add only if you need org-wide secret visibility |
 
 ## Why not a GitHub App?

@@ -113,6 +113,7 @@ Describe 'ConvertTo-FylgyrSarif' {
             $results = @(
                 (Format-FylgyrResult -CheckName 'RepositorySettings' -Status 'Fail' -Severity 'High' -Resource 'pthoor/fylgyr' -Detail 'Settings issue' -Remediation 'Update repository settings.')
                 (Format-FylgyrResult -CheckName 'RepositorySettings' -Status 'Fail' -Severity 'High' -Resource 'org/repo.name' -Detail 'Dotted repo' -Remediation 'Update repository settings.')
+                (Format-FylgyrResult -CheckName 'OrgMfaPolicy' -Status 'Fail' -Severity 'High' -Resource 'org/acme' -Detail 'Org setting issue' -Remediation 'Update organization settings.')
             )
             ConvertTo-FylgyrSarif -Results $results
         }
@@ -129,6 +130,11 @@ Describe 'ConvertTo-FylgyrSarif' {
         $dottedResult = $sarif.runs[0].results[1]
         $dottedResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be 'SECURITY.md'
         $dottedResult.locations[0].message.text | Should -Be 'Repository setting: org/repo.name'
+
+        # Organization-level resource should use org sentinel message text
+        $orgResult = $sarif.runs[0].results[2]
+        $orgResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be 'SECURITY.md'
+        $orgResult.locations[0].message.text | Should -Be 'Organization setting: org/acme'
     }
 }
 
@@ -149,6 +155,81 @@ Describe 'Write-FylgyrConsole' {
                 Write-FylgyrConsole -Results $results -Target 'org/repo'
             }
         } | Should -Not -Throw
+    }
+
+    It 'prints prioritized recommendations for branch and tag findings' {
+        InModuleScope Fylgyr {
+            $script:capturedConsole = [System.Collections.Generic.List[string]]::new()
+            Mock Write-Host {
+                param(
+                    [Parameter(Position = 0)]
+                    [AllowNull()]
+                    [object]$Object,
+
+                    [Parameter()]
+                    [AllowNull()]
+                    [object]$ForegroundColor,
+
+                    [Parameter()]
+                    [switch]$NoNewline
+                )
+
+                if ($null -ne $Object) {
+                    $script:capturedConsole.Add([string]$Object) | Out-Null
+                }
+            }
+
+            $results = @(
+                (Format-FylgyrResult -CheckName 'BranchProtection' -Status 'Fail' -Severity 'Medium' -Resource 'org/repo (branch: main)' -Detail "Active branch ruleset for 'main' allows 0 approving reviews." -Remediation 'Set required approving review count to at least 1 in the pull_request ruleset configuration.' -Target 'org/repo')
+                (Format-FylgyrResult -CheckName 'Rulesets' -Status 'Fail' -Severity 'High' -Resource 'org/repo' -Detail 'No active tag protection found (ruleset target: tag or legacy tag protection).' -Remediation 'Add an active tag-target ruleset and protect v* tags.' -Target 'org/repo')
+            )
+
+            Write-FylgyrConsole -Results $results -Target 'org/repo'
+
+            $output = $script:capturedConsole -join "`n"
+            $output | Should -Match 'Prioritized Recommendations'
+            $output | Should -Match 'Protect release tags'
+            $output | Should -Match 'required approval|approving review'
+        }
+    }
+
+    It 'prints org and repo hardening recommendations for critical governance gaps' {
+        InModuleScope Fylgyr {
+            $script:capturedConsole = [System.Collections.Generic.List[string]]::new()
+            Mock Write-Host {
+                param(
+                    [Parameter(Position = 0)]
+                    [AllowNull()]
+                    [object]$Object,
+
+                    [Parameter()]
+                    [AllowNull()]
+                    [object]$ForegroundColor,
+
+                    [Parameter()]
+                    [switch]$NoNewline
+                )
+
+                if ($null -ne $Object) {
+                    $script:capturedConsole.Add([string]$Object) | Out-Null
+                }
+            }
+
+            $results = @(
+                (Format-FylgyrResult -CheckName 'OrgMfaPolicy' -Status 'Fail' -Severity 'Critical' -Resource 'org/acme' -Detail 'Organization does not require two-factor authentication for all members.' -Remediation 'Enable MFA requirement.' -Target 'org/acme')
+                (Format-FylgyrResult -CheckName 'OrgActionRestrictions' -Status 'Fail' -Severity 'High' -Resource 'org/acme' -Detail "Organization allows 'all' action usage." -Remediation 'Set allowed_actions to selected.' -Target 'org/acme')
+                (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'High' -Resource '.github/workflows/ci.yml:14' -Detail 'Unpinned action reference: actions/checkout@v4' -Remediation 'Pin action.' -Target 'acme/repo')
+                (Format-FylgyrResult -CheckName 'BranchProtection' -Status 'Fail' -Severity 'High' -Resource 'acme/repo (branch: main)' -Detail "Branch 'main' has no classic branch protection and no active branch ruleset targeting it." -Remediation 'Enable branch protection.' -Target 'acme/repo')
+            )
+
+            Write-FylgyrConsole -Results $results -Target 'acme/repo'
+
+            $output = $script:capturedConsole -join "`n"
+            $output | Should -Match 'Enforce organization-wide MFA'
+            $output | Should -Match 'Restrict organization actions'
+            $output | Should -Match 'Pin third-party actions'
+            $output | Should -Match 'Add active branch protection'
+        }
     }
 }
 
@@ -174,6 +255,7 @@ Describe 'Invoke-Fylgyr OutputFormat' {
         Mock -ModuleName Fylgyr Test-SecretScanning   { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-DependabotAlert  { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-CodeScanning     { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-Rulesets         { return @($stubResult) }
     }
 
     It 'returns JSON string when OutputFormat is JSON' {

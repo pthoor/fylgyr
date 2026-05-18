@@ -24,3 +24,17 @@ Thumbs.db
 
 # Local planning docs
 plans/
+
+# Claude Code local config and memory (settings.local.json, commands, memory)
+.claude/
+
+# Local-only spec / scratch docs
+docs/HTML-MVP-SPEC.md
+docs/RELEASE-TESTING.md
+
+# Credential and environment files
+.env
+*.env
+secrets.json
+*secrets*.json
+pester_output.txt

@@ -5,7 +5,9 @@
 [![CI](https://github.com/pthoor/Fylgyr/actions/workflows/ci.yml/badge.svg)](https://github.com/pthoor/Fylgyr/actions/workflows/ci.yml)
 [![PSGallery Version](https://img.shields.io/powershellgallery/v/Fylgyr)](https://www.powershellgallery.com/packages/Fylgyr)
 
-Fylgyr audits GitHub repositories and organizations for supply chain risks by mapping every finding to a real-world attack campaign.
+Fylgyr finds exploitable GitHub supply-chain weaknesses in repositories and organizations, then maps each finding to a real-world attack campaign with actionable remediation.
+
+Built for maintainers and security teams, Fylgyr emphasizes explainable findings over opaque scores and supports console, JSON, and SARIF output for local triage and CI integration.
 
 Unlike score-based tools such as [OpenSSF Scorecard](https://securityscorecards.dev/), Fylgyr is **attack-mapped, not score-based**. Every finding explains which known campaign it aligns with and why that behavior matters.
 
@@ -24,6 +26,9 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo'
 
 # Scan all repositories in an organization
 Invoke-Fylgyr -Owner 'myorg'
+
+# Scan organization repositories + org-level policy controls (opt-in)
+Invoke-Fylgyr -Owner 'myorg' -IncludeOrgChecks
 ```
 
 > Requires PowerShell 7+ and a GitHub token. Fylgyr reads `$env:GITHUB_TOKEN` by default, or you can pass `-Token` explicitly:
@@ -103,6 +108,38 @@ This workflow intentionally does not fail PRs on findings. It uploads findings t
 
 Read the full maintainer guide: [docs/MAINTAINER-GUIDE.md](docs/MAINTAINER-GUIDE.md).
 
+## Recommended Protection Baseline
+
+Use this baseline as the default hardening profile for repositories scanned by Fylgyr.
+
+### Branch protection (default branch)
+
+- Require pull requests before merge.
+- Require status checks to pass and require branches to be up to date.
+- Block force-pushes (non-fast-forward updates).
+- Block branch deletion.
+- Require signed commits.
+- Require stale review dismissal on new commits.
+
+Recommended approval policy:
+
+- Team-maintained repo: require at least 1 approving review.
+- Solo-maintainer repo: allowing 0 approvals can be an acceptable tradeoff when the controls above are enforced and documented.
+
+### Tag protection (release tags)
+
+- Add a tag ruleset for release patterns (for example `v*`).
+- Prevent untrusted creation, update, or deletion of protected tags.
+- Keep release tags immutable after publication.
+
+Rationale: mutable release tags are a common supply-chain attack path (for example producer-side tag poisoning).
+
+### Workflow egress controls
+
+- Enforce workflow egress filtering in `block` mode (not audit-only).
+- Place the egress-control step first in each job and allowlist only required endpoints.
+- Supported options include `step-security/harden-runner`, `code-cargo/cargowall-action`, and `bullfrogsec/bullfrog`.
+
 ## Sample Output
 
 ### Object output (default)
@@ -114,7 +151,7 @@ Severity           : High
 Resource           : .github/workflows/ci.yml:12
 Detail             : Unpinned action reference: actions/checkout@v4
 Remediation        : Pin this action to a full 40-character commit SHA instead of a tag or branch.
-AttackMapping      : {trivy-tag-poisoning, tj-actions-shai-hulud}
+AttackMapping      : {trivy-tag-poisoning, tj-actions-shai-hulud, actions-cool-issues-helper-compromise}
 ```
 
 ### Colored console output
@@ -139,12 +176,12 @@ Abridged example (a real scan runs ~19 checks per repo):
         Resource:    .github/workflows/ci.yml:12
         Severity:    High
         Remediation: Pin this action to a full 40-character commit SHA instead of a tag or branch.
-        Attacks:     trivy-tag-poisoning, tj-actions-shai-hulud
+        Attacks:     trivy-tag-poisoning, tj-actions-shai-hulud, actions-cool-issues-helper-compromise
       [FAIL] Unpinned action reference: actions/setup-node@v3
         Resource:    .github/workflows/ci.yml:15
         Severity:    High
         Remediation: Pin this action to a full 40-character commit SHA instead of a tag or branch.
-        Attacks:     trivy-tag-poisoning, tj-actions-shai-hulud
+        Attacks:     trivy-tag-poisoning, tj-actions-shai-hulud, actions-cool-issues-helper-compromise
 
     > DangerousTrigger  [PASS]
         No dangerous trigger patterns found. (2 files)
@@ -262,6 +299,8 @@ Several checks require a **Personal Access Token** (PAT) because the workflow `G
 
 Without a PAT these checks gracefully report `Status = 'Error'` with a clear message — they won't fail the workflow or block other checks.
 
+Org-level policy checks (`-IncludeOrgChecks`) additionally require organization-level visibility (`read:org` / `admin:org` on classic tokens, or equivalent organization read permissions on fine-grained tokens). Some controls are enterprise-only and downgrade to `Info` when the feature is unavailable.
+
 > See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the full per-check permission matrix, the recommended least-privilege fine-grained PAT, guidance on classic PAT fallback, and troubleshooting for the common `404 Not Found` error caused by org-level fine-grained PAT approval.
 
 To enable them, create a fine-grained PAT, add it as a repository secret (e.g., `FYLGYR_TOKEN`), and update the workflow step:
@@ -295,6 +334,16 @@ Omit `-Repo` to scan every repository under an owner or organization:
 Invoke-Fylgyr -Owner 'myorg'
 ```
 
+### Organization-wide scan with org policy checks
+
+Use `-IncludeOrgChecks` to run organization-level policy checks once per owner before repository iteration:
+
+```powershell
+Invoke-Fylgyr -Owner 'myorg' -IncludeOrgChecks
+```
+
+Org-level checks are intentionally skipped for single-repository scans (`-Repo`) to keep repo audits focused and deterministic.
+
 ### Pipeline input
 
 ```powershell
@@ -325,13 +374,13 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 
 | Check | Detects | Severity | Attack Mapping |
 |---|---|---|---|
-| `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud` |
+| `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise` |
 | `DangerousTrigger` | `pull_request_target` / `workflow_run` with untrusted code checkout, missing actor restrictions, secret exposure in PRT context | Critical | `nx-pwn-request`, `prt-scan-ai-automated`, `trivy-supply-chain-2026`, `azure-karpenter-pwn-request`, `hackerbot-claw` |
 | `WorkflowPermission` | Missing top-level `permissions:` block in workflow files | Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
 | `PublishIntegrity` | Publish workflows missing provenance, trusted publishing, or artifact signing signals | High | `shai-hulud-npm-worm`, `lottie-player-npm-compromise`, `ua-parser-js-npm-compromise`, `bitwarden-cli-2026-04`, `event-stream-hijack` |
-| `EgressControl` | Missing or audit-only network egress filtering in workflows | Medium | `tj-actions-shai-hulud`, `trivy-supply-chain-2026`, `codecov-bash-uploader` |
+| `EgressControl` | Missing or audit-only network egress filtering in workflows | Medium | `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise`, `trivy-supply-chain-2026`, `codecov-bash-uploader` |
 | `ForkSecretExposure` | Secrets accessible to fork PRs, unprotected environments, unrestricted org secrets | Critical | `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request` |
-| `GitHubAppSecurity` | Overly permissive GitHub App installations (org or user account) | Critical | `github-app-token-theft` |
+| `GitHubAppSecurity` | Overly permissive organization GitHub App installations (including org-admin, all-repos write, and dangerous permission combinations) | Critical | `github-app-token-theft` |
 | `BranchProtection` | Weak or missing default branch protection rules | High | `codecov-bash-uploader` |
 | `SecretScanning` | Secret Scanning disabled, high/critical open alerts, or alert telemetry unavailable to token scope | High | `committed-credentials-exposure`, `uber-credential-leak`, `axios-npm-token-leak` |
 | `DependabotAlert` | Open critical/high Dependabot vulnerability alerts | High | `event-stream-hijack`, `solarwinds-orion` |
@@ -344,6 +393,15 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `RepoVisibility` | Public repositories with internal/private naming patterns | Medium | `toyota-source-exposure` |
 | `WebhookSecurity` | Repository webhooks configured without a secret for payload authentication | Low | `codecov-bash-uploader` |
 | `BinaryArtifact` | Binary files (`.exe`, `.dll`, `.so`, `.jar`, etc.) committed in the repository tree | Low | `solarwinds-orion` |
+| `Rulesets` | Missing modern branch/tag rulesets or missing tag protection | High | `trivy-tag-poisoning`, `actions-cool-issues-helper-compromise`, `trivy-force-push-main` |
+| `OrgMfaPolicy` | Organization does not require MFA for members | Critical | `dropbox-github-breach` |
+| `OrgDefaultPermissions` | Default org repository permission is broader than read/none | High | `gentoo-github-compromise` |
+| `IpAllowlist` | Organization has no IP allowlist entries (enterprise recommendation) | Medium | `github-device-code-phishing`, `uber-credential-leak` |
+| `AuditLogStreaming` | Organization audit log streaming not configured | Medium | `github-device-code-phishing`, `uber-credential-leak` |
+| `OAuthAppPolicy` | Third-party OAuth app restrictions disabled | High | `github-device-code-phishing` |
+| `OrgActionRestrictions` | Organization allows unrestricted third-party GitHub Actions | High | `tj-actions-shai-hulud` |
+| `OutsideCollaborators` | Outside collaborators retain write/admin repository access | High | `uber-credential-leak` |
+| `PatPolicy` | Organization PAT governance cannot be verified or appears weak | High | `uber-credential-leak`, `github-device-code-phishing` |
 
 ## Compatibility
 
@@ -371,6 +429,7 @@ Every finding maps to a real-world supply chain incident. The full catalog lives
 |---|---|---|
 | `trivy-tag-poisoning` | Trivy tag poisoning | 2024-07 |
 | `tj-actions-shai-hulud` | tj-actions/changed-files (Shai-Hulud) token exfiltration | 2025-03 |
+| `actions-cool-issues-helper-compromise` | actions-cool/issues-helper tag hijack | 2026-05 |
 | `nx-pwn-request` | nx/Pwn Request | 2025-01 |
 | `axios-npm-token-leak` | Axios npm token leak | 2024-01 |
 | `trivy-force-push-main` | Trivy force-push to main | 2024-07 |
@@ -393,6 +452,9 @@ Every finding maps to a real-world supply chain incident. The full catalog lives
 | `lottie-player-npm-compromise` | lottie-player npm compromise | 2024-10 |
 | `ua-parser-js-npm-compromise` | ua-parser-js npm compromise | 2021-10 |
 | `bitwarden-cli-2026-04` | Bitwarden CLI npm compromise | 2026-04 |
+| `dropbox-github-breach` | Dropbox GitHub breach | 2022-11 |
+| `gentoo-github-compromise` | Gentoo GitHub organization compromise | 2018-06 |
+| `github-device-code-phishing` | GitHub OAuth device code phishing | 2025-01 |
 
 ## Security Posture
 

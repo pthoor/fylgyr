@@ -19,10 +19,12 @@ Spend 30–60 minutes scanning the sources below and running each new or updated
 | [Aikido blog](https://www.aikido.dev/blog) | Dependency confusion, malicious package campaigns |
 | [Socket research](https://socket.dev/research) | npm/PyPI malicious packages, maintainer account compromises |
 | [Praetorian blog](https://www.praetorian.com/blog/) | Red-team runner pivot, lateral movement case studies |
+| [BleepingComputer](https://www.bleepingcomputer.com/news/security/) | Incident reporting with follow-up corrections and vendor quotes |
 | [Snyk vulnerability DB](https://security.snyk.io/) | New CVEs in CI/CD tooling |
 | [NVD](https://nvd.nist.gov/) | CI/CD-tagged CVEs (filter: GitHub Actions, npm, build systems) |
 | [MITRE ATT&CK updates](https://attack.mitre.org/resources/updates/) | New or revised supply-chain techniques |
 | [Mandiant / Google Cloud threat intel](https://cloud.google.com/blog/topics/threat-intelligence) | Nation-state supply chain campaigns |
+| [Ransomware.live](https://ransomware.live/) | Leak-site claim monitoring; treat as unverified until corroborated |
 
 ## Triage rubric
 
@@ -36,6 +38,20 @@ For each new incident, answer three questions:
 
 3. **Does it expose a gap in our checks?**
    → Add to the backlog in `docs/COVERAGE.md` (Roadmap Signal section) as a candidate check with the relevant OWASP/MITRE mapping.
+
+## Claim verification rule
+
+For extortion and leak-site incidents, separate **claims** from **confirmed facts** before editing `attacks.json`:
+
+1. **First-party confirmation preferred**
+   - Vendor disclosure (blog/advisory/status post), regulator filing, or direct incident statement.
+
+2. **Independent corroboration required for attribution**
+   - At least one reputable secondary source (for example, BleepingComputer, Mandiant, major vendor threat intel) in addition to leak-site/tracker claims.
+
+3. **Catalog wording discipline**
+   - If attribution is uncertain, phrase entries as "claimed" or "assessed" and avoid definitive actor linkage.
+   - Keep `detectionSignals` focused on defender-observable behavior, not actor branding.
 
 ## Schema requirements
 

@@ -46,7 +46,7 @@ function Test-ActionPinning {
                 -Resource "$($wf.Path):$lineNum" `
                 -Detail "Unpinned action reference: $target" `
                 -Remediation 'Pin this action to a full 40-character commit SHA instead of a tag or branch.' `
-                -AttackMapping @('trivy-tag-poisoning', 'tj-actions-shai-hulud')))
+                -AttackMapping @('trivy-tag-poisoning', 'tj-actions-shai-hulud', 'actions-cool-issues-helper-compromise')))
         }
 
         if (-not $unpinnedFound) {

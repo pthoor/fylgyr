@@ -93,7 +93,7 @@ function Test-EgressControl {
                     -Resource $wf.Path `
                     -Detail $detail `
                     -Remediation "Switch egress-policy from 'audit' to 'block' to enforce network restrictions. Audit mode is a good first step but does not prevent exfiltration." `
-                    -AttackMapping @('tj-actions-shai-hulud', 'codecov-bash-uploader') `
+                    -AttackMapping @('tj-actions-shai-hulud', 'actions-cool-issues-helper-compromise', 'codecov-bash-uploader') `
                     -Target $null))
             }
             else {
@@ -109,7 +109,7 @@ function Test-EgressControl {
         }
         else {
             $severity = 'Medium'
-            $detail = "Workflow '$($wf.Name)' has no egress controls. Compromised actions or injected code can freely exfiltrate secrets over the network, as seen in the tj-actions/changed-files and Trivy supply chain attacks."
+            $detail = "Workflow '$($wf.Name)' has no egress controls. Compromised actions or injected code can freely exfiltrate secrets over the network, as seen in the tj-actions/changed-files, actions-cool/issues-helper, and Trivy supply chain attacks."
 
             if ($hasNetworkCalls) {
                 $detail += ' This workflow contains network calls (curl, wget, Invoke-WebRequest, or Invoke-RestMethod) that could be exploited without egress filtering.'
@@ -122,7 +122,7 @@ function Test-EgressControl {
                 -Resource $wf.Path `
                 -Detail $detail `
                 -Remediation "Add step-security/harden-runner with egress-policy: block as the first step in each job. Free for public repos, trusted by 11,000+ projects including Microsoft and Google. GitHub's 2026 roadmap includes a native Layer 7 egress firewall (public preview in 3-6 months). Azure VNet integration is available now for Enterprise Cloud customers." `
-                -AttackMapping @('tj-actions-shai-hulud', 'trivy-supply-chain-2026', 'codecov-bash-uploader') `
+                -AttackMapping @('tj-actions-shai-hulud', 'actions-cool-issues-helper-compromise', 'trivy-supply-chain-2026', 'codecov-bash-uploader') `
                 -Target $null))
         }
     }
