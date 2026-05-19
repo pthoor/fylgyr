@@ -279,8 +279,9 @@ function Invoke-FylgyrScan {
             }
         }
         catch {
+            $checkName = if ($entry.Name -like 'Test-*') { $entry.Name.Substring(5) } else { $entry.Name }
             $results.Add((Format-FylgyrResult `
-                -CheckName $entry.Name `
+                -CheckName $checkName `
                 -Status 'Error' `
                 -Severity 'Critical' `
                 -Resource $target `
@@ -335,8 +336,9 @@ function Invoke-FylgyrOrgScan {
             }
         }
         catch {
+            $checkName = if ($entry.Name -like 'Test-*') { $entry.Name.Substring(5) } else { $entry.Name }
             $results.Add((Format-FylgyrResult `
-                -CheckName $entry.Name `
+                -CheckName $checkName `
                 -Status 'Error' `
                 -Severity 'Critical' `
                 -Resource $target `

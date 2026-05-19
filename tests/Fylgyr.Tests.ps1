@@ -552,6 +552,27 @@ jobs:
         Assert-MockCalled -ModuleName Fylgyr Invoke-FylgyrOrgScan -Times 0
     }
 
+    It 'normalizes org-check names when Invoke-FylgyrOrgScan records check errors' {
+        Mock -ModuleName Fylgyr Test-OrgMfaPolicy { throw 'boom' }
+        Mock -ModuleName Fylgyr Test-OrgDefaultPermissions { return @() }
+        Mock -ModuleName Fylgyr Test-IpAllowlist { return @() }
+        Mock -ModuleName Fylgyr Test-AuditLogStreaming { return @() }
+        Mock -ModuleName Fylgyr Test-OAuthAppPolicy { return @() }
+        Mock -ModuleName Fylgyr Test-OrgActionRestrictions { return @() }
+        Mock -ModuleName Fylgyr Test-OutsideCollaborators { return @() }
+        Mock -ModuleName Fylgyr Test-PatPolicy { return @() }
+        Mock -ModuleName Fylgyr Test-GitHubAppSecurity { return @() }
+        Mock -ModuleName Fylgyr Test-Rulesets { return @() }
+
+        $results = InModuleScope Fylgyr {
+            Invoke-FylgyrOrgScan -Owner 'acme' -Token 'fake-token'
+        }
+
+        $errorResult = $results | Where-Object { $_.Status -eq 'Error' } | Select-Object -First 1
+        $errorResult | Should -Not -BeNullOrEmpty
+        $errorResult.CheckName | Should -Be 'OrgMfaPolicy'
+    }
+
     It 'captures a check error without stopping other checks' {
         $fakeWorkflows = @([PSCustomObject]@{
             Name    = 'ci.yml'

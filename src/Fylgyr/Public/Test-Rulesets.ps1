@@ -207,7 +207,7 @@ function Test-Rulesets {
                         ''
                     }
 
-                    $tagContextDetail = " Repository currently has $($repoTags.Count) tag(s).$sampleText"
+                    $tagContextDetail = " Repository has tags (first-page sample from tags API).$sampleText"
                 }
                 else {
                     $tagContextDetail = ' Repository currently has no tags. Configure tag protection before creating release tags.'

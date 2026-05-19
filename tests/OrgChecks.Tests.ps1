@@ -443,7 +443,7 @@ Describe 'Phase 7 org-level checks' {
 
             $results = Test-Rulesets -Owner 'acme' -Repo 'repo' -Token 'fake'
             $results[0].Status | Should -Be 'Fail'
-            $results[0].Detail | Should -BeLike '*tag(s)*'
+            $results[0].Detail | Should -BeLike '*first-page sample*'
             $results[0].Detail | Should -BeLike '*v1.0.0*'
         }
     }

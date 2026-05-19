@@ -89,10 +89,11 @@
             'OutsideCollaborators'
             'PatPolicy'
             'GitHubAppSecurity'
+            'Rulesets'
         )
         $isOrgLevelResource = $orgCheckNames -contains $r.CheckName
-        $isRepoLevelResource = $r.Resource -match '^[^/\s]+/[^/\s]+(?: \(branch: .+\))?$'
-        $isFilePath = -not $isRepoLevelResource
+        $isRepoLevelResource = $r.Resource -match '^[^/\s]+/[^/\s]+(?: \(.+\))?$'
+        $isFilePath = -not ($isRepoLevelResource -or $isOrgLevelResource)
 
         $sarifResult = [PSCustomObject]@{
             ruleId  = $ruleId

@@ -114,6 +114,8 @@ Describe 'ConvertTo-FylgyrSarif' {
                 (Format-FylgyrResult -CheckName 'RepositorySettings' -Status 'Fail' -Severity 'High' -Resource 'pthoor/fylgyr' -Detail 'Settings issue' -Remediation 'Update repository settings.')
                 (Format-FylgyrResult -CheckName 'RepositorySettings' -Status 'Fail' -Severity 'High' -Resource 'org/repo.name' -Detail 'Dotted repo' -Remediation 'Update repository settings.')
                 (Format-FylgyrResult -CheckName 'OrgMfaPolicy' -Status 'Fail' -Severity 'High' -Resource 'org/acme' -Detail 'Org setting issue' -Remediation 'Update organization settings.')
+                (Format-FylgyrResult -CheckName 'Rulesets' -Status 'Fail' -Severity 'High' -Resource 'org/acme' -Detail 'Org ruleset issue' -Remediation 'Update organization rulesets.')
+                (Format-FylgyrResult -CheckName 'GitHubAppSecurity' -Status 'Fail' -Severity 'High' -Resource 'org/acme (app: wide-writer)' -Detail 'Org app issue' -Remediation 'Update app scope.')
             )
             ConvertTo-FylgyrSarif -Results $results
         }
@@ -135,6 +137,16 @@ Describe 'ConvertTo-FylgyrSarif' {
         $orgResult = $sarif.runs[0].results[2]
         $orgResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be 'SECURITY.md'
         $orgResult.locations[0].message.text | Should -Be 'Organization setting: org/acme'
+
+        # Rulesets org-scope findings should be labeled as organization settings
+        $orgRulesetResult = $sarif.runs[0].results[3]
+        $orgRulesetResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be 'SECURITY.md'
+        $orgRulesetResult.locations[0].message.text | Should -Be 'Organization setting: org/acme'
+
+        # Org resources with qualifiers should still map to org sentinel location
+        $orgAppResult = $sarif.runs[0].results[4]
+        $orgAppResult.locations[0].physicalLocation.artifactLocation.uri | Should -Be 'SECURITY.md'
+        $orgAppResult.locations[0].message.text | Should -Be 'Organization setting: org/acme (app: wide-writer)'
     }
 }
 
