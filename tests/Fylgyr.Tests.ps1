@@ -103,6 +103,7 @@ jobs:
         $fail[0].Detail | Should -BeLike '*actions/checkout@v4*'
         $fail[0].Severity | Should -Be 'High'
         $fail[0].AttackMapping | Should -Contain 'trivy-tag-poisoning'
+        $fail[0].AttackMapping | Should -Contain 'actions-cool-issues-helper-compromise'
     }
 
     It 'skips local actions' {
@@ -398,6 +399,7 @@ Describe 'Invoke-Fylgyr' {
         Mock -ModuleName Fylgyr Test-RepoVisibility       { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-ForkSecretExposure   { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-GitHubAppSecurity    { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-Rulesets             { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-WebhookSecurity      { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-BinaryArtifact       { return @($stubResult) }
     }
@@ -509,6 +511,68 @@ jobs:
         $checkResults.Count | Should -BeGreaterOrEqual 3
     }
 
+    It 'runs org checks once when IncludeOrgChecks is used without Repo' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'orgs/acme/repos?per_page=100') {
+                return @([PSCustomObject]@{ name = 'repo1' })
+            }
+            throw 'unexpected endpoint'
+        }
+        Mock -ModuleName Fylgyr Get-WorkflowFile {
+            return @([PSCustomObject]@{ Name = 'ci.yml'; Path = '.github/workflows/ci.yml'; Content = "name: CI`non: push" })
+        }
+        Mock -ModuleName Fylgyr Invoke-FylgyrOrgScan {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'OrgMfaPolicy'
+                    Status        = 'Pass'
+                    Severity      = 'Info'
+                    Resource      = 'org/acme'
+                    Detail        = 'ok'
+                    Remediation   = 'none'
+                    AttackMapping = @()
+                    Target        = 'org/acme'
+                }
+            )
+        }
+
+        $results = Invoke-Fylgyr -Owner 'acme' -Token 'fake-token' -IncludeOrgChecks
+        ($results | Where-Object CheckName -EQ 'OrgMfaPolicy') | Should -Not -BeNullOrEmpty
+        Assert-MockCalled -ModuleName Fylgyr Invoke-FylgyrOrgScan -Times 1
+    }
+
+    It 'does not run org checks when Repo is specified even with IncludeOrgChecks' {
+        Mock -ModuleName Fylgyr Get-WorkflowFile {
+            return @([PSCustomObject]@{ Name = 'ci.yml'; Path = '.github/workflows/ci.yml'; Content = "name: CI`non: push" })
+        }
+        Mock -ModuleName Fylgyr Invoke-FylgyrOrgScan { throw 'should not be called' }
+
+        $null = Invoke-Fylgyr -Owner 'acme' -Repo 'repo1' -Token 'fake-token' -IncludeOrgChecks
+        Assert-MockCalled -ModuleName Fylgyr Invoke-FylgyrOrgScan -Times 0
+    }
+
+    It 'normalizes org-check names when Invoke-FylgyrOrgScan records check errors' {
+        Mock -ModuleName Fylgyr Test-OrgMfaPolicy { throw 'boom' }
+        Mock -ModuleName Fylgyr Test-OrgDefaultPermissions { return @() }
+        Mock -ModuleName Fylgyr Test-IpAllowlist { return @() }
+        Mock -ModuleName Fylgyr Test-AuditLogStreaming { return @() }
+        Mock -ModuleName Fylgyr Test-OAuthAppPolicy { return @() }
+        Mock -ModuleName Fylgyr Test-OrgActionRestrictions { return @() }
+        Mock -ModuleName Fylgyr Test-OutsideCollaborators { return @() }
+        Mock -ModuleName Fylgyr Test-PatPolicy { return @() }
+        Mock -ModuleName Fylgyr Test-GitHubAppSecurity { return @() }
+        Mock -ModuleName Fylgyr Test-Rulesets { return @() }
+
+        $results = InModuleScope Fylgyr {
+            Invoke-FylgyrOrgScan -Owner 'acme' -Token 'fake-token'
+        }
+
+        $errorResult = $results | Where-Object { $_.Status -eq 'Error' } | Select-Object -First 1
+        $errorResult | Should -Not -BeNullOrEmpty
+        $errorResult.CheckName | Should -Be 'OrgMfaPolicy'
+    }
+
     It 'captures a check error without stopping other checks' {
         $fakeWorkflows = @([PSCustomObject]@{
             Name    = 'ci.yml'
@@ -568,6 +632,7 @@ jobs:
         $results[0].Status | Should -Be 'Warning'
         $results[0].Severity | Should -Be 'Medium'
         $results[0].AttackMapping | Should -Contain 'tj-actions-shai-hulud'
+        $results[0].AttackMapping | Should -Contain 'actions-cool-issues-helper-compromise'
     }
 
     It 'passes when harden-runner is present with block policy' {
@@ -1243,7 +1308,7 @@ Describe 'Test-RepoVisibility' {
     }
 }
 
-Describe 'Test-GitHubAppSecurity user accounts' {
+Describe 'Test-GitHubAppSecurity org-level behavior' {
     BeforeAll {
         $repoRoot = Split-Path -Path $PSScriptRoot -Parent
         $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
@@ -1256,211 +1321,49 @@ Describe 'Test-GitHubAppSecurity user accounts' {
         }
     }
 
-    It 'returns Error when owner type cannot be resolved and does not call org endpoint' {
+    It 'returns Info when owner is a user account' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             param($Endpoint)
-            if ($Endpoint -eq 'users/missing-owner') { throw '404 Not Found' }
+            if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
+            if ($Endpoint -eq 'user') { return [PSCustomObject]@{ login = 'alice' } }
             throw "unexpected endpoint: $Endpoint"
         }
 
-        $results = Test-GitHubAppSecurity -Owner 'missing-owner' -Token 'fake'
+        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
         $results | Should -HaveCount 1
-        $results[0].Status | Should -Be 'Error'
-        $results[0].Detail | Should -Match 'Could not resolve owner type'
-
-        Assert-MockCalled -ModuleName Fylgyr Invoke-GitHubApi -Times 0 -ParameterFilter {
-            $Endpoint -eq 'orgs/missing-owner/installations'
-        }
+        $results[0].Status | Should -Be 'Info'
+        $results[0].Detail | Should -Match 'personal account'
     }
 
-    It 'audits personal account when token owner matches' {
+    It 'passes when organization has no app installations' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             param($Endpoint)
-            if ($Endpoint -eq 'users/alice')      { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
-            if ($Endpoint -eq 'user')             { return [PSCustomObject]@{ login = 'alice' } }
-            if ($Endpoint -eq 'user/installations') {
-                return [PSCustomObject]@{
-                    installations = @(
-                        [PSCustomObject]@{
-                            id                   = 1
-                            app_slug             = 'dangerous-app'
-                            target_type          = 'User'
-                            repository_selection = 'all'
-                            permissions          = [PSCustomObject]@{
-                                contents = 'write'
-                                actions  = 'write'
-                            }
-                        }
-                    )
-                }
-            }
-            throw '404 Not Found'
+            if ($Endpoint -eq 'users/acme') { return [PSCustomObject]@{ type = 'Organization'; login = 'acme' } }
+            if ($Endpoint -eq 'user') { return [PSCustomObject]@{ login = 'auditor' } }
+            if ($Endpoint -eq 'orgs/acme') { return [PSCustomObject]@{ plan = [PSCustomObject]@{ name = 'team' } } }
+            if ($Endpoint -eq 'orgs/acme/installations') { return [PSCustomObject]@{ installations = @() } }
+            throw 'unexpected endpoint'
         }
 
-        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
-        $fail = $results | Where-Object Status -EQ 'Fail'
-        $fail | Should -Not -BeNullOrEmpty
-        $fail[0].Severity | Should -Be 'Critical'
-        $fail[0].Detail | Should -Match 'across all of your repositories'
-    }
-
-    It 'detects Critical when contents:write and workflows:write are combined' {
-        Mock -ModuleName Fylgyr Invoke-GitHubApi {
-            param($Endpoint)
-            if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
-            if ($Endpoint -eq 'user')        { return [PSCustomObject]@{ login = 'alice' } }
-            if ($Endpoint -eq 'user/installations') {
-                return [PSCustomObject]@{
-                    installations = @(
-                        [PSCustomObject]@{
-                            id                   = 2
-                            app_slug             = 'workflow-injector'
-                            target_type          = 'User'
-                            repository_selection = 'all'
-                            permissions          = [PSCustomObject]@{
-                                contents  = 'write'
-                                workflows = 'write'
-                            }
-                        }
-                    )
-                }
-            }
-            throw '404 Not Found'
-        }
-
-        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
-        $fail = $results | Where-Object Status -EQ 'Fail'
-        $fail | Should -Not -BeNullOrEmpty
-        $fail[0].Severity | Should -Be 'Critical'
-        $fail[0].Detail | Should -Match 'workflows:write'
-    }
-
-    It 'detects secrets:write as Critical when installed on all repos' {
-        Mock -ModuleName Fylgyr Invoke-GitHubApi {
-            param($Endpoint)
-            if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
-            if ($Endpoint -eq 'user')        { return [PSCustomObject]@{ login = 'alice' } }
-            if ($Endpoint -eq 'user/installations') {
-                return [PSCustomObject]@{
-                    installations = @(
-                        [PSCustomObject]@{
-                            id                   = 3
-                            app_slug             = 'secret-stealer'
-                            target_type          = 'User'
-                            repository_selection = 'all'
-                            permissions          = [PSCustomObject]@{ secrets = 'write' }
-                        }
-                    )
-                }
-            }
-            throw '404 Not Found'
-        }
-
-        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
-        $fail = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Detail -match 'secrets:write' }
-        $fail | Should -Not -BeNullOrEmpty
-        $fail[0].Severity | Should -Be 'Critical'
-    }
-
-    It 'detects packages:write as High when installed on all repos' {
-        Mock -ModuleName Fylgyr Invoke-GitHubApi {
-            param($Endpoint)
-            if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
-            if ($Endpoint -eq 'user')        { return [PSCustomObject]@{ login = 'alice' } }
-            if ($Endpoint -eq 'user/installations') {
-                return [PSCustomObject]@{
-                    installations = @(
-                        [PSCustomObject]@{
-                            id                   = 4
-                            app_slug             = 'package-publisher'
-                            target_type          = 'User'
-                            repository_selection = 'all'
-                            permissions          = [PSCustomObject]@{ packages = 'write' }
-                        }
-                    )
-                }
-            }
-            throw '404 Not Found'
-        }
-
-        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
-        $fail = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Detail -match 'packages:write' }
-        $fail | Should -Not -BeNullOrEmpty
-        $fail[0].Severity | Should -Be 'High'
-    }
-
-    It 'filters out org-type installations from user/installations response' {
-        Mock -ModuleName Fylgyr Invoke-GitHubApi {
-            param($Endpoint)
-            if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
-            if ($Endpoint -eq 'user')        { return [PSCustomObject]@{ login = 'alice' } }
-            if ($Endpoint -eq 'user/installations') {
-                return [PSCustomObject]@{
-                    installations = @(
-                        # Org installation — must be filtered out
-                        [PSCustomObject]@{
-                            id                   = 10
-                            app_slug             = 'risky-org-app'
-                            target_type          = 'Organization'
-                            repository_selection = 'all'
-                            permissions          = [PSCustomObject]@{
-                                contents = 'write'
-                                actions  = 'write'
-                            }
-                        }
-                    )
-                }
-            }
-            throw '404 Not Found'
-        }
-
-        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
-        # After filtering, no installations remain — should Pass
+        $results = Test-GitHubAppSecurity -Owner 'acme' -Token 'fake'
+        $results | Should -HaveCount 1
         $results[0].Status | Should -Be 'Pass'
     }
 
-    It 'returns Info when token does not belong to the user owner' {
+    It 'fails Critical when organization_administration:write is granted' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             param($Endpoint)
-            if ($Endpoint -eq 'users/alice') { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
-            if ($Endpoint -eq 'user')        { return [PSCustomObject]@{ login = 'bob' } }
-            throw 'should not be called'
-        }
-
-        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
-        $info = $results | Where-Object Status -EQ 'Info'
-        $info | Should -Not -BeNullOrEmpty
-        $info[0].Detail | Should -Match 'personal GitHub account'
-    }
-
-    It 'passes on a user account with no installations' {
-        Mock -ModuleName Fylgyr Invoke-GitHubApi {
-            param($Endpoint)
-            if ($Endpoint -eq 'users/alice')         { return [PSCustomObject]@{ type = 'User'; login = 'alice' } }
-            if ($Endpoint -eq 'user')                { return [PSCustomObject]@{ login = 'alice' } }
-            if ($Endpoint -eq 'user/installations')  { return [PSCustomObject]@{ installations = @() } }
-            throw '404 Not Found'
-        }
-
-        $results = Test-GitHubAppSecurity -Owner 'alice' -Token 'fake'
-        $results[0].Status | Should -Be 'Pass'
-        $results[0].Detail | Should -Match 'user account'
-    }
-
-    It 'still audits organizations via the org endpoint' {
-        Mock -ModuleName Fylgyr Invoke-GitHubApi {
-            param($Endpoint)
-            if ($Endpoint -eq 'users/acme')         { return [PSCustomObject]@{ type = 'Organization'; login = 'acme' } }
-            if ($Endpoint -eq 'user')               { return [PSCustomObject]@{ login = 'auditor' } }
-            if ($Endpoint -eq 'orgs/acme')          { return [PSCustomObject]@{ plan = [PSCustomObject]@{ name = 'team' } } }
+            if ($Endpoint -eq 'users/acme') { return [PSCustomObject]@{ type = 'Organization'; login = 'acme' } }
+            if ($Endpoint -eq 'user') { return [PSCustomObject]@{ login = 'auditor' } }
+            if ($Endpoint -eq 'orgs/acme') { return [PSCustomObject]@{ plan = [PSCustomObject]@{ name = 'enterprise' } } }
             if ($Endpoint -eq 'orgs/acme/installations') {
                 return [PSCustomObject]@{
                     installations = @(
                         [PSCustomObject]@{
                             id                   = 1
-                            app_slug             = 'safe-app'
+                            app_slug             = 'org-admin-app'
                             repository_selection = 'selected'
-                            permissions          = [PSCustomObject]@{ contents = 'read' }
+                            permissions          = [PSCustomObject]@{ organization_administration = 'write' }
                         }
                     )
                 }
@@ -1469,7 +1372,54 @@ Describe 'Test-GitHubAppSecurity user accounts' {
         }
 
         $results = Test-GitHubAppSecurity -Owner 'acme' -Token 'fake'
-        $results[0].Status | Should -Be 'Pass'
+        $critical = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Severity -eq 'Critical' }
+        $critical | Should -Not -BeNullOrEmpty
+    }
+
+    It 'fails High when app is all-repos with any write permission' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/acme') { return [PSCustomObject]@{ type = 'Organization'; login = 'acme' } }
+            if ($Endpoint -eq 'user') { return [PSCustomObject]@{ login = 'auditor' } }
+            if ($Endpoint -eq 'orgs/acme') { return [PSCustomObject]@{ plan = [PSCustomObject]@{ name = 'enterprise' } } }
+            if ($Endpoint -eq 'orgs/acme/installations') {
+                return [PSCustomObject]@{
+                    installations = @(
+                        [PSCustomObject]@{
+                            id                   = 2
+                            app_slug             = 'wide-writer'
+                            repository_selection = 'all'
+                            permissions          = [PSCustomObject]@{ contents = 'write' }
+                        }
+                    )
+                }
+            }
+            throw 'unexpected endpoint'
+        }
+
+        $results = Test-GitHubAppSecurity -Owner 'acme' -Token 'fake'
+        $high = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Severity -eq 'High' }
+        $high | Should -Not -BeNullOrEmpty
+        ($high | Where-Object { $_.Detail -match 'all repositories' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'returns Error on 403 from installations endpoint' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/acme') { return [PSCustomObject]@{ type = 'Organization'; login = 'acme' } }
+            if ($Endpoint -eq 'user') { return [PSCustomObject]@{ login = 'auditor' } }
+            if ($Endpoint -eq 'orgs/acme') { return [PSCustomObject]@{ plan = [PSCustomObject]@{ name = 'team' } } }
+            if ($Endpoint -eq 'orgs/acme/installations') { throw '403 Forbidden' }
+            throw 'unexpected endpoint'
+        }
+
+        $results = Test-GitHubAppSecurity -Owner 'acme' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Error'
+
+        Assert-MockCalled -ModuleName Fylgyr Invoke-GitHubApi -Times 0 -ParameterFilter {
+            $Endpoint -eq 'user/installations'
+        }
     }
 }
 

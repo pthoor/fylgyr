@@ -2,7 +2,6 @@
     [CmdletBinding()]
     [OutputType([PSCustomObject], [PSCustomObject[]])]
     param(
-        [Parameter(Mandatory)]
         [string]$Endpoint,
 
         [ValidateSet('GET', 'POST', 'PUT', 'PATCH', 'DELETE')]
@@ -16,6 +15,10 @@
         [int]$TimeoutSec = 30,
 
         [switch]$GraphQL,
+
+        [string]$Query,
+
+        [hashtable]$Variables,
 
         [switch]$AllPages
     )
@@ -45,11 +48,31 @@
         $uri = 'https://api.github.com/graphql'
         $Method = 'POST'
 
+        if ($AllPages) {
+            throw 'AllPages is not supported for GraphQL requests. Use GraphQL cursors in the query.'
+        }
+
+        # Backward compatibility for existing callers that pass GraphQL query through -Endpoint.
+        if (-not $Query -and $Endpoint) {
+            $Query = $Endpoint
+        }
+
         if (-not $Body) {
-            $Body = @{ query = $Endpoint }
+            if (-not $Query) {
+                throw 'GraphQL requests require -Query, or a -Body hashtable containing a query field.'
+            }
+
+            $Body = @{ query = $Query }
+            if ($Variables) {
+                $Body['variables'] = $Variables
+            }
         }
     }
     else {
+        if (-not $Endpoint) {
+            throw 'REST requests require -Endpoint.'
+        }
+
         if ($Endpoint -match '^https://') {
             $uri = $Endpoint
         }
@@ -91,6 +114,24 @@
 
         try {
             $response = Invoke-RestMethod @invokeParams
+
+            if ($GraphQL -and $response -and $response.PSObject.Properties['errors'] -and $response.errors) {
+                $graphQlMessages = [System.Collections.Generic.List[string]]::new()
+                foreach ($graphQlError in $response.errors) {
+                    if ($graphQlError -and $graphQlError.PSObject.Properties['message'] -and $graphQlError.message) {
+                        $graphQlMessages.Add([string]$graphQlError.message)
+                    }
+                }
+
+                $joinedMessages = if ($graphQlMessages.Count -gt 0) {
+                    $graphQlMessages -join '; '
+                }
+                else {
+                    'GraphQL returned an error response without a message.'
+                }
+
+                throw "GraphQL query failed. GitHub response: $joinedMessages"
+            }
 
             $remaining = $null
             if ($responseHeaders.ContainsKey('X-RateLimit-Remaining')) {

@@ -19,6 +19,73 @@ function Write-FylgyrConsole {
     $noWorkflowResults = $Results | Where-Object { $_.CheckName -eq 'WorkflowFileFetch' -and $_.Status -eq 'Warning' }
     $checkResults = $Results | Where-Object { -not ($_.CheckName -eq 'WorkflowFileFetch' -and $_.Status -eq 'Warning') }
 
+    # Build a consolidated recommendation set so users get actionable next steps
+    # in addition to per-finding remediation text.
+    $recommendationItems = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $recommendationKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    $addRecommendation = {
+        param(
+            [int]$Priority,
+            [string]$Key,
+            [string]$Text
+        )
+
+        if (-not $recommendationKeys.Contains($Key)) {
+            $recommendationKeys.Add($Key) | Out-Null
+            $recommendationItems.Add([PSCustomObject]@{
+                    Priority = $Priority
+                    Text     = $Text
+                })
+        }
+    }
+
+    $nonPassResults = @($checkResults | Where-Object { $_.Status -in @('Fail', 'Warning', 'Error') })
+
+    if (@($nonPassResults | Where-Object { $_.Status -eq 'Error' }).Count -gt 0) {
+        & $addRecommendation 0 'errors' 'P0 Resolve API/token scope errors first so coverage is complete.'
+    }
+
+    if (@($nonPassResults | Where-Object { $_.CheckName -eq 'OrgMfaPolicy' -and $_.Status -eq 'Fail' }).Count -gt 0) {
+        & $addRecommendation 0 'org-mfa' 'P0 Enforce organization-wide MFA immediately to reduce account takeover risk from stolen passwords.'
+    }
+
+    if (@($nonPassResults | Where-Object { $_.CheckName -eq 'OrgActionRestrictions' -and $_.Status -eq 'Fail' }).Count -gt 0) {
+        & $addRecommendation 1 'org-actions' "P1 Restrict organization actions to 'selected' and maintain an explicit allowlist of trusted sources."
+    }
+
+    if (@($nonPassResults | Where-Object { $_.CheckName -eq 'ActionPinning' -and $_.Status -eq 'Fail' }).Count -gt 0) {
+        & $addRecommendation 1 'action-pinning' 'P1 Pin third-party actions to full 40-character commit SHAs to prevent mutable-tag supply chain attacks.'
+    }
+
+    if (@($nonPassResults | Where-Object { $_.CheckName -eq 'Rulesets' -and $_.Detail -match 'tag protection' }).Count -gt 0) {
+        & $addRecommendation 1 'tag-protection' 'P1 Protect release tags with a tag ruleset (for example v*) to prevent mutable tag poisoning.'
+    }
+
+    if (@($nonPassResults | Where-Object { $_.CheckName -eq 'BranchProtection' -and $_.Detail -match '0 approving reviews' }).Count -gt 0) {
+        & $addRecommendation 1 'approvals' 'P1 Set at least 1 required approval on the default branch, or explicitly document solo-maintainer exception with compensating controls.'
+    }
+
+    if (@($nonPassResults | Where-Object { $_.CheckName -eq 'BranchProtection' -and $_.Detail -match 'status checks|pull requests|non-fast-forward|deletion' }).Count -gt 0) {
+        & $addRecommendation 1 'branch-baseline' 'P1 Keep default branch baseline: PR-required, strict status checks, force-push blocked, and deletion blocked.'
+    }
+
+    if (@($nonPassResults | Where-Object { $_.CheckName -eq 'BranchProtection' -and $_.Detail -match 'no classic branch protection|no active branch ruleset targeting it' }).Count -gt 0) {
+        & $addRecommendation 1 'branch-protection' 'P1 Add active branch protection for the default branch (classic branch protection or branch-target ruleset).'
+    }
+
+    if (@($nonPassResults | Where-Object { $_.CheckName -eq 'SignedCommit' }).Count -gt 0) {
+        & $addRecommendation 2 'signed-commits' 'P2 Require signed commits on the default branch to reduce maintainer impersonation risk.'
+    }
+
+    if (@($nonPassResults | Where-Object { $_.CheckName -eq 'EgressControl' }).Count -gt 0) {
+        & $addRecommendation 2 'egress' 'P2 Add CI egress controls to limit outbound traffic from compromised actions or injected workflow code.'
+    }
+
+    if (@($nonPassResults | Where-Object { $_.CheckName -eq 'CodeOwner' }).Count -gt 0) {
+        & $addRecommendation 3 'codeowner' 'P3 Add a trusted co-owner in CODEOWNERS (or migrate to an organization team) to reduce single-maintainer risk.'
+    }
+
     # Group by Target (Owner/Repo)
     if ($checkResults.Count -gt 0) {
         $repoGroups = $checkResults | Group-Object -Property Target
@@ -124,5 +191,14 @@ function Write-FylgyrConsole {
     Write-Host "$warnCount warnings" -ForegroundColor Yellow -NoNewline
     Write-Host ', ' -NoNewline
     Write-Host "$errorCount errors" -ForegroundColor Magenta
+
+    if ($recommendationItems.Count -gt 0) {
+        Write-Host ''
+        Write-Host '  Prioritized Recommendations:' -ForegroundColor White
+        foreach ($recommendation in @($recommendationItems | Sort-Object -Property Priority, Text)) {
+            Write-Host "    - $($recommendation.Text)" -ForegroundColor DarkGray
+        }
+    }
+
     Write-Host ''
 }

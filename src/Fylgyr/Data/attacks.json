@@ -43,6 +43,28 @@
     ]
   },
   {
+    "id": "actions-cool-issues-helper-compromise",
+    "name": "actions-cool/issues-helper tag hijack",
+    "date": "2026-05-18",
+    "description": "The actions-cool/issues-helper action repository was compromised and all tags were moved to an imposter commit outside normal branch history. The malicious payload downloaded Bun, attempted to read GitHub Actions runner process memory to harvest decrypted secrets, and exfiltrated credentials to attacker infrastructure.",
+    "affectedPackages": [
+      "actions-cool/issues-helper"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.stepsecurity.io/blog/actions-cool-issues-helper-github-action-compromised-all-tags-point-to-imposter-commit-that-exfiltrates-ci-cd-credentials",
+      "https://github.com/actions-cool/issues-helper"
+    ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-5"],
+    "mitre": ["T1195.002", "T1552.001"],
+    "detectionSignals": [
+      "Workflow references actions-cool/issues-helper by mutable tag instead of immutable full commit SHA",
+      "Action tags resolve to an imposter commit not reachable from legitimate branch history",
+      "Unexpected outbound HTTPS traffic from CI after third-party action execution",
+      "No egress block policy to prevent credential exfiltration from runners"
+    ]
+  },
+  {
     "id": "nx-pwn-request",
     "name": "nx/Pwn Request",
     "date": "2025-01-01",
@@ -500,6 +522,65 @@
       "Secret scanning enabled but unremediated High or Critical alerts open longer than 30 days",
       "Push protection not enabled — allows secrets to be committed before detection",
       "No secret rotation policy after a scanning alert fires"
+    ]
+  },
+  {
+    "id": "dropbox-github-breach",
+    "name": "Dropbox GitHub breach",
+    "date": "2022-11-01",
+    "description": "Dropbox disclosed that attackers phished employee credentials and accessed internal GitHub repositories. Mandatory MFA was highlighted as a key control to reduce credential-only account compromise impact.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://dropbox.tech/security/a-recent-security-incident-at-dropbox",
+      "https://docs.github.com/organizations/keeping-your-organization-secure/managing-two-factor-authentication-for-your-organization/requiring-two-factor-authentication-in-your-organization"
+    ],
+    "owaspCiCd": ["CICD-SEC-2", "CICD-SEC-5"],
+    "mitre": ["T1078.004", "T1556"],
+    "detectionSignals": [
+      "Organization does not require two-factor authentication for all members",
+      "Credential-only access to organization resources",
+      "No enforced MFA baseline for maintainers with write access"
+    ]
+  },
+  {
+    "id": "gentoo-github-compromise",
+    "name": "Gentoo GitHub organization compromise",
+    "date": "2018-06-28",
+    "description": "The Gentoo GitHub organization was compromised and malicious changes were pushed to repositories. Broad access paths and weak organization-level access governance amplified blast radius.",
+    "affectedPackages": [
+      "Gentoo ebuild repository"
+    ],
+    "cves": [],
+    "references": [
+      "https://wiki.gentoo.org/wiki/Project:Infrastructure/Incident_20180628_Github",
+      "https://docs.github.com/organizations/managing-access-to-your-organizations-repositories/repository-roles-for-an-organization"
+    ],
+    "owaspCiCd": ["CICD-SEC-2", "CICD-SEC-6"],
+    "mitre": ["T1078.004", "T1098"],
+    "detectionSignals": [
+      "Organization default repository permission is write or admin",
+      "Overly broad baseline access across repositories",
+      "No least-privilege default access posture"
+    ]
+  },
+  {
+    "id": "github-device-code-phishing",
+    "name": "GitHub OAuth device code phishing",
+    "date": "2025-01-01",
+    "description": "Device authorization phishing abuses OAuth device flow by social-engineering users to approve attacker-generated device codes at github.com/login/device. Tokens can be minted with broad scopes if organization app restrictions are weak.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://www.praetorian.com/blog/introducing-github-device-code-phishing/",
+      "https://docs.github.com/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow"
+    ],
+    "owaspCiCd": ["CICD-SEC-2", "CICD-SEC-5"],
+    "mitre": ["T1566", "T1078.004"],
+    "detectionSignals": [
+      "Third-party OAuth app restrictions disabled",
+      "No organization controls for OAuth app authorization",
+      "Weak token governance and missing audit-log visibility for suspicious authorizations"
     ]
   }
 ]

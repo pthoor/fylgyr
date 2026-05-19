@@ -13,6 +13,8 @@ function Invoke-Fylgyr {
         [ValidateSet('Object', 'JSON', 'SARIF', 'Console')]
         [string]$OutputFormat = 'Object',
 
+        [switch]$IncludeOrgChecks,
+
         [string]$Token = $env:GITHUB_TOKEN
     )
 
@@ -30,12 +32,8 @@ function Invoke-Fylgyr {
         #   `orgs/{Owner}/...` block on second and later repos in an org-wide scan.
         # - FylgyrOwnerContextCache: owner type/token-owner/plan cache used by
         #   Get-FylgyrOwnerContext to avoid repeated users/{owner} and user calls.
-        # - FylgyrOwnerAppSecurityResults: Test-GitHubAppSecurity results cached per owner
-        #   so we emit them exactly once per owner instead of once per repository.
         $script:FylgyrOwnerRunnerGroupsChecked = @{}
         $script:FylgyrOwnerContextCache = @{}
-        $script:FylgyrOwnerAppSecurityResults = @{}
-        $script:FylgyrOwnerAppSecurityEmitted = @{}
     }
 
     process {
@@ -65,6 +63,11 @@ function Invoke-Fylgyr {
 
             foreach ($r in $orgRepos) {
                 $repos.Add($r.name)
+            }
+
+            if ($IncludeOrgChecks) {
+                $orgResults = Invoke-FylgyrOrgScan -Owner $Owner -Token $Token
+                foreach ($result in $orgResults) { $allResults.Add($result) }
             }
 
             if ($repos.Count -eq 0) {
@@ -260,6 +263,7 @@ function Invoke-FylgyrScan {
         @{ Name = 'Test-EnvironmentProtection'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
         @{ Name = 'Test-RepoVisibility';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
         @{ Name = 'Test-WebhookSecurity';      Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-Rulesets';             Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
         @{ Name = 'Test-BinaryArtifact';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
     )
 
@@ -275,8 +279,9 @@ function Invoke-FylgyrScan {
             }
         }
         catch {
+            $checkName = if ($entry.Name -like 'Test-*') { $entry.Name.Substring(5) } else { $entry.Name }
             $results.Add((Format-FylgyrResult `
-                -CheckName $entry.Name `
+                -CheckName $checkName `
                 -Status 'Error' `
                 -Severity 'Critical' `
                 -Resource $target `
@@ -286,32 +291,56 @@ function Invoke-FylgyrScan {
         }
     }
 
-    # Owner-level check: GitHub App Security.
-    # Owner-level API - emit exactly once per Owner across an org-wide scan so we do
-    # not duplicate findings for every repository under the same owner.
-    $cacheReady = $script:FylgyrOwnerAppSecurityResults -is [hashtable] -and
-                  $script:FylgyrOwnerAppSecurityEmitted -is [hashtable]
+    Write-Progress -Activity $target -Id 2 -Completed
 
-    if (-not $cacheReady -or -not $script:FylgyrOwnerAppSecurityResults.ContainsKey($Owner)) {
-        Write-Progress -Activity $target -Status 'Running Test-GitHubAppSecurity' -Id 2 -ParentId 1
+    $results.ToArray()
+}
+
+function Invoke-FylgyrOrgScan {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject[]])]
+    param(
+        [Parameter(Mandatory)]
+        [ValidatePattern('^[a-zA-Z0-9._-]+$')]
+        [string]$Owner,
+
+        [Parameter(Mandatory)]
+        [string]$Token
+    )
+
+    $target = "org/$Owner"
+    $results = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+    $orgChecks = @(
+        @{ Name = 'Test-OrgMfaPolicy';          Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-OrgDefaultPermissions'; Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-IpAllowlist';           Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-AuditLogStreaming';     Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-OAuthAppPolicy';        Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-OrgActionRestrictions'; Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-OutsideCollaborators';  Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-PatPolicy';             Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-GitHubAppSecurity';     Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-Rulesets';              Params = @{ Owner = $Owner; Token = $Token } }
+    )
+
+    foreach ($entry in $orgChecks) {
+        Write-Progress -Activity $target -Status "Running $($entry.Name)" -Id 3 -ParentId 1
+
         try {
-            $appSecResults = @(Test-GitHubAppSecurity -Owner $Owner -Token $Token)
-            if ($cacheReady) {
-                $script:FylgyrOwnerAppSecurityResults[$Owner] = $appSecResults
-            }
-            foreach ($r in $appSecResults) {
+            $checkParams = $entry.Params
+            $checkResults = & $entry.Name @checkParams
+            foreach ($r in $checkResults) {
                 $r.Target = $target
                 $results.Add($r)
             }
-            if ($cacheReady) {
-                $script:FylgyrOwnerAppSecurityEmitted[$Owner] = $true
-            }
         }
         catch {
+            $checkName = if ($entry.Name -like 'Test-*') { $entry.Name.Substring(5) } else { $entry.Name }
             $results.Add((Format-FylgyrResult `
-                -CheckName 'GitHubAppSecurity' `
+                -CheckName $checkName `
                 -Status 'Error' `
-                -Severity 'Medium' `
+                -Severity 'Critical' `
                 -Resource $target `
                 -Detail "Check failed with error: $($_.Exception.Message)" `
                 -Remediation 'Review the error and re-run.' `
@@ -319,7 +348,7 @@ function Invoke-FylgyrScan {
         }
     }
 
-    Write-Progress -Activity $target -Id 2 -Completed
+    Write-Progress -Activity $target -Id 3 -Completed
 
     $results.ToArray()
 }

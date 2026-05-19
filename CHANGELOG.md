@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- New attack catalog entry: `actions-cool-issues-helper-compromise` (actions-cool/issues-helper tag hijack, 2026-05-18).
+
+### Changed
+
+- `Test-ActionPinning`, `Test-Rulesets`, and `Test-EgressControl` now map findings to `actions-cool-issues-helper-compromise` in addition to existing incidents.
+- `README.md` and `docs/COVERAGE.md` updated to include the new incident in attack mapping references.
+
+## [0.5.0] - 2026-05-12
+
+### Added
+
+- `-IncludeOrgChecks` switch on `Invoke-Fylgyr` to run organization-policy checks once per owner during org-wide scans (`-Repo` omitted).
+- Nine new public checks:
+	- `Test-OrgMfaPolicy`
+	- `Test-OrgDefaultPermissions`
+	- `Test-IpAllowlist` (GraphQL)
+	- `Test-AuditLogStreaming`
+	- `Test-Rulesets`
+	- `Test-OAuthAppPolicy`
+	- `Test-OrgActionRestrictions`
+	- `Test-OutsideCollaborators`
+	- `Test-PatPolicy`
+- Three new attack catalog entries:
+	- `dropbox-github-breach`
+	- `gentoo-github-compromise`
+	- `github-device-code-phishing`
+- `tests/OrgChecks.Tests.ps1` with pass/fail/insufficient-permission/user-owner coverage for all new org checks.
+
+### Changed
+
+- `Invoke-GitHubApi` GraphQL usage is now explicit and phase-aligned:
+	- Added `-Query` and `-Variables` parameters for GraphQL requests.
+	- Added GraphQL `errors[]` response surfacing as sanitized PowerShell errors.
+	- `-AllPages` is now explicitly rejected for GraphQL calls (cursor pagination required).
+	- Backward compatibility preserved for legacy GraphQL calls that passed query text through `-Endpoint`.
+- `Test-GitHubAppSecurity` extended in place (no rename) with Phase 7 detections:
+	- `organization_administration:write`
+	- all-repos write-scope blast radius analysis
+	- suspicious combinations (`members:write + contents:write`, `secrets:write + actions:write`)
+	- stale installation signal (>90 days)
+	- user-owner runs now return org-app `Info` skip instead of using `/user/installations`
+- SARIF sentinel messages now distinguish organization settings for org-check findings while still mapping to `SECURITY.md`.
+- README, `docs/PERMISSIONS.md`, and `docs/COVERAGE.md` updated for org-policy checks and new attack mappings.
+
+### Security
+
+- Organization-level checks uniformly use `Get-FylgyrOwnerContext` and return `Info` for personal-account owners to avoid incorrect org endpoint usage.
+- `Test-OutsideCollaborators` enforces a bounded permission-check budget to reduce rate-limit exhaustion risk on large organizations.
+
 ## [0.4.2] - 2026-05-08
 
 ### Added

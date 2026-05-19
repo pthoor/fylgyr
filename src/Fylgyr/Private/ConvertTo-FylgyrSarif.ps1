@@ -79,8 +79,21 @@
         # Repo-level resources look like "owner/repo" or
         # "owner/repo (branch: main)". Everything else is treated as a file
         # path, with an optional trailing ":line" suffix parsed below.
-        $isRepoLevelResource = $r.Resource -match '^[^/\s]+/[^/\s]+(?: \(branch: .+\))?$'
-        $isFilePath = -not $isRepoLevelResource
+        $orgCheckNames = @(
+            'OrgMfaPolicy'
+            'OrgDefaultPermissions'
+            'IpAllowlist'
+            'AuditLogStreaming'
+            'OAuthAppPolicy'
+            'OrgActionRestrictions'
+            'OutsideCollaborators'
+            'PatPolicy'
+            'GitHubAppSecurity'
+            'Rulesets'
+        )
+        $isOrgLevelResource = $orgCheckNames -contains $r.CheckName
+        $isRepoLevelResource = $r.Resource -match '^[^/\s]+/[^/\s]+(?: \(.+\))?$'
+        $isFilePath = -not ($isRepoLevelResource -or $isOrgLevelResource)
 
         $sarifResult = [PSCustomObject]@{
             ruleId  = $ruleId
@@ -123,7 +136,12 @@
                         }
                     }
                     message = [PSCustomObject]@{
-                        text = "Repository setting: $($r.Resource)"
+                        text = if ($isOrgLevelResource) {
+                            "Organization setting: $($r.Resource)"
+                        }
+                        else {
+                            "Repository setting: $($r.Resource)"
+                        }
                     }
                 }
             )
