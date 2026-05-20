@@ -79,8 +79,16 @@ Required classic scopes: `repo` (full), `read:org`, `security_events`, `workflow
 | `Test-CodeScanning` | `repos/{o}/{r}/code-scanning/analyses` | Code scanning alerts: read |
 | `Test-DangerousTrigger` | `repos/{o}/{r}/actions/permissions/fork-pr-contributor-approval`, workflow files | Administration: read, Contents: read, Actions: read |
 | `Test-DependabotAlert` | `repos/{o}/{r}/dependabot/alerts` | Dependabot alerts: read |
+| `Test-DependencyReview` | Workflow files (`.github/workflows/*`) | Contents: read |
 | `Test-EgressControl` | Workflow files (`.github/workflows/*`) | Contents: read |
+| `Test-ArtifactAttestation` | Workflow files (`.github/workflows/*`) | Contents: read |
+| `Test-ArtifactPoisoning` | Workflow files (`.github/workflows/*`) | Contents: read |
+| `Test-CacheIntegrity` | Workflow files (`.github/workflows/*`) | Contents: read |
 | `Test-PublishIntegrity` | Workflow files (`.github/workflows/*`) | Contents: read |
+| `Test-OidcTrust` | Workflow files (`.github/workflows/*`) | Contents: read |
+| `Test-ReusableWorkflowTrust` | Workflow files (`.github/workflows/*`) | Contents: read |
+| `Test-ScriptInjection` | Workflow files (`.github/workflows/*`) | Contents: read |
+| `Test-TriggerFilter` | Workflow files (`.github/workflows/*`) | Contents: read |
 | `Test-EnvironmentProtection` | `repos/{o}/{r}/environments` | Actions: read |
 | `Test-ForkPullPolicy` | Workflow files (`.github/workflows/*`) | Contents: read |
 | `Test-ForkSecretExposure` | `repos/{o}/{r}/environments`, `orgs/{o}/actions/secrets` | Actions: read, **Org Secrets: read** |
