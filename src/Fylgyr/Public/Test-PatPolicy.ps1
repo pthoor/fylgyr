@@ -28,6 +28,7 @@ function Test-PatPolicy {
 
     $requestsAvailable = $false
     $tokensAvailable = $false
+    $tokensUnavailableReason = ''
     $requestCount = 0
 
     try {
@@ -51,8 +52,8 @@ function Test-PatPolicy {
                 -Status 'Info' `
                 -Severity 'Info' `
                 -Resource $resource `
-                -Detail 'Insufficient permissions to evaluate organization personal access token policy.' `
-                -Remediation 'Use a fine-grained token with organization Administration:read, or a classic token with admin:org scope.' `
+                -Detail 'Unable to evaluate organization PAT policy endpoint. Access may be blocked by token permissions, organization plan/feature gating, or endpoint token-type restrictions.' `
+                -Remediation 'Verify endpoint availability for your organization plan and, when required, use a GitHub App user/installation token with Personal access token requests/read and Personal access tokens/read organization permissions.' `
                 -Target $resource))
             return $results.ToArray()
         }
@@ -63,8 +64,8 @@ function Test-PatPolicy {
                 -Status 'Info' `
                 -Severity 'Info' `
                 -Resource $resource `
-                -Detail 'Organization PAT policy endpoints are not available for this plan.' `
-                -Remediation 'Use available access-control features and enforce short PAT expirations until org PAT policy endpoints are available.' `
+                -Detail 'Organization PAT policy endpoint is not available for this organization plan/feature context.' `
+                -Remediation 'Use available access-control features and enforce short PAT expirations. If PAT policy verification is required, verify endpoint availability and token-type requirements in GitHub REST docs.' `
                 -Target $resource))
             return $results.ToArray()
         }
@@ -92,13 +93,16 @@ function Test-PatPolicy {
                 -Status 'Info' `
                 -Severity 'Info' `
                 -Resource $resource `
-                -Detail 'Token cannot read active fine-grained PAT records. PAT policy analysis is partial.' `
-                -Remediation 'Use a fine-grained token with organization Administration:read, or a classic token with admin:org scope.' `
+                -Detail 'Token cannot read active fine-grained PAT records. PAT policy analysis is partial (permission, plan/feature gating, or token-type restriction).' `
+                -Remediation 'Verify endpoint availability for your organization plan and, when required, use a GitHub App user/installation token with Personal access tokens/read organization permission.' `
                 -Target $resource))
             return $results.ToArray()
         }
 
-        if ($msg -notmatch '404') {
+        if ($msg -match '404') {
+            $tokensUnavailableReason = '404'
+        }
+        else {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'PatPolicy' `
                 -Status 'Error' `
@@ -109,6 +113,18 @@ function Test-PatPolicy {
                 -Target $resource))
             return $results.ToArray()
         }
+    }
+
+    if ($requestsAvailable -and -not $tokensAvailable -and $tokensUnavailableReason -eq '404') {
+        $results.Add((Format-FylgyrResult `
+            -CheckName 'PatPolicy' `
+            -Status 'Info' `
+            -Severity 'Info' `
+            -Resource $resource `
+            -Detail 'PAT request endpoint is reachable, but active PAT records endpoint is unavailable (404) in this org context. Governance verification is partial.' `
+            -Remediation 'Treat this check as advisory in this org context. Confirm PAT governance in organization settings and verify token-type requirements for PAT policy endpoints in GitHub docs.' `
+            -Target $resource))
+        return $results.ToArray()
     }
 
     if ($requestsAvailable -and $tokensAvailable -and $requestCount -gt 0) {

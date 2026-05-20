@@ -31,6 +31,11 @@ function Test-RunnerHygiene {
         $hasPullRequestTarget = $stripped -match '(?m)pull_request_target'
         $hasPullRequest = $stripped -match '(?m)(^|\s)pull_request(\s|:|$)'
         $hasWorkflowRun = $stripped -match '(?m)workflow_run'
+        $hasDiscussion = $stripped -match '(?m)(^|\s)discussion(\s|:|$)'
+        $hasIssueComment = $stripped -match '(?m)(^|\s)issue_comment(\s|:|$)'
+        $hasWorkflowDispatch = $stripped -match '(?m)(^|\s)workflow_dispatch(\s|:|$)'
+        $missingTypesEvents = @(Get-MissingTypesEvent -WorkflowContent $stripped -Events @('discussion', 'issue_comment'))
+        $hasMissingTypesEvent = $missingTypesEvents.Count -gt 0
 
         # Find all runs-on values
         $runsOnValues = [System.Collections.Generic.List[string]]::new()
@@ -87,15 +92,33 @@ function Test-RunnerHygiene {
 
             $foundSelfHosted = $true
 
-            if ($hasPullRequestTarget -or $hasWorkflowRun) {
+            if ($hasPullRequestTarget -or $hasWorkflowRun -or $hasDiscussion -or $hasIssueComment -or $hasWorkflowDispatch) {
+                $dangerousTriggers = [System.Collections.Generic.List[string]]::new()
+                if ($hasPullRequestTarget) { $dangerousTriggers.Add('pull_request_target') }
+                if ($hasWorkflowRun) { $dangerousTriggers.Add('workflow_run') }
+                if ($hasDiscussion) { $dangerousTriggers.Add('discussion') }
+                if ($hasIssueComment) { $dangerousTriggers.Add('issue_comment') }
+                if ($hasWorkflowDispatch) { $dangerousTriggers.Add('workflow_dispatch') }
+
                 $results.Add((Format-FylgyrResult `
                     -CheckName 'RunnerHygiene' `
                     -Status 'Fail' `
                     -Severity 'High' `
                     -Resource "$path" `
-                    -Detail "Workflow '$name' uses a self-hosted runner ('$runsOnValue') with a dangerous trigger (pull_request_target or workflow_run). Attacker-controlled code from a fork could execute on your runner, as demonstrated in the Praetorian lateral movement attack." `
+                    -Detail "Workflow '$name' uses a self-hosted runner ('$runsOnValue') with dangerous trigger(s): $($dangerousTriggers -join ', '). This enables attacker-controlled execution paths and has been exploited in runner backdoor and lateral movement campaigns." `
                     -Remediation 'Move this job to a GitHub-hosted runner, or ensure the workflow never checks out untrusted code on a self-hosted runner. Use ephemeral runners and restrict runner groups to specific repositories.' `
-                    -AttackMapping @('github-actions-cryptomining', 'nx-pwn-request', 'praetorian-runner-pivot') `
+                    -AttackMapping @('github-actions-cryptomining', 'nx-pwn-request', 'praetorian-runner-pivot', 'shai-hulud-runner-backdoor') `
+                    -Target $null))
+            }
+            elseif ($hasMissingTypesEvent) {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName 'RunnerHygiene' `
+                    -Status 'Warning' `
+                    -Severity 'High' `
+                    -Resource "$path" `
+                    -Detail "Workflow '$name' uses a self-hosted runner and defines event trigger(s) without types filters: $($missingTypesEvents -join ', '). Obscure event sub-actions can unexpectedly execute code on runner infrastructure." `
+                    -Remediation 'Add explicit types filters for comment/discussion-style triggers and restrict self-hosted runners to trusted workflows only.' `
+                    -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot', 'shai-hulud-runner-backdoor') `
                     -Target $null))
             }
             elseif ($hasPullRequest) {
@@ -106,7 +129,7 @@ function Test-RunnerHygiene {
                     -Resource "$path" `
                     -Detail "Workflow '$name' uses a self-hosted runner ('$runsOnValue') with a pull_request trigger. Fork PRs can run arbitrary code on your self-hosted runner." `
                     -Remediation "If this repository is public, switch to GitHub-hosted runners for PR workflows. If private, verify fork PR access is restricted. Consider ephemeral runners to limit persistence." `
-                    -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot') `
+                    -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot', 'shai-hulud-runner-backdoor') `
                     -Target $null))
             }
             else {
@@ -117,7 +140,7 @@ function Test-RunnerHygiene {
                     -Resource "$path" `
                     -Detail "Workflow '$name' uses a self-hosted runner ('$runsOnValue'). Self-hosted runners require careful hardening and access control." `
                     -Remediation 'Ensure self-hosted runners are ephemeral, run in isolated environments, and are not exposed to untrusted input. See: https://docs.github.com/actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners' `
-                    -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot') `
+                    -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot', 'shai-hulud-runner-backdoor') `
                     -Target $null))
             }
         }

@@ -6,6 +6,60 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Changed
+
+- `Test-Rulesets` org-scope permission handling refined:
+	- `403` on `orgs/{org}/rulesets` now returns advisory `Info` when org rulesets cannot be read with least-privilege tokens.
+	- `404` on rulesets endpoint now returns advisory `Info` (unverified governance) instead of implying missing governance by default.
+	- Org-scope missing tag ruleset is now `Warning`/`Medium` (governance gap), while repo scope remains the stronger enforcement signal.
+- `Test-PatPolicy` endpoint availability handling refined to avoid misleading failure states when PAT-policy endpoints are gated by plan/feature/token-type restrictions.
+- Permissions documentation aligned with current GitHub API behavior:
+	- `GET /orgs/{org}/rulesets` may require fine-grained PAT Organization Administration:write.
+	- PAT governance endpoints may require GitHub App user/installation tokens in some org contexts.
+
+## [0.6.0] - 2026-05-19
+
+### Added
+
+- Two new private workflow parsing helpers:
+	- `Get-RunBlock` for extracting `run:` content including YAML block scalars (`|`, `>`).
+	- `Get-WorkflowJobBlock` for extracting per-job YAML blocks for job-scoped analysis.
+- Nine new checks:
+	- `Test-ScriptInjection`
+	- `Test-ArtifactPoisoning`
+	- `Test-OidcTrust`
+	- `Test-CacheIntegrity`
+	- `Test-TriggerFilter`
+	- `Test-DependencyReview`
+	- `Test-ArtifactAttestation`
+	- `Test-ReusableWorkflowTrust`
+	- `Test-PrivateVulnReporting`
+- Optional `-ReusableWorkflowAllowlist <string[]>` parameter on `Invoke-Fylgyr` to extend trusted reusable-workflow sources beyond default trust roots.
+- New Pester suite: `tests/WorkflowDeepAnalysis.Tests.ps1` with vulnerable/safe fixtures and OIDC severity branch coverage.
+- Five attack-catalog entries:
+	- `github-actions-script-injection`
+	- `artifact-poisoning-workflow-run`
+	- `oidc-trust-abuse`
+	- `cache-poisoning-pr-branch`
+	- `shai-hulud-runner-backdoor`
+
+### Changed
+
+- `Invoke-FylgyrScan` workflow check pipeline now includes all new Phase 8 workflow checks.
+- `Test-RunnerHygiene` expanded to flag self-hosted runners with `discussion`, `issue_comment`, and `workflow_dispatch` triggers, plus missing `types:` filters for high-risk event families.
+- `Test-ScriptInjection` remediation now explicitly documents the current `env:` interpolation limitation.
+- `ConvertTo-FylgyrSarif` org/repo sentinel labeling improved for org-scoped checks (including `Rulesets`) and qualified resources.
+- `README.md` check reference and attack catalog tables updated for v0.6.0 checks/campaigns.
+
+### Fixed
+
+- `Invoke-FylgyrOrgScan` now normalizes org check names in error-path output (`Test-OrgMfaPolicy` -> `OrgMfaPolicy`) for stable result contracts.
+- SARIF sentinel labeling regression fixed for org-scoped `Rulesets` and org-qualified resource strings.
+
+### Security
+
+- Added workflow-level detections for script injection, artifact execution trust-boundary abuse, OIDC trust hardening gaps, cache poisoning, and reusable-workflow trust bypass patterns aligned to active 2024-2026 attack tradecraft.
+
 ### Added
 
 - New attack catalog entry: `actions-cool-issues-helper-compromise` (actions-cool/issues-helper tag hijack, 2026-05-18).

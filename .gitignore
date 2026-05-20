@@ -38,3 +38,4 @@ docs/RELEASE-TESTING.md
 secrets.json
 *secrets*.json
 pester_output.txt
+pester_results.txt

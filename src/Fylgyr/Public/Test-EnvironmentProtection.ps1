@@ -42,7 +42,7 @@ function Test-EnvironmentProtection {
                 -Severity 'Medium' `
                 -Resource $target `
                 -Detail 'Insufficient permissions to list deployment environments.' `
-                -Remediation 'Use a fine-grained token with Environments:read permission, or a classic token with repo scope.' `
+                -Remediation 'Use a fine-grained token with Actions:read permission, or a classic token with repo scope.' `
                 -Target $target))
             return $results.ToArray()
         }
