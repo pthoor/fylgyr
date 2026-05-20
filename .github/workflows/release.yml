@@ -96,7 +96,9 @@ jobs:
           if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
             echo "GitHub release for tag ${{ github.ref_name }} already exists; skipping creation."
           else
-            artifact=$(ls -1 fylgyr-*.zip | head -n 1)
+            shopt -s nullglob
+            artifacts=(fylgyr-*.zip)
+            artifact="${artifacts[0]:-}"
             if [[ -z "$artifact" ]]; then
               echo "No packaged artifact matching fylgyr-*.zip was found."
               exit 1

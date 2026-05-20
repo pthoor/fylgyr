@@ -21,78 +21,7 @@ function Test-TriggerFilter {
     foreach ($wf in $WorkflowFiles) {
         $lines = @(($wf.Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' })
         $content = $lines -join "`n"
-        $missingTypes = [System.Collections.Generic.List[string]]::new()
-
-        foreach ($eventName in $eventsRequiringTypes) {
-            $inlineArrayPattern = '(?im)^\s*on\s*:\s*\[[^\]]*\b' + [regex]::Escape($eventName) + '\b[^\]]*\]'
-            $inlineScalarPattern = '(?im)^\s*on\s*:\s*' + [regex]::Escape($eventName) + '\s*$'
-            if ($content -match $inlineArrayPattern -or $content -match $inlineScalarPattern) {
-                $missingTypes.Add($eventName)
-                continue
-            }
-
-            for ($i = 0; $i -lt $lines.Count; $i++) {
-                if ($lines[$i] -notmatch '^\s*on\s*:\s*$') {
-                    continue
-                }
-
-                $onIndent = ([regex]::Match($lines[$i], '^\s*')).Value.Length
-                $j = $i + 1
-                while ($j -lt $lines.Count) {
-                    $candidate = $lines[$j]
-                    if ($candidate -match '^\s*$') {
-                        $j++
-                        continue
-                    }
-
-                    $candidateIndent = ([regex]::Match($candidate, '^\s*')).Value.Length
-                    if ($candidateIndent -le $onIndent) {
-                        break
-                    }
-
-                    $eventHeaderPattern = '^\s{' + ($onIndent + 2) + '}' + [regex]::Escape($eventName) + '\s*:(?<tail>.*)$'
-                    if ($candidate -match $eventHeaderPattern) {
-                        $tail = $Matches.tail.Trim()
-                        $hasTypes = $false
-
-                        if ($tail -match '(?i)\btypes\b') {
-                            $hasTypes = $true
-                        }
-                        else {
-                            $eventIndent = $candidateIndent
-                            $k = $j + 1
-                            while ($k -lt $lines.Count) {
-                                $eventLine = $lines[$k]
-                                if ($eventLine -match '^\s*$') {
-                                    $k++
-                                    continue
-                                }
-
-                                $eventLineIndent = ([regex]::Match($eventLine, '^\s*')).Value.Length
-                                if ($eventLineIndent -le $eventIndent) {
-                                    break
-                                }
-
-                                if ($eventLine -match '^\s*types\s*:') {
-                                    $hasTypes = $true
-                                    break
-                                }
-
-                                $k++
-                            }
-                        }
-
-                        if (-not $hasTypes) {
-                            $missingTypes.Add($eventName)
-                        }
-
-                        break
-                    }
-
-                    $j++
-                }
-            }
-        }
+        $missingTypes = @(Get-MissingTypesEvent -WorkflowContent $content -Events $eventsRequiringTypes)
 
         if ($missingTypes.Count -eq 0) {
             $results.Add((Format-FylgyrResult `
@@ -119,7 +48,7 @@ function Test-TriggerFilter {
         $status = if ($escalated) { 'Fail' } else { 'Warning' }
         $severity = if ($escalated) { 'High' } else { 'Medium' }
 
-        $detail = "Workflow '$($wf.Name)' defines trigger(s) without types filters: $((@($missingTypes | Sort-Object -Unique)) -join ', ')."
+        $detail = "Workflow '$($wf.Name)' defines trigger(s) without types filters: $($missingTypes -join ', ')."
         if ($escalated) {
             $detail += ' Combined with self-hosted execution or untrusted run interpolation, this increases exposure to obscure event-subtype trigger abuse.'
         }
