@@ -122,7 +122,7 @@ function Test-OutsideCollaborators {
                         -Severity 'Info' `
                         -Resource $resource `
                         -Detail 'Token cannot read collaborator permission for one or more repositories. Outside collaborator analysis is partial.' `
-                        -Remediation 'Use a fine-grained token with repository Administration:read, or a classic token with repo + read:org scope.' `
+                        -Remediation 'Use a fine-grained token with repository Metadata:read, or a classic token with repo + read:org scope.' `
                         -Target $resource))
                     return $results.ToArray()
                 }

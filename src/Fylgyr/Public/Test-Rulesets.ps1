@@ -86,13 +86,25 @@ function Test-Rulesets {
     catch {
         $msg = $_.Exception.Message
         if ($msg -match '403') {
+            if (-not $Repo) {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName 'Rulesets' `
+                    -Status 'Info' `
+                    -Severity 'Info' `
+                    -Resource $resource `
+                    -Detail 'Insufficient permission to read organization rulesets with the current token. This endpoint may require Organization Administration:write for fine-grained PATs.' `
+                    -Remediation 'Treat this as advisory if you enforce least privilege. If you need org-level ruleset verification, use a dedicated audit token with Organization Administration:write, or rely on repository-level ruleset checks.' `
+                    -Target $resource))
+                return $results.ToArray()
+            }
+
             $results.Add((Format-FylgyrResult `
                 -CheckName 'Rulesets' `
                 -Status 'Error' `
                 -Severity 'Medium' `
                 -Resource $resource `
                 -Detail 'Insufficient permissions to read rulesets.' `
-                -Remediation 'Use a fine-grained token with repository/organization Administration:read, or a classic token with repo + read:org/admin:org scopes.' `
+                -Remediation 'Use a fine-grained token with repository Metadata:read for repository rulesets (and Administration:read if you also need legacy tag protection visibility). For organization rulesets, GitHub currently maps GET /orgs/{org}/rulesets to Organization Administration:write. If you use a classic token, include repo + read:org/admin:org scopes. In GitHub Actions, provide this token explicitly via -Token instead of relying on the default GITHUB_TOKEN.' `
                 -Target $resource))
             return $results.ToArray()
         }
@@ -100,12 +112,11 @@ function Test-Rulesets {
         if ($msg -match '404') {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'Rulesets' `
-                -Status 'Warning' `
-                -Severity 'Medium' `
+                -Status 'Info' `
+                -Severity 'Info' `
                 -Resource $resource `
-                -Detail 'Rulesets endpoint returned not found. Modern branch/tag governance may not be configured.' `
-                -Remediation 'Enable GitHub rulesets for branch and tag protection, and keep branch protection enabled as complementary control.' `
-                -AttackMapping @('trivy-force-push-main') `
+                -Detail 'Rulesets endpoint returned not found (404). Governance could not be verified from this API response.' `
+                -Remediation 'Verify repository/organization access and token permissions, then confirm rulesets support/availability in your GitHub plan and endpoint context.' `
                 -Target $resource))
             return $results.ToArray()
         }
@@ -178,6 +189,7 @@ function Test-Rulesets {
 
     if (-not $hasTagProtection) {
         $tagContextDetail = ''
+        $repoHasTags = $null
         if ($Repo) {
             try {
                 $repoTagsResponse = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/tags?per_page=100" -Token $Token
@@ -192,6 +204,7 @@ function Test-Rulesets {
                 }
 
                 if ($repoTags.Count -gt 0) {
+                    $repoHasTags = $true
                     $sampleTagNames = [System.Collections.Generic.List[string]]::new()
                     foreach ($repoTag in $repoTags) {
                         if ($sampleTagNames.Count -ge 3) { break }
@@ -210,6 +223,7 @@ function Test-Rulesets {
                     $tagContextDetail = " Repository has tags (first-page sample from tags API).$sampleText"
                 }
                 else {
+                    $repoHasTags = $false
                     $tagContextDetail = ' Repository currently has no tags. Configure tag protection before creating release tags.'
                 }
             }
@@ -218,14 +232,34 @@ function Test-Rulesets {
             }
         }
 
+        $status = 'Fail'
+        $severity = 'High'
+        $detail = "No active tag protection found (ruleset target: tag or legacy tag protection). Mutable release tags enable producer-side tag poisoning attacks.$tagContextDetail"
+        $remediation = 'Add an active tag-target ruleset (preferred) or legacy tag protection to prevent untrusted tag creation, deletion, and force-pushes. Protect release patterns such as v*.'
+        $attackMapping = @('trivy-tag-poisoning', 'actions-cool-issues-helper-compromise')
+
+        if (-not $Repo) {
+            $status = 'Warning'
+            $severity = 'Medium'
+            $detail = 'No active organization-level tag protection ruleset was found. This is a governance gap, but repositories may still enforce tag protection at repo scope.'
+            $remediation = 'Add an org-level tag-target ruleset for baseline governance, and verify each release repository has effective tag protection.'
+        }
+
+        if ($Repo -and $repoHasTags -eq $false) {
+            $status = 'Warning'
+            $severity = 'Medium'
+            $detail = "No active tag protection found (ruleset target: tag or legacy tag protection). Repository currently has no tags, so immediate tag-poisoning exposure is lower, but the first release tag will be unprotected unless governance is added now."
+            $remediation = 'Before creating your first release tag, add an active tag-target ruleset (preferred) or legacy tag protection for patterns such as v*.'
+        }
+
         $results.Add((Format-FylgyrResult `
             -CheckName 'Rulesets' `
-            -Status 'Fail' `
-            -Severity 'High' `
+            -Status $status `
+            -Severity $severity `
             -Resource $resource `
-            -Detail "No active tag protection found (ruleset target: tag or legacy tag protection). Mutable release tags enable producer-side tag poisoning attacks.$tagContextDetail" `
-            -Remediation 'Add an active tag-target ruleset (preferred) or legacy tag protection to prevent untrusted tag creation, deletion, and force-pushes. Protect release patterns such as v*.' `
-            -AttackMapping @('trivy-tag-poisoning', 'actions-cool-issues-helper-compromise') `
+            -Detail $detail `
+            -Remediation $remediation `
+            -AttackMapping $attackMapping `
             -Target $resource))
         return $results.ToArray()
     }

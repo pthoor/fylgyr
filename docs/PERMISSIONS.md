@@ -2,6 +2,8 @@
 
 Fylgyr authenticates to GitHub using a token from `$env:GITHUB_TOKEN` (or `-Token`). This document lists the exact permissions each check requires so you can mint a **least-privilege fine-grained PAT** — or fall back to a classic PAT when fine-grained is not an option.
 
+Permission mappings in this file are verified against GitHub REST docs for fine-grained PAT permissions (API version `2026-03-10`): <https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2026-03-10>.
+
 > [!NOTE]
 > **Passing the token.** Fylgyr reads `$env:GITHUB_TOKEN` by default, so you usually don't need to pass `-Token` at all:
 >
@@ -23,11 +25,11 @@ Fylgyr authenticates to GitHub using a token from `$env:GITHUB_TOKEN` (or `-Toke
 
 ## Permissions at a glance
 
-Fylgyr is **read-only**. It never writes to GitHub, never modifies settings, and never stores tokens. All permissions below are *Read-only*.
+Fylgyr is **read-only**. It never writes to GitHub, never modifies settings, and never stores tokens. Most required permissions are *Read-only*.
 
 - ✅ **Repository read access to** actions, administration, code (contents), code scanning alerts, commit statuses, dependabot alerts, environments, metadata, pull requests, and secret scanning alerts
-- ✅ **Organization read access to** administration, members, and (optionally) Actions secrets — required for org-level checks such as `Test-OrgMfaPolicy`, `Test-OrgDefaultPermissions`, `Test-IpAllowlist`, `Test-AuditLogStreaming`, `Test-OAuthAppPolicy`, `Test-OrgActionRestrictions`, `Test-OutsideCollaborators`, `Test-PatPolicy`, and `Test-GitHubAppSecurity`
-- 🚫 **No write access** to any resource
+- ✅ **Organization read access to** administration, members, and (optionally) Actions secrets — required for org-level checks such as `Test-OrgMfaPolicy`, `Test-OrgDefaultPermissions`, `Test-IpAllowlist`, `Test-AuditLogStreaming`, `Test-OAuthAppPolicy`, `Test-OrgActionRestrictions`, `Test-OutsideCollaborators`, and `Test-GitHubAppSecurity`
+- ⚠️ **No write API calls are made by Fylgyr**, but GitHub can still require a write-class permission for specific read endpoints (notably `GET /orgs/{org}/rulesets`, which is currently mapped to Organization Administration: write)
 - 🚫 **No access to** user email, followers, gists, personal profile data, billing, or any resource not listed above
 
 See the [per-check permission matrix](#per-check-permission-matrix) below for the exact scope each check needs.
@@ -47,7 +49,6 @@ Create at <https://github.com/settings/personal-access-tokens/new>.
   - Contents
   - Actions
   - Pull requests
-  - Environments
   - Dependabot alerts
   - Code scanning alerts
   - Secret scanning alerts
@@ -80,22 +81,23 @@ Required classic scopes: `repo` (full), `read:org`, `security_events`, `workflow
 | `Test-DependabotAlert` | `repos/{o}/{r}/dependabot/alerts` | Dependabot alerts: read |
 | `Test-EgressControl` | Workflow files (`.github/workflows/*`) | Contents: read |
 | `Test-PublishIntegrity` | Workflow files (`.github/workflows/*`) | Contents: read |
-| `Test-EnvironmentProtection` | `repos/{o}/{r}/environments` | Environments: read, Administration: read |
+| `Test-EnvironmentProtection` | `repos/{o}/{r}/environments` | Actions: read |
 | `Test-ForkPullPolicy` | Workflow files (`.github/workflows/*`) | Contents: read |
-| `Test-ForkSecretExposure` | `repos/{o}/{r}/environments`, `orgs/{o}/actions/secrets` | Environments: read, **Org Secrets: read** |
+| `Test-ForkSecretExposure` | `repos/{o}/{r}/environments`, `orgs/{o}/actions/secrets` | Actions: read, **Org Secrets: read** |
 | `Test-IpAllowlist` | GraphQL `organization { ipAllowListEntries }` | Organization Administration: read |
 | `Test-OrgMfaPolicy` | `orgs/{o}` | Organization Administration: read |
 | `Test-OrgDefaultPermissions` | `orgs/{o}` | Organization Administration: read |
 | `Test-AuditLogStreaming` | `orgs/{o}/audit-log/stream-key` | Organization Administration: read |
-| `Test-Rulesets` | `repos/{o}/{r}/rulesets`, `orgs/{o}/rulesets`, `repos/{o}/{r}/tags/protection` | Administration: read (repo + org) |
+| `Test-Rulesets` | `repos/{o}/{r}/rulesets`, `orgs/{o}/rulesets`, `repos/{o}/{r}/tags/protection` | Repo rulesets: Metadata: read. Legacy tag protection endpoint may require Administration: read. Org scope (`orgs/{o}/rulesets`): currently documented by GitHub as Organization Administration: write for fine-grained PATs. |
 | `Test-OAuthAppPolicy` | `orgs/{o}/third-party-application-policy` | Organization Administration: read |
 | `Test-OrgActionRestrictions` | `orgs/{o}/actions/permissions` | Organization Administration: read |
-| `Test-OutsideCollaborators` | `orgs/{o}/outside_collaborators`, `repos/{o}/{r}/collaborators/{u}/permission` | Organization Members: read, Repository Administration: read |
-| `Test-PatPolicy` | `orgs/{o}/personal-access-token-requests`, `orgs/{o}/personal-access-tokens` | Organization Administration: read |
+| `Test-OutsideCollaborators` | `orgs/{o}/outside_collaborators`, `repos/{o}/{r}/collaborators/{u}/permission` | Organization Members: read, Repository Metadata: read |
+| `Test-PatPolicy` | `orgs/{o}/personal-access-token-requests`, `orgs/{o}/personal-access-tokens` | Not available through standard PAT scopes in many org contexts. Endpoint access may require GitHub App user/installation tokens with org permissions `Personal access token requests: read` and `Personal access tokens: read`. |
 | `Test-BinaryArtifact` | `repos/{o}/{r}`, `repos/{o}/{r}/git/trees/{sha}?recursive=1` | Contents: read |
 | `Test-GitHubAppSecurity` | `orgs/{o}/installations` | Organization Administration: read |
+| `Test-PrivateVulnReporting` | `repos/{o}/{r}/private-vulnerability-reporting` | Metadata: read |
 | `Test-RepoVisibility` | `repos/{o}/{r}` | Metadata: read |
-| `Test-RunnerHygiene` | `repos/{o}/{r}/actions/runners`, `orgs/{o}/actions/runners`, `orgs/{o}/actions/runner-groups` | Administration: read (repo + org) |
+| `Test-RunnerHygiene` | `repos/{o}/{r}/actions/runners`, `orgs/{o}/actions/runners`, `orgs/{o}/actions/runner-groups` | Repository Administration: read, Organization Self-hosted runners: read |
 | `Test-SecretScanning` | `repos/{o}/{r}/secret-scanning/alerts` | Secret scanning alerts: read |
 | `Test-SignedCommit` | `repos/{o}/{r}/branches/{branch}/protection/required_signatures` | Administration: read |
 | `Test-WebhookSecurity` | `repos/{o}/{r}/hooks` | Webhooks: read (requires `admin:repo_hook` on classic PAT) |
@@ -110,7 +112,9 @@ All checks additionally require **Metadata: read** — this is mandatory for eve
 | `Failed to retrieve repository info ... 404 Not Found` on a repo you know exists | Fine-grained PAT not approved by the target org | Ask an org owner to approve the token in **Org settings → Personal access tokens → Pending requests** |
 | `403 Resource not accessible by personal access token` | Missing permission for that specific endpoint | Check the matrix above and add the corresponding permission |
 | `401 Bad credentials` | Token expired, revoked, or not exported | Regenerate and set `$env:GITHUB_TOKEN` |
-| Org-level checks (`Test-OrgMfaPolicy`, `Test-OrgDefaultPermissions`, `Test-IpAllowlist`, `Test-AuditLogStreaming`, `Test-OAuthAppPolicy`, `Test-OrgActionRestrictions`, `Test-OutsideCollaborators`, `Test-PatPolicy`, `Test-GitHubAppSecurity`, `Test-RunnerHygiene`) return `Error` while repo-level checks pass | Token has repo permissions but no org permissions | Add **Org Administration: read** and **Org Members: read** as needed |
+| Org-level checks (`Test-OrgMfaPolicy`, `Test-OrgDefaultPermissions`, `Test-IpAllowlist`, `Test-AuditLogStreaming`, `Test-OAuthAppPolicy`, `Test-OrgActionRestrictions`, `Test-OutsideCollaborators`, `Test-GitHubAppSecurity`, `Test-RunnerHygiene`) return `Error` while repo-level checks pass | Token has repo permissions but no org permissions | Add **Org Administration: read** and **Org Members: read** as needed; for `Test-RunnerHygiene`, also include **Organization Self-hosted runners: read** |
+| `Test-PatPolicy` returns `Info` with endpoint unavailable/partial analysis | PAT policy endpoints unavailable in plan context, or endpoint token-type requirements not met | Treat as advisory; verify PAT governance in org settings, and if API verification is required use supported GitHub App token types/permissions from GitHub REST docs |
+| `Test-Rulesets` (org scope) returns `Info` for insufficient permissions | Fine-grained PAT lacks Organization Administration: write required by `GET /orgs/{org}/rulesets` in current GitHub API permission mapping | Keep least-privilege PAT for normal scans; use a dedicated elevated audit token only when org-level ruleset verification is needed |
 | `Test-ForkSecretExposure` skips org-secret enumeration | Missing **Org Secrets: read** | Optional — add only if you need org-wide secret visibility |
 
 ## Why not a GitHub App?

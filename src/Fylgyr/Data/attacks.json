@@ -582,5 +582,96 @@
       "No organization controls for OAuth app authorization",
       "Weak token governance and missing audit-log visibility for suspicious authorizations"
     ]
+  },
+  {
+    "id": "github-actions-script-injection",
+    "name": "GitHub Actions script injection via untrusted event context",
+    "date": "2026-01-01",
+    "description": "A recurring GitHub Actions anti-pattern where attacker-controlled event fields (issue/PR/comment/discussion content, commit messages, wiki page names) are interpolated directly into run steps, enabling command injection in CI jobs.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://sysdig.com/blog/",
+      "https://securitylab.github.com/research/github-actions-preventing-pwn-requests/"
+    ],
+    "owaspCiCd": ["CICD-SEC-4"],
+    "mitre": ["T1059.004"],
+    "detectionSignals": [
+      "${{ github.event.*.body }} or ${{ github.event.*.title }} expressions interpolated in run steps",
+      "run blocks consuming discussion/comment/review payloads without sanitization",
+      "Shell commands built from untrusted event data"
+    ]
+  },
+  {
+    "id": "artifact-poisoning-workflow-run",
+    "name": "Artifact poisoning across workflow_run boundaries",
+    "date": "2024-01-01",
+    "description": "A low-privileged workflow uploads attacker-influenced artifacts that are later downloaded and executed by a higher-privileged workflow_run pipeline without integrity verification.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://securitylab.github.com/research/github-actions-preventing-pwn-requests/"
+    ],
+    "owaspCiCd": ["CICD-SEC-4", "CICD-SEC-3"],
+    "mitre": ["T1195.002", "T1059.004"],
+    "detectionSignals": [
+      "actions/download-artifact combined with direct script execution",
+      "workflow_run trigger consuming artifacts from another workflow",
+      "No checksum, signature, or provenance verification before execution"
+    ]
+  },
+  {
+    "id": "oidc-trust-abuse",
+    "name": "OIDC trust abuse from unscoped token requests",
+    "date": "2024-01-01",
+    "description": "Workflow requests id-token: write without strong trust scoping, enabling misuse of OIDC federation paths when repository or workflow trust boundaries are compromised.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://docs.github.com/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect"
+    ],
+    "owaspCiCd": ["CICD-SEC-5", "CICD-SEC-4"],
+    "mitre": ["T1550", "T1078.004"],
+    "detectionSignals": [
+      "id-token: write without environment protection or reviewer gate",
+      "Trusted publishing jobs lacking environment scoping",
+      "Workflow OIDC grants broader than required refs/audiences"
+    ]
+  },
+  {
+    "id": "cache-poisoning-pr-branch",
+    "name": "PR branch cache poisoning",
+    "date": "2023-01-01",
+    "description": "Cache keys derived from attacker-controlled branch refs let adversaries poison build caches and influence subsequent trusted runs.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-04-Poisoned-Pipeline-Execution"
+    ],
+    "owaspCiCd": ["CICD-SEC-4"],
+    "mitre": ["T1195.002"],
+    "detectionSignals": [
+      "Cache key includes github.head_ref or pull_request head ref",
+      "Shared cache restore keys across trusted and untrusted branches",
+      "Fork PR workflows reusing mutable cache namespaces"
+    ]
+  },
+  {
+    "id": "shai-hulud-runner-backdoor",
+    "name": "Shai-Hulud runner backdoor pattern",
+    "date": "2025-01-01",
+    "description": "Attack chain pattern where weakly filtered discussion/comment triggers on self-hosted runners allow attacker-controlled execution and persistence on runner infrastructure, expanding the Shai-Hulud campaign techniques.",
+    "affectedPackages": [],
+    "cves": [],
+    "references": [
+      "https://sysdig.com/blog/shai-hulud-npm-supply-chain-attack/"
+    ],
+    "owaspCiCd": ["CICD-SEC-7", "CICD-SEC-4"],
+    "mitre": ["T1496", "T1059.004", "T1546"],
+    "detectionSignals": [
+      "Self-hosted runners exposed to discussion or issue_comment triggers",
+      "Trigger events without types filters in runner-executed workflows",
+      "Untrusted event payload interpolation in run steps on persistent runners"
+    ]
   }
 ]

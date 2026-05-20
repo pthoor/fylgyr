@@ -15,6 +15,8 @@ function Invoke-Fylgyr {
 
         [switch]$IncludeOrgChecks,
 
+        [string[]]$ReusableWorkflowAllowlist = @(),
+
         [string]$Token = $env:GITHUB_TOKEN
     )
 
@@ -91,7 +93,7 @@ function Invoke-Fylgyr {
                     -PercentComplete $pct `
                     -Id 1
 
-                $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $repoName -Token $Token
+                $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $repoName -Token $Token -ReusableWorkflowAllowlist $ReusableWorkflowAllowlist
                 foreach ($result in $repoResults) { $allResults.Add($result) }
                 $scannedTargets.Add("$Owner/$repoName")
             }
@@ -99,7 +101,7 @@ function Invoke-Fylgyr {
             Write-Progress -Activity "Scanning $Owner" -Id 1 -Completed
         }
         else {
-            $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $Repo -Token $Token
+            $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $Repo -Token $Token -ReusableWorkflowAllowlist $ReusableWorkflowAllowlist
             foreach ($result in $repoResults) { $allResults.Add($result) }
             $scannedTargets.Add("$Owner/$Repo")
         }
@@ -152,7 +154,9 @@ function Invoke-FylgyrScan {
         [string]$Repo,
 
         [Parameter(Mandatory)]
-        [string]$Token
+        [string]$Token,
+
+        [string[]]$ReusableWorkflowAllowlist = @()
     )
 
     $target = "$Owner/$Repo"
@@ -194,6 +198,14 @@ function Invoke-FylgyrScan {
         $workflowChecks = @(
             @{ Name = 'Test-ActionPinning';      Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-DangerousTrigger';   Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-ScriptInjection';    Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-ArtifactPoisoning';  Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-OidcTrust';          Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-CacheIntegrity';     Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-TriggerFilter';      Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-DependencyReview';   Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-ArtifactAttestation'; Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-ReusableWorkflowTrust'; Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; ReusableWorkflowAllowlist = $ReusableWorkflowAllowlist } }
             @{ Name = 'Test-WorkflowPermission'; Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-RunnerHygiene';      Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-EgressControl';      Params = @{ WorkflowFiles = $workflowFiles } }
@@ -265,6 +277,7 @@ function Invoke-FylgyrScan {
         @{ Name = 'Test-WebhookSecurity';      Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
         @{ Name = 'Test-Rulesets';             Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
         @{ Name = 'Test-BinaryArtifact';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        @{ Name = 'Test-PrivateVulnReporting'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
     )
 
     foreach ($entry in $repoChecks) {
@@ -279,9 +292,8 @@ function Invoke-FylgyrScan {
             }
         }
         catch {
-            $checkName = if ($entry.Name -like 'Test-*') { $entry.Name.Substring(5) } else { $entry.Name }
             $results.Add((Format-FylgyrResult `
-                -CheckName $checkName `
+                -CheckName $entry.Name `
                 -Status 'Error' `
                 -Severity 'Critical' `
                 -Resource $target `
@@ -336,9 +348,9 @@ function Invoke-FylgyrOrgScan {
             }
         }
         catch {
-            $checkName = if ($entry.Name -like 'Test-*') { $entry.Name.Substring(5) } else { $entry.Name }
+            $normalizedCheckName = $entry.Name -replace '^Test-', ''
             $results.Add((Format-FylgyrResult `
-                -CheckName $checkName `
+                -CheckName $normalizedCheckName `
                 -Status 'Error' `
                 -Severity 'Critical' `
                 -Resource $target `

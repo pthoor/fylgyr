@@ -19,6 +19,87 @@ function Test-RunnerHygiene {
     $hostedPattern = '^(ubuntu|windows|macos)-'
     $selfHostedPattern = '(?i)(self.hosted|self_hosted)'
 
+    $getMissingTypesEvents = {
+        param([string]$WorkflowContent)
+
+        $events = @('discussion', 'issue_comment')
+        $missing = [System.Collections.Generic.List[string]]::new()
+        $lines = $WorkflowContent -split "`n"
+
+        foreach ($eventName in $events) {
+            $inlineArrayPattern = '(?im)^\s*on\s*:\s*\[[^\]]*\b' + [regex]::Escape($eventName) + '\b[^\]]*\]'
+            $inlineScalarPattern = '(?im)^\s*on\s*:\s*' + [regex]::Escape($eventName) + '\s*$'
+            if ($WorkflowContent -match $inlineArrayPattern -or $WorkflowContent -match $inlineScalarPattern) {
+                $missing.Add($eventName)
+                continue
+            }
+
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -notmatch '^\s*on\s*:\s*$') {
+                    continue
+                }
+
+                $onIndent = ([regex]::Match($lines[$i], '^\s*')).Value.Length
+                $j = $i + 1
+                while ($j -lt $lines.Count) {
+                    $candidate = $lines[$j]
+                    if ($candidate -match '^\s*$') {
+                        $j++
+                        continue
+                    }
+
+                    $candidateIndent = ([regex]::Match($candidate, '^\s*')).Value.Length
+                    if ($candidateIndent -le $onIndent) {
+                        break
+                    }
+
+                    $eventHeaderPattern = '^\s{' + ($onIndent + 2) + '}' + [regex]::Escape($eventName) + '\s*:(?<tail>.*)$'
+                    if ($candidate -match $eventHeaderPattern) {
+                        $tail = $Matches.tail.Trim()
+                        $hasTypes = $false
+
+                        if ($tail -match '(?i)\btypes\b') {
+                            $hasTypes = $true
+                        }
+                        else {
+                            $eventIndent = $candidateIndent
+                            $k = $j + 1
+                            while ($k -lt $lines.Count) {
+                                $eventLine = $lines[$k]
+                                if ($eventLine -match '^\s*$') {
+                                    $k++
+                                    continue
+                                }
+
+                                $eventLineIndent = ([regex]::Match($eventLine, '^\s*')).Value.Length
+                                if ($eventLineIndent -le $eventIndent) {
+                                    break
+                                }
+
+                                if ($eventLine -match '^\s*types\s*:') {
+                                    $hasTypes = $true
+                                    break
+                                }
+
+                                $k++
+                            }
+                        }
+
+                        if (-not $hasTypes) {
+                            $missing.Add($eventName)
+                        }
+
+                        break
+                    }
+
+                    $j++
+                }
+            }
+        }
+
+        @($missing | Sort-Object -Unique)
+    }
+
     foreach ($wf in $WorkflowFiles) {
         $content = $wf.Content
         $name = $wf.Name
@@ -31,6 +112,11 @@ function Test-RunnerHygiene {
         $hasPullRequestTarget = $stripped -match '(?m)pull_request_target'
         $hasPullRequest = $stripped -match '(?m)(^|\s)pull_request(\s|:|$)'
         $hasWorkflowRun = $stripped -match '(?m)workflow_run'
+        $hasDiscussion = $stripped -match '(?m)(^|\s)discussion(\s|:|$)'
+        $hasIssueComment = $stripped -match '(?m)(^|\s)issue_comment(\s|:|$)'
+        $hasWorkflowDispatch = $stripped -match '(?m)(^|\s)workflow_dispatch(\s|:|$)'
+        $missingTypesEvents = @(& $getMissingTypesEvents $stripped)
+        $hasMissingTypesEvent = $missingTypesEvents.Count -gt 0
 
         # Find all runs-on values
         $runsOnValues = [System.Collections.Generic.List[string]]::new()
@@ -87,15 +173,33 @@ function Test-RunnerHygiene {
 
             $foundSelfHosted = $true
 
-            if ($hasPullRequestTarget -or $hasWorkflowRun) {
+            if ($hasPullRequestTarget -or $hasWorkflowRun -or $hasDiscussion -or $hasIssueComment -or $hasWorkflowDispatch) {
+                $dangerousTriggers = [System.Collections.Generic.List[string]]::new()
+                if ($hasPullRequestTarget) { $dangerousTriggers.Add('pull_request_target') }
+                if ($hasWorkflowRun) { $dangerousTriggers.Add('workflow_run') }
+                if ($hasDiscussion) { $dangerousTriggers.Add('discussion') }
+                if ($hasIssueComment) { $dangerousTriggers.Add('issue_comment') }
+                if ($hasWorkflowDispatch) { $dangerousTriggers.Add('workflow_dispatch') }
+
                 $results.Add((Format-FylgyrResult `
                     -CheckName 'RunnerHygiene' `
                     -Status 'Fail' `
                     -Severity 'High' `
                     -Resource "$path" `
-                    -Detail "Workflow '$name' uses a self-hosted runner ('$runsOnValue') with a dangerous trigger (pull_request_target or workflow_run). Attacker-controlled code from a fork could execute on your runner, as demonstrated in the Praetorian lateral movement attack." `
+                    -Detail "Workflow '$name' uses a self-hosted runner ('$runsOnValue') with dangerous trigger(s): $($dangerousTriggers -join ', '). This enables attacker-controlled execution paths and has been exploited in runner backdoor and lateral movement campaigns." `
                     -Remediation 'Move this job to a GitHub-hosted runner, or ensure the workflow never checks out untrusted code on a self-hosted runner. Use ephemeral runners and restrict runner groups to specific repositories.' `
-                    -AttackMapping @('github-actions-cryptomining', 'nx-pwn-request', 'praetorian-runner-pivot') `
+                    -AttackMapping @('github-actions-cryptomining', 'nx-pwn-request', 'praetorian-runner-pivot', 'shai-hulud-runner-backdoor') `
+                    -Target $null))
+            }
+            elseif ($hasMissingTypesEvent) {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName 'RunnerHygiene' `
+                    -Status 'Warning' `
+                    -Severity 'High' `
+                    -Resource "$path" `
+                    -Detail "Workflow '$name' uses a self-hosted runner and defines event trigger(s) without types filters: $($missingTypesEvents -join ', '). Obscure event sub-actions can unexpectedly execute code on runner infrastructure." `
+                    -Remediation 'Add explicit types filters for comment/discussion-style triggers and restrict self-hosted runners to trusted workflows only.' `
+                    -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot', 'shai-hulud-runner-backdoor') `
                     -Target $null))
             }
             elseif ($hasPullRequest) {
@@ -106,7 +210,7 @@ function Test-RunnerHygiene {
                     -Resource "$path" `
                     -Detail "Workflow '$name' uses a self-hosted runner ('$runsOnValue') with a pull_request trigger. Fork PRs can run arbitrary code on your self-hosted runner." `
                     -Remediation "If this repository is public, switch to GitHub-hosted runners for PR workflows. If private, verify fork PR access is restricted. Consider ephemeral runners to limit persistence." `
-                    -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot') `
+                    -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot', 'shai-hulud-runner-backdoor') `
                     -Target $null))
             }
             else {
@@ -117,7 +221,7 @@ function Test-RunnerHygiene {
                     -Resource "$path" `
                     -Detail "Workflow '$name' uses a self-hosted runner ('$runsOnValue'). Self-hosted runners require careful hardening and access control." `
                     -Remediation 'Ensure self-hosted runners are ephemeral, run in isolated environments, and are not exposed to untrusted input. See: https://docs.github.com/actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners' `
-                    -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot') `
+                    -AttackMapping @('github-actions-cryptomining', 'praetorian-runner-pivot', 'shai-hulud-runner-backdoor') `
                     -Target $null))
             }
         }

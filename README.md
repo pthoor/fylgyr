@@ -45,7 +45,7 @@ Invoke-Fylgyr -Owner 'myorg' -IncludeOrgChecks
 > Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Token $otherToken
 > ```
 >
-> **Fylgyr strongly recommends [fine-grained PATs](docs/PERMISSIONS.md#recommended-token--fine-grained-pat)** — every check works with least-privilege fine-grained permissions, and no feature requires a classic PAT. Never hardcode tokens; load them from a secret manager.
+> **Fylgyr strongly recommends [fine-grained PATs](docs/PERMISSIONS.md#recommended-token--fine-grained-pat)** for default operation. Core repository checks and most organization checks work with least-privilege fine-grained permissions, and no feature requires a classic PAT. Some organization governance APIs (currently PAT policy evidence endpoints) can be restricted by GitHub to GitHub App token types; in those contexts Fylgyr reports advisory `Info` results instead of a misleading fail. Never hardcode tokens; load them from a secret manager.
 
 ## Maintainer Quickstart
 
@@ -164,7 +164,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -OutputFormat Console
 Invoke-Fylgyr -Owner 'myorg' -OutputFormat Console
 ```
 
-Abridged example (a real scan runs ~19 checks per repo):
+Abridged example (a real scan runs ~30 checks per repo):
 
 ```
   Fylgyr Supply-Chain Audit: myorg
@@ -278,7 +278,7 @@ The workflow uses the built-in `GITHUB_TOKEN` with minimal permissions:
 | `contents: read` | Read workflow files and repository content |
 | `security-events: write` | Upload SARIF results to Code Scanning |
 
-These two permissions are the only valid `GITHUB_TOKEN` scopes needed. They cover the workflow-based checks (ActionPinning, DangerousTrigger, WorkflowPermission, RunnerHygiene, PublishIntegrity, EgressControl, ForkPullPolicy, CodeScanning).
+These two permissions are the only valid `GITHUB_TOKEN` scopes needed. They cover workflow-based checks such as ActionPinning, DangerousTrigger, ScriptInjection, ArtifactPoisoning, OidcTrust, CacheIntegrity, TriggerFilter, DependencyReview, ArtifactAttestation, ReusableWorkflowTrust, WorkflowPermission, RunnerHygiene, PublishIntegrity, EgressControl, ForkPullPolicy, and CodeScanning.
 
 #### Repo-level checks that need a PAT
 
@@ -300,6 +300,8 @@ Several checks require a **Personal Access Token** (PAT) because the workflow `G
 Without a PAT these checks gracefully report `Status = 'Error'` with a clear message — they won't fail the workflow or block other checks.
 
 Org-level policy checks (`-IncludeOrgChecks`) additionally require organization-level visibility (`read:org` / `admin:org` on classic tokens, or equivalent organization read permissions on fine-grained tokens). Some controls are enterprise-only and downgrade to `Info` when the feature is unavailable.
+
+> **GitHub App token note (current API behavior):** some PAT governance endpoints used by `PatPolicy` may be available only to GitHub App user/installation tokens in certain org contexts. If those endpoints are unavailable for your token type, Fylgyr intentionally returns `Info` (partial analysis) and explains the limitation.
 
 > See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the full per-check permission matrix, the recommended least-privilege fine-grained PAT, guidance on classic PAT fallback, and troubleshooting for the common `404 Not Found` error caused by org-level fine-grained PAT approval.
 
@@ -344,6 +346,14 @@ Invoke-Fylgyr -Owner 'myorg' -IncludeOrgChecks
 
 Org-level checks are intentionally skipped for single-repository scans (`-Repo`) to keep repo audits focused and deterministic.
 
+### Reusable workflow trust allowlist
+
+Use `-ReusableWorkflowAllowlist` to permit external reusable workflow sources beyond the default trusted set (same-owner, `actions/*`, and `github/*`):
+
+```powershell
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -ReusableWorkflowAllowlist @('my-trusted-org/*', 'security-team/reusable-workflows')
+```
+
 ### Pipeline input
 
 ```powershell
@@ -376,6 +386,14 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 |---|---|---|---|
 | `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise` |
 | `DangerousTrigger` | `pull_request_target` / `workflow_run` with untrusted code checkout, missing actor restrictions, secret exposure in PRT context | Critical | `nx-pwn-request`, `prt-scan-ai-automated`, `trivy-supply-chain-2026`, `azure-karpenter-pwn-request`, `hackerbot-claw` |
+| `ScriptInjection` | Untrusted GitHub event expressions interpolated into `run:` blocks | Critical | `github-actions-script-injection` |
+| `ArtifactPoisoning` | Downloaded artifacts executed without integrity verification, especially across `workflow_run` boundaries | High | `artifact-poisoning-workflow-run` |
+| `OidcTrust` | `id-token: write` without environment scoping (elevated when publish-adjacent) | High | `oidc-trust-abuse`, `bitwarden-cli-2026-04` |
+| `CacheIntegrity` | Cache keys derived from attacker-controlled refs (for example `github.head_ref`) | Medium | `cache-poisoning-pr-branch` |
+| `TriggerFilter` | Trigger events (discussion/comment/review/project families) missing explicit `types:` filters | Medium | `shai-hulud-runner-backdoor` |
+| `DependencyReview` | PR workflows missing `actions/dependency-review-action` pre-merge dependency gate | Medium | `event-stream-hijack` |
+| `ArtifactAttestation` | Release-producing jobs missing build provenance attestation controls | Medium | `solarwinds-orion`, `codecov-bash-uploader` |
+| `ReusableWorkflowTrust` | Reusable workflow calls not SHA-pinned or sourced from untrusted repos | High | `tj-actions-shai-hulud` |
 | `WorkflowPermission` | Missing top-level `permissions:` block in workflow files | Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
 | `PublishIntegrity` | Publish workflows missing provenance, trusted publishing, or artifact signing signals | High | `shai-hulud-npm-worm`, `lottie-player-npm-compromise`, `ua-parser-js-npm-compromise`, `bitwarden-cli-2026-04`, `event-stream-hijack` |
 | `EgressControl` | Missing or audit-only network egress filtering in workflows | Medium | `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise`, `trivy-supply-chain-2026`, `codecov-bash-uploader` |
@@ -385,7 +403,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `SecretScanning` | Secret Scanning disabled, high/critical open alerts, or alert telemetry unavailable to token scope | High | `committed-credentials-exposure`, `uber-credential-leak`, `axios-npm-token-leak` |
 | `DependabotAlert` | Open critical/high Dependabot vulnerability alerts | High | `event-stream-hijack`, `solarwinds-orion` |
 | `CodeScanning` | Code Scanning not configured or stale analyses | Medium | `solarwinds-orion` |
-| `RunnerHygiene` | Risky self-hosted runner configurations, org-wide runner groups, non-ephemeral runners, public repo runners | High | `github-actions-cryptomining`, `praetorian-runner-pivot` |
+| `RunnerHygiene` | Risky self-hosted runner configurations, dangerous triggers, missing trigger filters, org-wide runner groups, non-ephemeral runners, public repo runners | High | `github-actions-cryptomining`, `praetorian-runner-pivot`, `shai-hulud-runner-backdoor` |
 | `CodeOwner` | Missing `CodeOwner` file, single-owner catch-all rules, too few distinct reviewers | Medium | `xz-utils-backdoor` |
 | `SignedCommit` | Default branch does not require signed commits | Medium | `xz-utils-backdoor` |
 | `ForkPullPolicy` | `pull_request_target` combined with checkout of fork-controlled `head.sha`/`head.ref`/`github.head_ref` | High | `nx-pwn-request`, `tj-actions-shai-hulud`, `prt-scan-ai-automated` |
@@ -393,7 +411,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `RepoVisibility` | Public repositories with internal/private naming patterns | Medium | `toyota-source-exposure` |
 | `WebhookSecurity` | Repository webhooks configured without a secret for payload authentication | Low | `codecov-bash-uploader` |
 | `BinaryArtifact` | Binary files (`.exe`, `.dll`, `.so`, `.jar`, etc.) committed in the repository tree | Low | `solarwinds-orion` |
-| `Rulesets` | Missing modern branch/tag rulesets or missing tag protection | High | `trivy-tag-poisoning`, `actions-cool-issues-helper-compromise`, `trivy-force-push-main` |
+| `Rulesets` | Missing modern branch/tag rulesets or missing tag protection (warns if repo has no tags yet; fails when tags exist) | High | `trivy-tag-poisoning`, `actions-cool-issues-helper-compromise`, `trivy-force-push-main` |
 | `OrgMfaPolicy` | Organization does not require MFA for members | Critical | `dropbox-github-breach` |
 | `OrgDefaultPermissions` | Default org repository permission is broader than read/none | High | `gentoo-github-compromise` |
 | `IpAllowlist` | Organization has no IP allowlist entries (enterprise recommendation) | Medium | `github-device-code-phishing`, `uber-credential-leak` |
@@ -402,6 +420,17 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `OrgActionRestrictions` | Organization allows unrestricted third-party GitHub Actions | High | `tj-actions-shai-hulud` |
 | `OutsideCollaborators` | Outside collaborators retain write/admin repository access | High | `uber-credential-leak` |
 | `PatPolicy` | Organization PAT governance cannot be verified or appears weak | High | `uber-credential-leak`, `github-device-code-phishing` |
+| `PrivateVulnReporting` | Repository private vulnerability reporting (PVR) disabled or unsupported | Low | `xz-utils-backdoor` |
+
+## Private Vulnerability Reporting Baseline
+
+Use this baseline for coordinated disclosure hygiene on public and private repositories:
+
+1. Enable Private Vulnerability Reporting in repository Settings > Security.
+2. Maintain `SECURITY.md` with a private reporting path, scope, and safe-harbor language.
+3. Define and publish response expectations, for example acknowledge within 3 business days and provide triage/remediation updates on a predictable cadence.
+4. Avoid routing vulnerability reports to public issue templates; keep the private channel as the default path for security disclosures.
+5. Review and test the disclosure path periodically so maintainers can respond quickly when a report arrives.
 
 ## Compatibility
 
@@ -455,6 +484,11 @@ Every finding maps to a real-world supply chain incident. The full catalog lives
 | `dropbox-github-breach` | Dropbox GitHub breach | 2022-11 |
 | `gentoo-github-compromise` | Gentoo GitHub organization compromise | 2018-06 |
 | `github-device-code-phishing` | GitHub OAuth device code phishing | 2025-01 |
+| `github-actions-script-injection` | GitHub Actions script injection via untrusted event context | 2026-01 |
+| `artifact-poisoning-workflow-run` | Artifact poisoning across workflow_run boundaries | 2024-01 |
+| `oidc-trust-abuse` | OIDC trust abuse from unscoped token requests | 2024-01 |
+| `cache-poisoning-pr-branch` | PR branch cache poisoning | 2023-01 |
+| `shai-hulud-runner-backdoor` | Shai-Hulud runner backdoor pattern | 2025-01 |
 
 ## Security Posture
 
@@ -483,27 +517,38 @@ src/Fylgyr/
 ├── Public/
 │   ├── Invoke-Fylgyr.ps1    # Orchestrator + output formatting
 │   ├── Test-ActionPinning.ps1
+│   ├── Test-ArtifactAttestation.ps1
+│   ├── Test-ArtifactPoisoning.ps1
+│   ├── Test-CacheIntegrity.ps1
 │   ├── Test-BranchProtection.ps1
 │   ├── Test-CodeOwner.ps1
 │   ├── Test-CodeScanning.ps1
 │   ├── Test-DangerousTrigger.ps1
 │   ├── Test-DependabotAlert.ps1
+│   ├── Test-DependencyReview.ps1
 │   ├── Test-EgressControl.ps1
 │   ├── Test-EnvironmentProtection.ps1
 │   ├── Test-ForkPullPolicy.ps1
 │   ├── Test-ForkSecretExposure.ps1
 │   ├── Test-GitHubAppSecurity.ps1
+│   ├── Test-OidcTrust.ps1
+│   ├── Test-PrivateVulnReporting.ps1
 │   ├── Test-RepoVisibility.ps1
+│   ├── Test-ReusableWorkflowTrust.ps1
 │   ├── Test-RunnerHygiene.ps1
 │   ├── Test-PublishIntegrity.ps1
+│   ├── Test-ScriptInjection.ps1
 │   ├── Test-SecretScanning.ps1
 │   ├── Test-SignedCommit.ps1
+│   ├── Test-TriggerFilter.ps1
 │   ├── Test-WebhookSecurity.ps1
 │   ├── Test-BinaryArtifact.ps1
 │   └── Test-WorkflowPermission.ps1
 ├── Private/
 │   ├── Invoke-GitHubApi.ps1       # REST/GraphQL wrapper with pagination
 │   ├── Get-WorkflowFile.ps1       # Fetches workflows via Git Trees API
+│   ├── Get-RunBlock.ps1           # Extracts run: blocks (including block scalars)
+│   ├── Get-WorkflowJobBlock.ps1   # Extracts per-job YAML blocks for job-scoped checks
 │   ├── Get-FylgyrOwnerContext.ps1 # Owner/persona context helper (type, plan, token owner)
 │   ├── Format-FylgyrResult.ps1    # Standardized result schema
 │   ├── ConvertTo-FylgyrJson.ps1   # JSON output formatter

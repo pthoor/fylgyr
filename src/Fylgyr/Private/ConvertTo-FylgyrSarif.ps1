@@ -93,7 +93,7 @@
         )
         $isOrgLevelResource = $orgCheckNames -contains $r.CheckName
         $isRepoLevelResource = $r.Resource -match '^[^/\s]+/[^/\s]+(?: \(.+\))?$'
-        $isFilePath = -not ($isRepoLevelResource -or $isOrgLevelResource)
+        $isFilePath = -not $isRepoLevelResource
 
         $sarifResult = [PSCustomObject]@{
             ruleId  = $ruleId

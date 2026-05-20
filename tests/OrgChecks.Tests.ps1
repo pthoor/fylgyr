@@ -313,7 +313,7 @@ Describe 'Phase 7 org-level checks' {
             $results[0].Status | Should -Be 'Pass'
         }
 
-        It 'fails when policy evidence cannot be verified' {
+        It 'returns Info when requests endpoint is reachable but tokens endpoint is unavailable (404)' {
             Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
             Mock -ModuleName Fylgyr Invoke-GitHubApi {
                 param($Endpoint)
@@ -327,7 +327,8 @@ Describe 'Phase 7 org-level checks' {
             }
 
             $results = Test-PatPolicy -Owner 'acme' -Token 'fake'
-            $results[0].Status | Should -Be 'Fail'
+            $results[0].Status | Should -Be 'Info'
+            $results[0].Detail | Should -BeLike '*endpoint is unavailable (404)*'
         }
 
         It 'returns Info on insufficient permission' {
@@ -370,7 +371,7 @@ Describe 'Phase 7 org-level checks' {
             $results[0].Status | Should -Be 'Pass'
         }
 
-        It 'fails when tag protection is missing' {
+        It 'warns when tag protection is missing at org scope' {
             Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
             Mock -ModuleName Fylgyr Invoke-GitHubApi {
                 param($Endpoint)
@@ -381,12 +382,12 @@ Describe 'Phase 7 org-level checks' {
             }
 
             $results = Test-Rulesets -Owner 'acme' -Token 'fake'
-            $results[0].Status | Should -Be 'Fail'
+            $results[0].Status | Should -Be 'Warning'
             $results[0].AttackMapping | Should -Contain 'trivy-tag-poisoning'
             $results[0].AttackMapping | Should -Contain 'actions-cool-issues-helper-compromise'
         }
 
-        It 'returns Error on insufficient permission' {
+        It 'returns Info on insufficient permission for org rulesets' {
             Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
             Mock -ModuleName Fylgyr Invoke-GitHubApi {
                 param($Endpoint)
@@ -395,7 +396,21 @@ Describe 'Phase 7 org-level checks' {
             }
 
             $results = Test-Rulesets -Owner 'acme' -Token 'fake'
-            $results[0].Status | Should -Be 'Error'
+            $results[0].Status | Should -Be 'Info'
+            $results[0].Detail | Should -BeLike '*Administration:write*'
+        }
+
+        It 'returns Info when rulesets endpoint is unavailable (404)' {
+            Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
+            Mock -ModuleName Fylgyr Invoke-GitHubApi {
+                param($Endpoint)
+                if ($Endpoint -eq 'orgs/acme/rulesets') { throw '404 Not Found' }
+                throw 'unexpected endpoint'
+            }
+
+            $results = Test-Rulesets -Owner 'acme' -Token 'fake'
+            $results[0].Status | Should -Be 'Info'
+            $results[0].Detail | Should -BeLike '*could not be verified*'
         }
 
         It 'returns Info when owner is a user' {
@@ -445,6 +460,45 @@ Describe 'Phase 7 org-level checks' {
             $results[0].Status | Should -Be 'Fail'
             $results[0].Detail | Should -BeLike '*first-page sample*'
             $results[0].Detail | Should -BeLike '*v1.0.0*'
+        }
+
+        It 'warns when repo has no tags and tag protection is missing' {
+            Mock -ModuleName Fylgyr Invoke-GitHubApi {
+                param($Endpoint)
+
+                if ($Endpoint -eq 'repos/acme/repo') {
+                    return [PSCustomObject]@{ default_branch = 'main' }
+                }
+
+                if ($Endpoint -eq 'repos/acme/repo/rulesets') {
+                    return @(
+                        [PSCustomObject]@{
+                            target = 'branch'
+                            enforcement = 'active'
+                            conditions = [PSCustomObject]@{
+                                ref_name = [PSCustomObject]@{
+                                    include = @('refs/heads/main')
+                                }
+                            }
+                        }
+                    )
+                }
+
+                if ($Endpoint -eq 'repos/acme/repo/tags/protection') {
+                    return @()
+                }
+
+                if ($Endpoint -eq 'repos/acme/repo/tags?per_page=100') {
+                    return @()
+                }
+
+                throw 'unexpected endpoint'
+            }
+
+            $results = Test-Rulesets -Owner 'acme' -Repo 'repo' -Token 'fake'
+            $results[0].Status | Should -Be 'Warning'
+            $results[0].Severity | Should -Be 'Medium'
+            $results[0].Detail | Should -BeLike '*currently has no tags*'
         }
     }
 }
