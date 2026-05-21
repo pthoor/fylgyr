@@ -37,6 +37,14 @@ function Resolve-FylgyrSuppressionStatus {
                 continue
             }
 
+            $suppressionTarget = [string]$suppression.Target
+            if (-not [string]::IsNullOrWhiteSpace($suppressionTarget)) {
+                $resultTarget = [string]$result.Target
+                if ($suppressionTarget -ine $resultTarget) {
+                    continue
+                }
+            }
+
             $normalizedSuppressionCheck = ([string]$suppression.Check) -replace '^Test-', ''
             if ($normalizedSuppressionCheck -ine $normalizedResultCheck) {
                 continue

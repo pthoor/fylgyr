@@ -22,7 +22,7 @@ function Invoke-Fylgyr {
 
         [switch]$ChangedOnly,
 
-        [ValidatePattern('^[a-zA-Z0-9._/-]+$')]
+        [ValidatePattern('^(?!-)[a-zA-Z0-9._/-]+$')]
         [string]$SinceRef = 'origin/main',
 
         [string]$BaselinePath,
@@ -240,7 +240,9 @@ function Invoke-Fylgyr {
             try {
                 $baselineFingerprints = Get-FylgyrBaselineFingerprintSet -BaselinePath $BaselinePath
                 foreach ($result in $resultsArray) {
-                    if ($result.Status -eq 'Pass') {
+                    # Baselines are intended for actionable findings only.
+                    # Keep scan errors and informational telemetry visible.
+                    if ($result.Status -notin @('Fail', 'Warning')) {
                         continue
                     }
 
@@ -374,7 +376,8 @@ function Invoke-FylgyrScan {
                 -Severity 'Info' `
                 -Resource $target `
                 -Detail 'ChangedOnly mode found no changed workflow files under .github/workflows.' `
-                -Remediation 'No action needed.'))
+                -Remediation 'No action needed.' `
+                -Target $target))
             $resultArray = $results.ToArray()
             if ($IncludeEvidence) {
                 $resultArray = Add-FylgyrEvidence -Results $resultArray -WorkflowFiles @() -Owner $Owner -Repo $Repo -Token $Token

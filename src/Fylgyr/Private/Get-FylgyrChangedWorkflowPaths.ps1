@@ -3,7 +3,7 @@ function Get-FylgyrChangedWorkflowPath {
     [OutputType([string[]])]
     param(
         [Parameter(Mandatory)]
-        [ValidatePattern('^[a-zA-Z0-9._/-]+$')]
+        [ValidatePattern('^(?!-)[a-zA-Z0-9._/-]+$')]
         [string]$SinceRef
     )
 

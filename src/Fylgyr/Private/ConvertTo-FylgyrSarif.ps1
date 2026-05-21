@@ -155,11 +155,18 @@
         })
 
         if ($r.Status -eq 'Suppressed') {
+            $suppressionJustification = if ($r.Detail -match 'Suppressed by \.fylgyr\.yml:') {
+                'Matched .fylgyr.yml suppression rule.'
+            }
+            else {
+                'Matched baseline fingerprint.'
+            }
+
             $sarifResult | Add-Member -NotePropertyName 'suppressions' -NotePropertyValue @(
                 [PSCustomObject]@{
                     kind          = 'external'
                     status        = 'accepted'
-                    justification = 'Matched baseline fingerprint.'
+                    justification = $suppressionJustification
                 }
             )
         }

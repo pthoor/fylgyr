@@ -7,6 +7,7 @@ function Get-FylgyrConfigSuppression {
 
     $rules = [System.Collections.Generic.List[PSCustomObject]]::new()
     $diagnostics = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $defaultTarget = ''
 
     if ($IgnoreConfig) {
         return [PSCustomObject]@{
@@ -72,6 +73,22 @@ function Get-FylgyrConfigSuppression {
         }
     }
 
+    # Best-effort default target scoping from local git remote.
+    # This keeps repository-local suppressions from bleeding across repos in
+    # org-wide scans executed from a single workspace.
+    try {
+        $originUrl = (& git config --get remote.origin.url 2>$null)
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($originUrl)) {
+            $originUrl = $originUrl.Trim()
+            if ($originUrl -match 'github\.com[:/](?<owner>[A-Za-z0-9._-]+)/(?<repo>[A-Za-z0-9._-]+?)(?:\.git)?$') {
+                $defaultTarget = "$($Matches.owner)/$($Matches.repo)"
+            }
+        }
+    }
+    catch {
+        Write-Debug "Unable to derive default suppression target from git origin URL: $($_.Exception.Message)"
+    }
+
     $suppressionEntries = @()
     if ($parsed -is [System.Collections.IDictionary] -and $parsed.Contains('suppressions')) {
         $suppressionEntries = @($parsed['suppressions'])
@@ -111,6 +128,7 @@ function Get-FylgyrConfigSuppression {
         $resourceValue = ''
         $reasonValue = ''
         $expiresValue = ''
+        $targetValue = ''
 
         if ($entry -is [System.Collections.IDictionary]) {
             foreach ($key in $entry.Keys) {
@@ -134,6 +152,10 @@ function Get-FylgyrConfigSuppression {
                     $expiresValue = [string]$entry[$key]
                     continue
                 }
+                if ($keyName -ieq 'target') {
+                    $targetValue = [string]$entry[$key]
+                    continue
+                }
             }
         }
         else {
@@ -141,6 +163,7 @@ function Get-FylgyrConfigSuppression {
             $resourceValue = if ($entry.PSObject.Properties['resource']) { [string]$entry.resource } else { '' }
             $reasonValue = if ($entry.PSObject.Properties['reason']) { [string]$entry.reason } else { '' }
             $expiresValue = if ($entry.PSObject.Properties['expires']) { [string]$entry.expires } else { '' }
+            $targetValue = if ($entry.PSObject.Properties['target']) { [string]$entry.target } else { '' }
         }
 
         if ([string]::IsNullOrWhiteSpace($checkValue) -or [string]::IsNullOrWhiteSpace($resourceValue) -or [string]::IsNullOrWhiteSpace($reasonValue)) {
@@ -175,6 +198,7 @@ function Get-FylgyrConfigSuppression {
             Resource = $resourceValue
             Reason = $reasonValue
             ExpiresUtc = $expiresUtc
+            Target = if ([string]::IsNullOrWhiteSpace($targetValue)) { $defaultTarget } else { $targetValue }
         })
     }
 

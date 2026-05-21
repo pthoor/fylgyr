@@ -108,6 +108,20 @@ Describe 'ConvertTo-FylgyrSarif' {
         $sarif.runs[0].results[0].properties.tags | Should -Contain 'attack:tj-actions-shai-hulud'
     }
 
+    It 'sets suppression justification based on suppression source' {
+        $json = InModuleScope Fylgyr {
+            $results = @(
+                (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Suppressed' -Severity 'High' -Resource '.github/workflows/ci.yml:5' -Detail 'Unpinned action. Suppressed by .fylgyr.yml: accepted risk' -Remediation 'Pin action.')
+                (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Suppressed' -Severity 'High' -Resource '.github/workflows/release.yml:7' -Detail 'Matched previous baseline finding.' -Remediation 'Pin action.')
+            )
+            ConvertTo-FylgyrSarif -Results $results
+        }
+
+        $sarif = $json | ConvertFrom-Json
+        $sarif.runs[0].results[0].suppressions[0].justification | Should -Be 'Matched .fylgyr.yml suppression rule.'
+        $sarif.runs[0].results[1].suppressions[0].justification | Should -Be 'Matched baseline fingerprint.'
+    }
+
     It 'uses sentinel file for repo-level resources with message context' {
         $json = InModuleScope Fylgyr {
             $results = @(
@@ -176,6 +190,9 @@ Describe 'ConvertTo-FylgyrHtml' {
         $html | Should -Match 'Repositories Without Results'
         $html | Should -Match 'Prioritized Findings'
         $html | Should -Match 'Missing OWASP Coverage'
+        $html | Should -Match 'Overall Recommendations'
+        $html | Should -Match 'Defender XDR Custom Detection Rules'
+        $html | Should -Match 'VS Code extension inventory in Defender XDR'
         $html | Should -Match 'href="#scope-org"'
         $html | Should -Match 'href="#scope-repo"'
     }

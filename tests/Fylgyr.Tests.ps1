@@ -572,6 +572,57 @@ jobs:
         $suppressed[0].Status | Should -Be 'Suppressed'
     }
 
+    It 'does not suppress Error findings when BaselinePath is provided' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Test-ActionPinning {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'ActionPinning'
+                    Status        = 'Error'
+                    Severity      = 'High'
+                    Resource      = '.github/workflows/ci.yml'
+                    Detail        = 'ActionPinning check failed.'
+                    Remediation   = 'Fix check execution.'
+                    AttackMapping = @()
+                    Target        = ''
+                }
+            )
+        }
+
+        $baseline = [PSCustomObject]@{
+            results = @(
+                [PSCustomObject]@{
+                    CheckName = 'ActionPinning'
+                    Status = 'Error'
+                    Severity = 'High'
+                    Resource = '.github/workflows/ci.yml'
+                    Detail = 'ActionPinning check failed.'
+                    Remediation = 'Fix check execution.'
+                }
+            )
+        }
+
+        $baselineFile = New-TemporaryFile
+        $baseline | ConvertTo-Json -Depth 5 | Set-Content -Path $baselineFile.FullName
+
+        try {
+            $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -BaselinePath $baselineFile.FullName
+        }
+        finally {
+            Remove-Item -Path $baselineFile.FullName -ErrorAction SilentlyContinue
+        }
+
+        $finding = $results | Where-Object { $_.CheckName -eq 'ActionPinning' }
+        $finding | Should -Not -BeNullOrEmpty
+        $finding[0].Status | Should -Be 'Error'
+    }
+
     It 'returns BaselineDiff error result when BaselinePath is invalid' {
         $fakeWorkflows = @([PSCustomObject]@{
             Name    = 'ci.yml'
@@ -671,6 +722,49 @@ jobs:
         $finding | Should -Not -BeNullOrEmpty
         $finding[0].Status | Should -Be 'Fail'
         $finding[0].Detail | Should -BeLike '*Suppression expired on*'
+    }
+
+    It 'does not suppress when config suppression target does not match finding target' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Test-ActionPinning {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'ActionPinning'
+                    Status        = 'Fail'
+                    Severity      = 'High'
+                    Resource      = '.github/workflows/ci.yml'
+                    Detail        = 'Unpinned action reference.'
+                    Remediation   = 'Pin action.'
+                    AttackMapping = @()
+                    Target        = ''
+                }
+            )
+        }
+        Mock -ModuleName Fylgyr Get-FylgyrConfigSuppression {
+            return [PSCustomObject]@{
+                Rules = @(
+                    [PSCustomObject]@{
+                        Check = 'ActionPinning'
+                        Resource = '.github/workflows/ci.yml'
+                        Reason = 'Accepted temporary risk'
+                        ExpiresUtc = $null
+                        Target = 'other/repo'
+                    }
+                )
+                Diagnostics = @()
+            }
+        }
+
+        $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token'
+        $finding = $results | Where-Object { $_.CheckName -eq 'ActionPinning' }
+        $finding | Should -Not -BeNullOrEmpty
+        $finding[0].Status | Should -Be 'Fail'
     }
 
     It 'surfaces config diagnostics as ConfigSuppression results' {
@@ -863,6 +957,13 @@ jobs:
         $changedOnlyInfo = $results | Where-Object { $_.CheckName -eq 'ChangedOnly' }
         $changedOnlyInfo | Should -Not -BeNullOrEmpty
         $changedOnlyInfo[0].Status | Should -Be 'Info'
+        $changedOnlyInfo[0].Target | Should -Be 'test/repo'
+    }
+
+    It 'rejects ChangedOnly SinceRef values that start with a dash' {
+        {
+            Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -ChangedOnly -SinceRef '--help'
+        } | Should -Throw
     }
 
     It 'runs org checks once when IncludeOrgChecks is used without Repo' {
