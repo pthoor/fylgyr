@@ -55,7 +55,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module -Name PSScriptAnalyzer -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
-          $results = Invoke-ScriptAnalyzer -Path ./src -Recurse -Severity Error,Warning
+          $results = Invoke-ScriptAnalyzer -Path ./src -Recurse -Severity @('Error', 'Warning')
           if ($results) {
             $results | Format-Table -AutoSize
             throw "PSScriptAnalyzer found $($results.Count) issue(s)."

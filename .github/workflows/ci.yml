@@ -44,7 +44,7 @@ jobs:
       - name: Run PSScriptAnalyzer
         shell: pwsh
         run: |
-          Invoke-ScriptAnalyzer -Path ./src -Recurse -Severity Error, Warning
+          Invoke-ScriptAnalyzer -Path ./src -Recurse -Severity @('Error', 'Warning')
 
       - name: Run Pester tests
         shell: pwsh
