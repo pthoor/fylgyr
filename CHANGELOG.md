@@ -46,6 +46,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Module loader now dot-sources `.ps1` files recursively under `Public/` and `Private/`.
 - Module manifest version bumped to `0.7.5` and exports updated for drift/Sentinel functions.
 
+## [0.7.4] - 2026-05-21
+
+### Changed
+
+- Bumped module manifest version to `0.7.4` to align with existing remote tags and keep release tag/version parity checks passing.
+
 ## [0.7.2] - 2026-05-21
 
 ### Fixed
