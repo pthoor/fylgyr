@@ -94,6 +94,8 @@ jobs:
             uploads.github.com:443
             codeload.github.com:443
             objects.githubusercontent.com:443
+            api.nuget.org:443
+            globalcdn.nuget.org:443
             www.powershellgallery.com:443
             cdn.powershellgallery.com:443
             psg-prod-eastus.azureedge.net:443
