@@ -83,5 +83,11 @@ function Get-MissingTypesEvent {
         }
     }
 
-    @($missing | Sort-Object -Unique)
+    $uniqueMissing = @(
+        $missing |
+            Sort-Object -Unique |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+
+    [string[]]$uniqueMissing
 }

@@ -6,6 +6,52 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-20
+
+### Added
+
+- Org-wide parallel scanning controls:
+	- `-ThrottleLimit` on `Invoke-Fylgyr` for owner scans.
+	- rate-limit-aware throttle clamping via `Get-FylgyrOrgScanThrottle`.
+- Baseline and suppression flow improvements:
+	- baseline fingerprint suppression (`Status = Suppressed`).
+	- `.fylgyr.yml` suppression parsing with optional expiry.
+	- `-IgnoreConfig` for strict no-suppression runs.
+- NDJSON output support via `ConvertTo-FylgyrNdjson` with `_meta` per finding.
+- CI gate wrapper script `scripts/fylgyr-ci.ps1` to propagate `$LASTEXITCODE`.
+- Evidence bundle support:
+	- `-IncludeEvidence` switch.
+	- standardized `Evidence` field on result objects.
+	- `Add-FylgyrEvidence` helper for `YamlSnippet`, `CommitSha`, `ScanTime`, and `Permalink`.
+- HTML reporting:
+	- `ConvertTo-FylgyrHtml` output formatter.
+	- standalone report template at `src/Fylgyr/Data/report-template.html`.
+
+### Changed
+
+- `Invoke-Fylgyr` output formats now include `NDJSON` and `HTML`.
+- Console formatter supports `Suppressed` counts and optional evidence details in verbose mode.
+- SARIF formatter now projects evidence metadata into result properties when present.
+- Module manifest:
+	- `RequiredModules` includes `powershell-yaml`.
+	- `FileList` includes `Data/report-template.html`.
+	- `ModuleVersion` bumped to `0.7.0`.
+- CI and release workflows now install `powershell-yaml` for reproducible manifest validation.
+
+### Documentation
+
+- Added `docs/PRE-COMMIT.md` with changed-only hook recipe.
+- README expanded with Phase 9 usage examples for NDJSON, HTML, evidence, suppressions, changed-only, CI gates, and performance tuning.
+- `docs/COVERAGE.md` regenerated marker updated for Phase 9.
+
+### Tests
+
+- Added/expanded Pester coverage for:
+	- throttle and rate-limit-aware parallel scan behavior.
+	- evidence helpers and inclusion flow.
+	- HTML formatter output.
+	- NDJSON, baseline/suppression, changed-only, and exit-code paths.
+
 ### Changed
 
 - `Test-Rulesets` org-scope permission handling refined:

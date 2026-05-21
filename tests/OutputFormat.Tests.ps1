@@ -150,6 +150,56 @@ Describe 'ConvertTo-FylgyrSarif' {
     }
 }
 
+Describe 'ConvertTo-FylgyrHtml' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'renders scope, table of contents, and risk prioritization' {
+        $html = InModuleScope Fylgyr {
+            $results = @(
+                (Format-FylgyrResult -CheckName 'OrgMfaPolicy' -Status 'Fail' -Severity 'Critical' -Resource 'org/acme' -Detail 'Org MFA not required.' -Remediation 'Enable MFA.' -Target 'org/acme')
+                (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'High' -Resource '.github/workflows/ci.yml:10' -Detail 'Unpinned action.' -Remediation 'Pin action.' -Target 'acme/repo-one')
+                (Format-FylgyrResult -CheckName 'BranchProtection' -Status 'Warning' -Severity 'Medium' -Resource 'acme/repo-one (branch: main)' -Detail 'No required reviewers.' -Remediation 'Set required reviewers.' -Target 'acme/repo-one')
+            )
+
+            ConvertTo-FylgyrHtml -Results $results -Target 'acme' -ScannedTargets @('acme/repo-one', 'acme/repo-two')
+        }
+
+        $html | Should -Match 'Scan Scope'
+        $html | Should -Match 'Table of Contents'
+        $html | Should -Match 'Risk Prioritization'
+        $html | Should -Match 'Organization Scope \(1 target\(s\)\)'
+        $html | Should -Match 'Repository Scope \(1 target\(s\)\)'
+        $html | Should -Match 'Repositories Without Results'
+        $html | Should -Match 'Prioritized Findings'
+        $html | Should -Match 'Missing OWASP Coverage'
+        $html | Should -Match 'href="#scope-org"'
+        $html | Should -Match 'href="#scope-repo"'
+    }
+
+    It 'writes HTML file and does not emit payload when OutputPath is set' {
+        $tempFile = New-TemporaryFile
+        try {
+            $output = InModuleScope Fylgyr -Parameters @{ TempPath = $tempFile.FullName } {
+                $results = @(
+                    (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'High' -Resource '.github/workflows/ci.yml:5' -Detail 'Unpinned action' -Remediation 'Pin action.' -Target 'org/repo')
+                )
+                ConvertTo-FylgyrHtml -Results $results -Target 'org/repo' -OutputPath $TempPath
+            }
+
+            $output | Should -BeNullOrEmpty
+            (Test-Path -Path $tempFile.FullName -PathType Leaf) | Should -BeTrue
+            (Get-Content -Path $tempFile.FullName -Raw) | Should -Match '<!DOCTYPE html>'
+        }
+        finally {
+            Remove-Item -Path $tempFile.FullName -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Describe 'Write-FylgyrConsole' {
     BeforeAll {
         $repoRoot = Split-Path -Path $PSScriptRoot -Parent

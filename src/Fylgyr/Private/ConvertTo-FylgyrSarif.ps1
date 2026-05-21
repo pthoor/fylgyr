@@ -149,22 +149,40 @@
 
         # Generate a stable fingerprint from rule + resource + detail to prevent
         # duplicate alerts across runs (required by GitHub code scanning).
-        $fingerprintInput = "$ruleId|$($r.Resource)|$($r.Detail)"
-        $sha256 = [System.Security.Cryptography.SHA256]::Create()
-        $hashBytes = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($fingerprintInput))
-        $hashHex = ($hashBytes[0..7] | ForEach-Object { $_.ToString('x2') }) -join ''
+        $hashHex = Get-FylgyrFingerprint -Result $r
         $sarifResult | Add-Member -NotePropertyName 'partialFingerprints' -NotePropertyValue ([PSCustomObject]@{
-            primaryLocationLineHash = "${hashHex}:1"
+            primaryLocationLineHash = $hashHex
         })
 
+        if ($r.Status -eq 'Suppressed') {
+            $sarifResult | Add-Member -NotePropertyName 'suppressions' -NotePropertyValue @(
+                [PSCustomObject]@{
+                    kind          = 'external'
+                    status        = 'accepted'
+                    justification = 'Matched baseline fingerprint.'
+                }
+            )
+        }
+
+        $resultProperties = [ordered]@{}
         if ($r.AttackMapping.Count -gt 0) {
             $tags = [System.Collections.Generic.List[string]]::new()
             foreach ($attackId in $r.AttackMapping) {
                 $tags.Add("attack:$attackId")
             }
-            $sarifResult | Add-Member -NotePropertyName 'properties' -NotePropertyValue ([PSCustomObject]@{
-                tags = $tags.ToArray()
-            })
+            $resultProperties.tags = $tags.ToArray()
+        }
+
+        if ($r.PSObject.Properties.Name -contains 'Evidence' -and $r.Evidence) {
+            $resultProperties.evidence = [PSCustomObject]@{
+                commitSha = $r.Evidence.CommitSha
+                scanTime  = if ($r.Evidence.ScanTime) { ([datetime]$r.Evidence.ScanTime).ToString('o') } else { $null }
+                permalink = $r.Evidence.Permalink
+            }
+        }
+
+        if ($resultProperties.Count -gt 0) {
+            $sarifResult | Add-Member -NotePropertyName 'properties' -NotePropertyValue ([PSCustomObject]$resultProperties)
         }
 
         $sarifResults.Add($sarifResult)

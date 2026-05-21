@@ -35,11 +35,14 @@ Invoke-Fylgyr -Owner 'myorg' -IncludeOrgChecks
 >
 > ```powershell
 > # Preferred: load from SecretManagement (or your secret manager)
-> $env:GITHUB_TOKEN = Get-Secret -Name 'FYLGYR_PAT' -AsPlainText
-> Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo'
+> # and pass the token directly for this invocation
+> $token = Get-Secret -Name 'FYLGYR_PAT' -AsPlainText
+> Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Token $token
+> Remove-Variable token -ErrorAction SilentlyContinue
 >
 > # Fallback: masked interactive prompt
-> # $env:GITHUB_TOKEN = Read-Host -Prompt 'GitHub token' -MaskInput
+> # $token = Read-Host -Prompt 'GitHub token' -MaskInput
+> # Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Token $token
 >
 > # Or pass a different token for a single call
 > Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Token $otherToken
@@ -55,12 +58,18 @@ If you maintain a personal open-source repo, start here.
 
 ```powershell
 Install-Module Fylgyr -Repository PSGallery -Force
-$env:GITHUB_TOKEN = Get-Secret -Name 'FYLGYR_PAT' -AsPlainText
-Invoke-Fylgyr -Owner 'your-user-or-org' -Repo 'your-repo' -OutputFormat Console
-Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
+$token = Get-Secret -Name 'FYLGYR_PAT' -AsPlainText
+Invoke-Fylgyr -Owner 'your-user-or-org' -Repo 'your-repo' -OutputFormat Console -Token $token
+Remove-Variable token -ErrorAction SilentlyContinue
 ```
 
 2. Add the drop-in workflow from `examples/maintainer/fylgyr.yml`.
+
+3. Optional: start from the suppression template and copy it to the repository root:
+
+```bash
+cp examples/maintainer/fylgyr-suppressions.example.yml .fylgyr.yml
+```
 
 ```yaml
 name: Fylgyr Maintainer Scan
@@ -214,6 +223,95 @@ Abridged example (a real scan runs ~30 checks per repo):
 | Console | `-OutputFormat Console` | Colored, grouped terminal display with summary |
 | JSON | `-OutputFormat JSON` | Machine-readable JSON with metadata and summary counts |
 | SARIF | `-OutputFormat SARIF` | SARIF 2.1.0 for GitHub Code Scanning integration |
+| NDJSON | `-OutputFormat NDJSON` | Newline-delimited JSON (one finding per line) with `_meta` scan context |
+| HTML | `-OutputFormat HTML` | Standalone report with summary cards, coverage dashboard, and grouped findings |
+
+### NDJSON for SIEM pipelines
+
+Use NDJSON when forwarding findings into streaming systems.
+
+```powershell
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -OutputFormat NDJSON -OutputPath './fylgyr.ndjson'
+```
+
+Each line is an independent JSON object and includes `_meta` fields (`scanId`, `scanStartTime`, `fylgyrVersion`).
+
+### HTML report
+
+Generate a local HTML report for stakeholder review:
+
+```powershell
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -OutputFormat HTML -OutputPath './fylgyr-report.html'
+```
+
+The report includes:
+- scan metadata and status summary
+- scan scope counts (repos scanned, with results, without results)
+- table of contents with clear Organization Scope vs Repository Scope sections
+- risk prioritization summary (critical/high, medium, prioritized findings, missing OWASP coverage)
+- grouped findings by target and check
+- evidence details (when `-IncludeEvidence` is enabled)
+- coverage dashboard snippets from `docs/COVERAGE.md`
+
+### Evidence bundle (`-IncludeEvidence`)
+
+Enable evidence enrichment for forensic and audit workflows:
+
+```powershell
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -IncludeEvidence -OutputFormat JSON
+```
+
+Evidence fields include `YamlSnippet`, `CommitSha`, `ScanTime`, and `Permalink` where applicable.
+
+### Config-file suppressions (`.fylgyr.yml`)
+
+Per-repository suppressions are supported via `.fylgyr.yml`:
+
+```yaml
+suppressions:
+  - check: ActionPinning
+    resource: ".github/workflows/ci.yml"
+    reason: "Pinned to org-internal action by tag, accepted risk"
+    expires: "2026-07-01"
+```
+
+There is no dedicated "suppression file path" parameter. Fylgyr automatically loads `.fylgyr.yml` from the current working directory (normally your repository root).
+
+Starter template:
+
+```bash
+cp examples/maintainer/fylgyr-suppressions.example.yml .fylgyr.yml
+```
+
+Use `-IgnoreConfig` to skip config suppression processing for strict runs.
+
+### Changed-only mode and pre-commit usage
+
+Use changed-only mode for local fast feedback loops:
+
+```powershell
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -ChangedOnly -SinceRef origin/main -OutputFormat Console
+```
+
+For hook recipes, see [docs/PRE-COMMIT.md](docs/PRE-COMMIT.md).
+
+### CI gate mode (`-FailOn` and wrapper script)
+
+Use severity gating in CI and propagate shell exit code with the wrapper script:
+
+```powershell
+pwsh ./scripts/fylgyr-ci.ps1 -Owner 'myorg' -Repo 'myrepo' -FailOn High -OutputFormat SARIF
+```
+
+### Performance for org-wide scans
+
+For org-wide scans, tune concurrency with `-ThrottleLimit` (default `5`):
+
+```powershell
+Invoke-Fylgyr -Owner 'myorg' -IncludeOrgChecks -ThrottleLimit 8 -OutputFormat Console
+```
+
+Fylgyr applies conservative rate-limit-aware throttling automatically during org-wide parallel runs.
 
 ### Feeding SARIF into GitHub Code Scanning
 
@@ -278,7 +376,9 @@ The workflow uses the built-in `GITHUB_TOKEN` with minimal permissions:
 | `contents: read` | Read workflow files and repository content |
 | `security-events: write` | Upload SARIF results to Code Scanning |
 
-These two permissions are the only valid `GITHUB_TOKEN` scopes needed. They cover workflow-based checks such as ActionPinning, DangerousTrigger, ScriptInjection, ArtifactPoisoning, OidcTrust, CacheIntegrity, TriggerFilter, DependencyReview, ArtifactAttestation, ReusableWorkflowTrust, WorkflowPermission, RunnerHygiene, PublishIntegrity, EgressControl, ForkPullPolicy, and CodeScanning.
+These two permissions are the only `GITHUB_TOKEN` scopes needed for CI execution and SARIF upload. They cover workflow-file analysis checks such as ActionPinning, ScriptInjection, ArtifactPoisoning, OidcTrust, CacheIntegrity, TriggerFilter, DependencyReview, ArtifactAttestation, ReusableWorkflowTrust, WorkflowPermission, PublishIntegrity, and EgressControl.
+
+To read GitHub security alert APIs (Secret Scanning, Dependabot alerts, Code Scanning alerts), use a fine-grained PAT with the corresponding read permissions.
 
 #### Repo-level checks that need a PAT
 
@@ -289,6 +389,7 @@ Several checks require a **Personal Access Token** (PAT) because the workflow `G
 | `BranchProtection` | Administration |
 | `SecretScanning` | Secret scanning alerts |
 | `DependabotAlert` | Dependabot alerts |
+| `CodeScanning` | Code scanning alerts |
 | `CodeOwner` | Contents |
 | `SignedCommit` | Administration |
 | `EnvironmentProtection` | Environments |

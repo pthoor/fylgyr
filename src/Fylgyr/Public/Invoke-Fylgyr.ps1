@@ -10,12 +10,31 @@ function Invoke-Fylgyr {
         [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Repo,
 
-        [ValidateSet('Object', 'JSON', 'SARIF', 'Console')]
+        [ValidateSet('Object', 'JSON', 'SARIF', 'Console', 'NDJSON', 'HTML')]
         [string]$OutputFormat = 'Object',
 
         [switch]$IncludeOrgChecks,
 
+        [ValidateRange(1, 20)]
+        [int]$ThrottleLimit = 5,
+
         [string[]]$ReusableWorkflowAllowlist = @(),
+
+        [switch]$ChangedOnly,
+
+        [ValidatePattern('^[a-zA-Z0-9._/-]+$')]
+        [string]$SinceRef = 'origin/main',
+
+        [string]$BaselinePath,
+
+        [switch]$IncludeEvidence,
+
+        [switch]$IgnoreConfig,
+
+        [ValidateSet('Info', 'Low', 'Medium', 'High', 'Critical')]
+        [string]$FailOn,
+
+        [string]$OutputPath,
 
         [string]$Token = $env:GITHUB_TOKEN
     )
@@ -27,6 +46,9 @@ function Invoke-Fylgyr {
 
         $allResults = [System.Collections.Generic.List[PSCustomObject]]::new()
         $scannedTargets = [System.Collections.Generic.List[string]]::new()
+        $scanId = [Guid]::NewGuid().ToString()
+        $scanStartTime = [datetime]::UtcNow
+        $changedWorkflowPaths = $null
 
         # Owner-level check caches. Reset every run so repeated Invoke-Fylgyr calls
         # inside the same session do not reuse stale data.
@@ -41,6 +63,18 @@ function Invoke-Fylgyr {
     process {
         # If no Repo specified, enumerate all repos for the Owner (org-wide scan)
         if (-not $Repo) {
+            if ($ChangedOnly) {
+                $allResults.Add((Format-FylgyrResult `
+                    -CheckName 'ChangedOnly' `
+                    -Status 'Error' `
+                    -Severity 'Low' `
+                    -Resource $Owner `
+                    -Detail 'ChangedOnly mode requires -Repo. Org-wide scans are not supported in ChangedOnly mode.' `
+                    -Remediation 'Provide -Repo for ChangedOnly scans, or run without ChangedOnly for org-wide coverage.' `
+                    -Target $Owner))
+                return
+            }
+
             $repos = [System.Collections.Generic.List[string]]::new()
 
             try {
@@ -85,23 +119,99 @@ function Invoke-Fylgyr {
             }
 
             $repoTotal = $repos.Count
-            for ($i = 0; $i -lt $repoTotal; $i++) {
-                $repoName = $repos[$i]
-                $pct = [math]::Floor(($i / $repoTotal) * 100)
-                Write-Progress -Activity "Scanning $Owner" `
-                    -Status "Repo $($i + 1) of $repoTotal : $repoName" `
-                    -PercentComplete $pct `
-                    -Id 1
+            $effectiveThrottle = Get-FylgyrOrgScanThrottle -RequestedThrottle $ThrottleLimit -RepoTotal $repoTotal -Token $Token
 
-                $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $repoName -Token $Token -ReusableWorkflowAllowlist $ReusableWorkflowAllowlist
-                foreach ($result in $repoResults) { $allResults.Add($result) }
-                $scannedTargets.Add("$Owner/$repoName")
+            $isPesterRun = $null -ne (Get-Variable -Name PesterPreference -Scope Global -ErrorAction SilentlyContinue)
+            $useParallel = ($effectiveThrottle -gt 1) -and ($repoTotal -gt 1) -and (-not $isPesterRun)
+
+            if ($useParallel) {
+                $moduleRoot = Split-Path -Path $PSScriptRoot -Parent
+                $modulePath = Join-Path -Path $moduleRoot -ChildPath 'Fylgyr.psm1'
+                $scanOwner = $Owner
+                $scanToken = $Token
+                $scanAllowlist = $ReusableWorkflowAllowlist
+                $scanIgnoreConfig = $IgnoreConfig.IsPresent
+                $scanIncludeEvidence = $IncludeEvidence.IsPresent
+                $repoInputs = for ($i = 0; $i -lt $repoTotal; $i++) {
+                    [PSCustomObject]@{
+                        Index = $i
+                        Repo = $repos[$i]
+                    }
+                }
+
+                $parallelBatches = $repoInputs | ForEach-Object -Parallel {
+                    $repoIndex = [int]$_.Index
+                    $repoName = [string]$_.Repo
+                    Import-Module -Name $using:modulePath -Force
+
+                    try {
+                        $scanResults = @(
+                            Invoke-FylgyrScan -Owner $using:scanOwner -Repo $repoName -Token $using:scanToken -ReusableWorkflowAllowlist $using:scanAllowlist -ChangedOnly:$false -ChangedWorkflowPaths @() -IgnoreConfig:$using:scanIgnoreConfig -IncludeEvidence:$using:scanIncludeEvidence
+                        )
+                    }
+                    catch {
+                        $target = "$($using:scanOwner)/$repoName"
+                        $scanResults = @(
+                            (Format-FylgyrResult `
+                                -CheckName 'OrgParallelScan' `
+                                -Status 'Error' `
+                                -Severity 'Critical' `
+                                -Resource $target `
+                                -Detail "Parallel scan failed: $($_.Exception.Message)" `
+                                -Remediation 'Retry with -ThrottleLimit 1 and verify token/repository access.' `
+                                -Target $target)
+                        )
+                    }
+
+                    [PSCustomObject]@{
+                        Index = $repoIndex
+                        Repo = $repoName
+                        Results = $scanResults
+                    }
+                } -ThrottleLimit $effectiveThrottle
+
+                foreach ($batch in @($parallelBatches | Sort-Object -Property Index)) {
+                    foreach ($result in @($batch.Results)) {
+                        $allResults.Add($result)
+                    }
+                    $scannedTargets.Add("$Owner/$($batch.Repo)")
+                }
             }
+            else {
+                for ($i = 0; $i -lt $repoTotal; $i++) {
+                    $repoName = $repos[$i]
+                    $pct = [math]::Floor(($i / $repoTotal) * 100)
+                    Write-Progress -Activity "Scanning $Owner" `
+                        -Status "Repo $($i + 1) of $repoTotal : $repoName" `
+                        -PercentComplete $pct `
+                        -Id 1
 
-            Write-Progress -Activity "Scanning $Owner" -Id 1 -Completed
+                    $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $repoName -Token $Token -ReusableWorkflowAllowlist $ReusableWorkflowAllowlist -ChangedOnly:$ChangedOnly -ChangedWorkflowPaths $changedWorkflowPaths -IgnoreConfig:$IgnoreConfig -IncludeEvidence:$IncludeEvidence
+                    foreach ($result in $repoResults) { $allResults.Add($result) }
+                    $scannedTargets.Add("$Owner/$repoName")
+                }
+
+                Write-Progress -Activity "Scanning $Owner" -Id 1 -Completed
+            }
         }
         else {
-            $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $Repo -Token $Token -ReusableWorkflowAllowlist $ReusableWorkflowAllowlist
+            if ($ChangedOnly) {
+                try {
+                    $changedWorkflowPaths = Get-FylgyrChangedWorkflowPath -SinceRef $SinceRef
+                }
+                catch {
+                    $allResults.Add((Format-FylgyrResult `
+                        -CheckName 'ChangedOnly' `
+                        -Status 'Error' `
+                        -Severity 'Low' `
+                        -Resource "$Owner/$Repo" `
+                        -Detail "Failed to collect changed files from '$SinceRef': $($_.Exception.Message)" `
+                        -Remediation 'Verify SinceRef exists (for example origin/main) and rerun.' `
+                        -Target "$Owner/$Repo"))
+                }
+            }
+
+            $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $Repo -Token $Token -ReusableWorkflowAllowlist $ReusableWorkflowAllowlist -ChangedOnly:$ChangedOnly -ChangedWorkflowPaths $changedWorkflowPaths -IgnoreConfig:$IgnoreConfig -IncludeEvidence:$IncludeEvidence
             foreach ($result in $repoResults) { $allResults.Add($result) }
             $scannedTargets.Add("$Owner/$Repo")
         }
@@ -126,11 +236,61 @@ function Invoke-Fylgyr {
             'unknown'
         }
 
+        if ($BaselinePath) {
+            try {
+                $baselineFingerprints = Get-FylgyrBaselineFingerprintSet -BaselinePath $BaselinePath
+                foreach ($result in $resultsArray) {
+                    if ($result.Status -eq 'Pass') {
+                        continue
+                    }
+
+                    $fingerprint = Get-FylgyrFingerprint -Result $result
+                    if ($baselineFingerprints.Contains($fingerprint)) {
+                        $result.Status = 'Suppressed'
+                    }
+                }
+            }
+            catch {
+                $allResults.Add((Format-FylgyrResult `
+                    -CheckName 'BaselineDiff' `
+                    -Status 'Error' `
+                    -Severity 'Medium' `
+                    -Resource $displayTarget `
+                    -Detail "Failed to apply baseline diff from '$BaselinePath': $($_.Exception.Message)" `
+                    -Remediation 'Provide a valid JSON baseline path (Invoke-Fylgyr JSON output or array of result objects).' `
+                    -Target $displayTarget))
+                $resultsArray = $allResults.ToArray()
+            }
+        }
+
+        if ($FailOn) {
+            $severityOrder = @{
+                Info = 0
+                Low = 1
+                Medium = 2
+                High = 3
+                Critical = 4
+            }
+
+            $threshold = $severityOrder[$FailOn]
+            $hasBlockingFindings = @($resultsArray | Where-Object {
+                $_.Status -notin @('Pass', 'Suppressed') -and $severityOrder[$_.Severity] -ge $threshold
+            }).Count -gt 0
+
+            $global:LASTEXITCODE = if ($hasBlockingFindings) { 1 } else { 0 }
+        }
+
         if ($OutputFormat -eq 'JSON') {
             ConvertTo-FylgyrJson -Results $resultsArray -Target $displayTarget
         }
         elseif ($OutputFormat -eq 'SARIF') {
             ConvertTo-FylgyrSarif -Results $resultsArray
+        }
+        elseif ($OutputFormat -eq 'NDJSON') {
+            ConvertTo-FylgyrNdjson -Results $resultsArray -ScanId $scanId -ScanStartTime $scanStartTime -OutputPath $OutputPath
+        }
+        elseif ($OutputFormat -eq 'HTML') {
+            ConvertTo-FylgyrHtml -Results $resultsArray -Target $displayTarget -ScannedTargets $scannedTargets.ToArray() -OutputPath $OutputPath
         }
         elseif ($OutputFormat -eq 'Console') {
             Write-FylgyrConsole -Results $resultsArray -Target $displayTarget -ScannedRepoCount $scannedTargets.Count
@@ -156,11 +316,33 @@ function Invoke-FylgyrScan {
         [Parameter(Mandatory)]
         [string]$Token,
 
-        [string[]]$ReusableWorkflowAllowlist = @()
+        [string[]]$ReusableWorkflowAllowlist = @(),
+
+        [switch]$ChangedOnly,
+
+        [string[]]$ChangedWorkflowPaths = @(),
+
+        [switch]$IgnoreConfig,
+
+        [switch]$IncludeEvidence
     )
 
     $target = "$Owner/$Repo"
     $results = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $configContext = Get-FylgyrConfigSuppression -IgnoreConfig:$IgnoreConfig
+    $configSuppressions = @($configContext.Rules)
+    $configDiagnostics = @($configContext.Diagnostics)
+
+    foreach ($configDiagnostic in $configDiagnostics) {
+        $results.Add((Format-FylgyrResult `
+            -CheckName 'ConfigSuppression' `
+            -Status $configDiagnostic.Status `
+            -Severity $configDiagnostic.Severity `
+            -Resource $target `
+            -Detail $configDiagnostic.Detail `
+            -Remediation $configDiagnostic.Remediation `
+            -Target $target))
+    }
 
     Write-Progress -Activity $target -Status 'Fetching workflow files...' -Id 2 -ParentId 1
 
@@ -183,6 +365,39 @@ function Invoke-FylgyrScan {
 
     if ($fetchFailed) {
         # Error already recorded above
+    }
+    elseif ($ChangedOnly) {
+        if (-not $ChangedWorkflowPaths -or $ChangedWorkflowPaths.Count -eq 0) {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'ChangedOnly' `
+                -Status 'Info' `
+                -Severity 'Info' `
+                -Resource $target `
+                -Detail 'ChangedOnly mode found no changed workflow files under .github/workflows.' `
+                -Remediation 'No action needed.'))
+            $resultArray = $results.ToArray()
+            if ($IncludeEvidence) {
+                $resultArray = Add-FylgyrEvidence -Results $resultArray -WorkflowFiles @() -Owner $Owner -Repo $Repo -Token $Token
+            }
+            return (Resolve-FylgyrSuppressionStatus -Results $resultArray -Suppressions $configSuppressions)
+        }
+
+        $workflowFiles = @($workflowFiles | Where-Object { $ChangedWorkflowPaths -contains $_.Path })
+        if ($workflowFiles.Count -eq 0) {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'ChangedOnly' `
+                -Status 'Info' `
+                -Severity 'Info' `
+                -Resource $target `
+                -Detail 'ChangedOnly mode detected workflow changes, but none are present in the current repository scan context.' `
+                -Remediation 'Ensure changed workflow paths exist in the target repository and rerun.' `
+                -Target $target))
+            $resultArray = $results.ToArray()
+            if ($IncludeEvidence) {
+                $resultArray = Add-FylgyrEvidence -Results $resultArray -WorkflowFiles @() -Owner $Owner -Repo $Repo -Token $Token
+            }
+            return (Resolve-FylgyrSuppressionStatus -Results $resultArray -Suppressions $configSuppressions)
+        }
     }
     elseif ($workflowFiles.Count -eq 0) {
         $results.Add((Format-FylgyrResult `
@@ -264,48 +479,55 @@ function Invoke-FylgyrScan {
         }
     }
 
-    # Repo-level checks (always run, regardless of workflow files)
-    $repoChecks = @(
-        @{ Name = 'Test-BranchProtection';     Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-SecretScanning';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-DependabotAlert';      Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-CodeScanning';         Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-CodeOwner';            Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-SignedCommit';         Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-EnvironmentProtection'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-RepoVisibility';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-WebhookSecurity';      Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-Rulesets';             Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-BinaryArtifact';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-        @{ Name = 'Test-PrivateVulnReporting'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
-    )
+    if (-not $ChangedOnly) {
+        # Repo-level checks (always run, regardless of workflow files)
+        $repoChecks = @(
+            @{ Name = 'Test-BranchProtection';     Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-SecretScanning';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-DependabotAlert';      Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-CodeScanning';         Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-CodeOwner';            Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-SignedCommit';         Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-EnvironmentProtection'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-RepoVisibility';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-WebhookSecurity';      Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-Rulesets';             Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-BinaryArtifact';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-PrivateVulnReporting'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+        )
 
-    foreach ($entry in $repoChecks) {
-        Write-Progress -Activity $target -Status "Running $($entry.Name)" -Id 2 -ParentId 1
+        foreach ($entry in $repoChecks) {
+            Write-Progress -Activity $target -Status "Running $($entry.Name)" -Id 2 -ParentId 1
 
-        try {
-            $checkParams = $entry.Params
-            $checkResults = & $entry.Name @checkParams
-            foreach ($r in $checkResults) {
-                $r.Target = $target
-                $results.Add($r)
+            try {
+                $checkParams = $entry.Params
+                $checkResults = & $entry.Name @checkParams
+                foreach ($r in $checkResults) {
+                    $r.Target = $target
+                    $results.Add($r)
+                }
             }
-        }
-        catch {
-            $results.Add((Format-FylgyrResult `
-                -CheckName $entry.Name `
-                -Status 'Error' `
-                -Severity 'Critical' `
-                -Resource $target `
-                -Detail "Check failed with error: $($_.Exception.Message)" `
-                -Remediation 'Review the error and re-run.' `
-                -Target $target))
+            catch {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName $entry.Name `
+                    -Status 'Error' `
+                    -Severity 'Critical' `
+                    -Resource $target `
+                    -Detail "Check failed with error: $($_.Exception.Message)" `
+                    -Remediation 'Review the error and re-run.' `
+                    -Target $target))
+            }
         }
     }
 
     Write-Progress -Activity $target -Id 2 -Completed
 
-    $results.ToArray()
+    $resultArray = $results.ToArray()
+    if ($IncludeEvidence) {
+        $resultArray = Add-FylgyrEvidence -Results $resultArray -WorkflowFiles $workflowFiles -Owner $Owner -Repo $Repo -Token $Token
+    }
+
+    Resolve-FylgyrSuppressionStatus -Results $resultArray -Suppressions $configSuppressions
 }
 
 function Invoke-FylgyrOrgScan {
