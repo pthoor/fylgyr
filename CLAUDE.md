@@ -150,6 +150,27 @@ Each `Test-*.ps1` check should:
 | `Test-WebhookSecurity` | Secret exfiltration (webhook payload forgery / replay) |
 | `Test-BinaryArtifact` | Build system compromise (committed binary backdoors) |
 | `Test-PublishIntegrity` | Build system compromise (package/release publish trust and provenance) |
+| `Test-RecentCollaboratorChange` | Post-compromise persistence (drift) |
+| `Test-RecentAppAuthorization` | App authorization drift / token theft follow-on |
+| `Test-RecentProtectionChange` | Branch protection weakening drift |
+| `Test-RecentForcePush` | Direct history rewrite drift |
+| `Test-RecentRunnerRegistration` | Runner persistence drift |
+| `Test-RecentSecretChange` | Secret lifecycle drift |
+| `Test-RecentTokenExposure` | Token-risk + repo-access burst correlation drift |
+| `Test-RecentWorkflowAdd` | New workflow execution-path drift |
+
+### Drift mode and Sentinel integration (Phase 9.5)
+
+- `Invoke-Fylgyr` supports `-Mode Audit|Drift|Both` (default `Audit`).
+- Drift findings use `Status = 'Drift'` and include `Mode = 'Drift'` on result objects.
+- Drift checks prefer org audit log data (`Get-OrgAuditLog`) and fall back to baseline snapshot diff (`Compare-FylgyrBaseline`) where applicable.
+- Baseline fallback findings must clearly state fidelity limitations (no actor attribution).
+- `-OutputFormat LogAnalytics` emits ASIM-oriented NDJSON suitable for Sentinel.
+- `Send-FylgyrToLogAnalytics` posts to Logs Ingestion API using DCR immutable ID and supports:
+    - managed identity
+    - federated token/OIDC
+    - client secret fallback
+- Private endpoint topology is supported through DCE + AMPLS configuration documented in `docs/SENTINEL.md`.
 
 ### Gaps for future checks
 

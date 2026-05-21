@@ -165,6 +165,7 @@ $coverageSummaryHtml = @"
         warning    = ($Results | Where-Object Status -EQ 'Warning').Count
         error      = ($Results | Where-Object Status -EQ 'Error').Count
         info       = ($Results | Where-Object Status -EQ 'Info').Count
+        drift      = ($Results | Where-Object Status -EQ 'Drift').Count
         suppressed = ($Results | Where-Object Status -EQ 'Suppressed').Count
     }
 
@@ -219,6 +220,7 @@ $coverageSummaryHtml = @"
                     'Warning' { 'status-warning' }
                     'Error' { 'status-error' }
                     'Info' { 'status-info' }
+                    'Drift' { 'status-warning' }
                     'Suppressed' { 'status-suppressed' }
                     default { 'status-pass' }
                 }

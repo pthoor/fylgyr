@@ -6,6 +6,46 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-05-21
+
+### Added
+
+- Drift execution mode support in `Invoke-Fylgyr`:
+	- `-Mode Audit|Drift|Both`
+	- `-SinceHours` lookback window
+- Eight drift checks:
+	- `Test-RecentCollaboratorChange`
+	- `Test-RecentAppAuthorization`
+	- `Test-RecentProtectionChange`
+	- `Test-RecentForcePush`
+	- `Test-RecentRunnerRegistration`
+	- `Test-RecentSecretChange`
+	- `Test-RecentTokenExposure`
+	- `Test-RecentWorkflowAdd`
+- Drift helper primitives:
+	- `Get-OrgAuditLog` with per-run cache
+	- `Compare-FylgyrBaseline` snapshot diff helper using `Get-FylgyrFingerprint`
+- Sentinel output and ingestion:
+	- `-OutputFormat LogAnalytics` via `ConvertTo-FylgyrLogAnalytics`
+	- `Send-FylgyrToLogAnalytics` for DCR/Logs Ingestion API posting (managed identity, federated token, or secret fallback)
+- Sentinel implementation artifacts:
+	- `docs/SENTINEL.md`
+	- `docs/sentinel/dcr.json`
+	- `docs/sentinel/table-schema.json`
+	- `docs/sentinel/rules/*.yaml`
+	- `docs/sentinel/workbook.json`
+	- `docs/sentinel/github-actions-cron.yml`
+	- `docs/sentinel/azure-function/*`
+	- architecture diagrams: `docs/sentinel/architecture.drawio`, `docs/sentinel/architecture.mmd`
+- Pester coverage for drift orchestration and Log Analytics formatting in `tests/DriftMode.Tests.ps1`.
+
+### Changed
+
+- `Format-FylgyrResult` now supports `Status = Drift` and `Mode = Audit|Drift`.
+- Console/JSON/SARIF/HTML formatters updated for drift findings.
+- Module loader now dot-sources `.ps1` files recursively under `Public/` and `Private/`.
+- Module manifest version bumped to `0.7.5` and exports updated for drift/Sentinel functions.
+
 ## [0.7.0] - 2026-05-20
 
 ### Added

@@ -1,0 +1,9 @@
+name: Fylgyr-Drift-WorkflowAdd-HighRisk
+severity: High
+description: New workflow added and flagged high risk
+query: |
+  Fylgyr_CL
+  | where Mode_s == "Drift"
+  | where CheckName_s == "RecentWorkflowAdd"
+  | where Severity_s == "High"
+  | project TimeGenerated, Resource_s, Severity_s, Detail_s, AttackMapping_s

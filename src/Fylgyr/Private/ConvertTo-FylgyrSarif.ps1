@@ -54,6 +54,8 @@
             $ruleTags.Add('security')
             $ruleTags.Add('supply-chain')
 
+            $ruleLevel = if ($r.Status -eq 'Drift') { 'warning' } else { $severityToLevel[$r.Severity] }
+
             $rules[$ruleId] = [PSCustomObject]@{
                 id                   = $ruleId
                 name                 = $r.CheckName
@@ -65,7 +67,7 @@
                     markdown = $helpText
                 }
                 defaultConfiguration = [PSCustomObject]@{
-                    level = $severityToLevel[$r.Severity]
+                    level = $ruleLevel
                 }
                 properties           = [PSCustomObject]@{
                     tags                = $ruleTags.ToArray()
@@ -95,9 +97,11 @@
         $isRepoLevelResource = $r.Resource -match '^[^/\s]+/[^/\s]+(?: \(.+\))?$'
         $isFilePath = -not $isRepoLevelResource
 
+        $resultLevel = if ($r.Status -eq 'Drift') { 'warning' } else { $severityToLevel[$r.Severity] }
+
         $sarifResult = [PSCustomObject]@{
             ruleId  = $ruleId
-            level   = $severityToLevel[$r.Severity]
+            level   = $resultLevel
             message = [PSCustomObject]@{ text = $r.Detail }
         }
 
@@ -185,6 +189,13 @@
                 commitSha = $r.Evidence.CommitSha
                 scanTime  = if ($r.Evidence.ScanTime) { ([datetime]$r.Evidence.ScanTime).ToString('o') } else { $null }
                 permalink = $r.Evidence.Permalink
+            }
+
+            if ($r.Evidence.PSObject.Properties['From']) {
+                $resultProperties.driftFrom = ($r.Evidence.From | ConvertTo-Json -Depth 12 -Compress)
+            }
+            if ($r.Evidence.PSObject.Properties['To']) {
+                $resultProperties.driftTo = ($r.Evidence.To | ConvertTo-Json -Depth 12 -Compress)
             }
         }
 

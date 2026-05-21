@@ -1,0 +1,9 @@
+name: Fylgyr-HighCritical-Audit
+severity: High
+description: New High or Critical audit findings in last hour
+query: |
+  Fylgyr_CL
+  | where TimeGenerated > ago(1h)
+  | where Mode_s == "Audit"
+  | where Severity_s in ("High", "Critical")
+  | project TimeGenerated, Resource_s, CheckName_s, Severity_s, Detail_s, AttackMapping_s

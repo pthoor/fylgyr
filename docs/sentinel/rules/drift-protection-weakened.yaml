@@ -1,0 +1,8 @@
+name: Fylgyr-Drift-Protection-Weakened
+severity: High
+description: Branch protection weakening drift
+query: |
+  Fylgyr_CL
+  | where Mode_s == "Drift"
+  | where CheckName_s == "RecentProtectionChange"
+  | project TimeGenerated, Resource_s, Severity_s, Detail_s, DriftFrom_s, DriftTo_s, AttackMapping_s
