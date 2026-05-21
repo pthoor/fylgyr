@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-05-21
+
+### Fixed
+
+- Release workflow publish path now installs `powershell-yaml` in the `publish` job before `Publish-Module` so manifest-required dependencies resolve reliably on tag builds.
+
 ## [0.7.0] - 2026-05-20
 
 ### Added
