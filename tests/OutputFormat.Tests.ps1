@@ -168,7 +168,27 @@ Describe 'ConvertTo-FylgyrHtml' {
     BeforeAll {
         $repoRoot = Split-Path -Path $PSScriptRoot -Parent
         $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        $manifestPath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psd1'
+        $script:htmlManifestVersion = [string](Import-PowerShellDataFile -Path $manifestPath).ModuleVersion
         Import-Module -Name $modulePath -Force
+    }
+
+    It 'prefers manifest version over loaded module version in report header' {
+        $html = InModuleScope Fylgyr {
+            Mock Get-Module {
+                [PSCustomObject]@{ Version = [Version]'9.9.9' }
+            } -ParameterFilter { $Name -eq 'Fylgyr' }
+
+            $results = @(
+                (Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Pass' -Severity 'Info' -Resource '.github/workflows/ci.yml:1' -Detail 'Pinned action.' -Remediation 'None.' -Target 'org/repo')
+            )
+
+            ConvertTo-FylgyrHtml -Results $results -Target 'org/repo'
+        }
+
+        $versionPattern = [regex]::Escape($script:htmlManifestVersion)
+        $html | Should -Match "<strong>Version:</strong>\s*$versionPattern"
+        $html | Should -Not -Match '<strong>Version:</strong>\s*9\.9\.9'
     }
 
     It 'renders scope, table of contents, and risk prioritization' {
@@ -189,7 +209,13 @@ Describe 'ConvertTo-FylgyrHtml' {
         $html | Should -Match 'Repository Scope \(1 target\(s\)\)'
         $html | Should -Match 'Repositories Without Results'
         $html | Should -Match 'Prioritized Findings'
+        $html | Should -Match 'OWASP CI/CD Coverage Context'
+        $html | Should -Match 'Covered OWASP CI/CD risks'
         $html | Should -Match 'Missing OWASP Coverage'
+        $html | Should -Match 'https://owasp\.org/www-project-top-10-ci-cd-security-risks/'
+        $html | Should -Match 'CICD-SEC-02-Inadequate-Identity-And-Access-Management'
+        $html | Should -Match 'CICD-SEC-08-Ungoverned-Usage-of-3rd-Party-Services'
+        $html | Should -Match 'CICD-SEC-10-Insufficient-Logging-And-Visibility'
         $html | Should -Match 'Overall Recommendations'
         $html | Should -Match 'Defender XDR Custom Detection Rules'
         $html | Should -Match 'VS Code extension inventory in Defender XDR'

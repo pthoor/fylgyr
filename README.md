@@ -249,6 +249,8 @@ The report includes:
 - scan scope counts (repos scanned, with results, without results)
 - table of contents with clear Organization Scope vs Repository Scope sections
 - risk prioritization summary (critical/high, medium, prioritized findings, missing OWASP coverage)
+- overall recommendations split into scan-derived priorities and companion controls beyond GitHub
+- Defender XDR custom detection starter queries (including VS Code extension inventory telemetry)
 - grouped findings by target and check
 - evidence details (when `-IncludeEvidence` is enabled)
 - coverage dashboard snippets from `docs/COVERAGE.md`

@@ -102,6 +102,31 @@
       margin: 6px 0;
     }
 
+    .recommendation-list {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .recommendation-list li {
+      margin: 6px 0;
+    }
+
+    .note-box {
+      border: 1px solid var(--border);
+      border-left: 4px solid #2563eb;
+      border-radius: 8px;
+      background: #f8fbff;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+
+    .code-title {
+      margin: 8px 0 4px 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
     .risk-meta {
       color: var(--muted);
       font-size: 12px;
@@ -200,6 +225,16 @@
     <section class="panel">
       <h2>Risk Prioritization</h2>
       {{RISK_PRIORITIES}}
+    </section>
+
+    <section class="panel">
+      <h2>Overall Recommendations</h2>
+      {{OVERALL_RECOMMENDATIONS}}
+    </section>
+
+    <section class="panel">
+      <h2>Defender XDR Custom Detection Rules</h2>
+      {{DEFENDER_XDR_RULES}}
     </section>
 
     <section class="panel">

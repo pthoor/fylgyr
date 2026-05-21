@@ -12,21 +12,29 @@ function ConvertTo-FylgyrHtml {
         [string]$OutputPath
     )
 
-    $module = Get-Module -Name Fylgyr -ErrorAction SilentlyContinue
-    $version = if ($module -and $module.Version) { $module.Version.ToString() } else { '0.0.0' }
-    if ($version -match '^0(\.0)+$') {
-        $manifestPath = Join-Path -Path $PSScriptRoot -ChildPath '..' | Join-Path -ChildPath 'Fylgyr.psd1'
-        if (Test-Path -Path $manifestPath -PathType Leaf) {
-            try {
-                $manifestData = Import-PowerShellDataFile -Path $manifestPath
-                if ($manifestData -and $manifestData.ModuleVersion) {
-                    $version = [string]$manifestData.ModuleVersion
-                }
-            }
-            catch {
-                Write-Verbose "Unable to resolve module version from manifest: $($_.Exception.Message)"
+    $manifestPath = Join-Path -Path $PSScriptRoot -ChildPath '..' | Join-Path -ChildPath 'Fylgyr.psd1'
+    $version = ''
+    if (Test-Path -Path $manifestPath -PathType Leaf) {
+        try {
+            $manifestData = Import-PowerShellDataFile -Path $manifestPath
+            if ($manifestData -and $manifestData.ModuleVersion) {
+                $version = [string]$manifestData.ModuleVersion
             }
         }
+        catch {
+            Write-Verbose "Unable to resolve module version from manifest: $($_.Exception.Message)"
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($version) -or $version -match '^0(\.0)+$') {
+        $module = Get-Module -Name Fylgyr -ErrorAction SilentlyContinue
+        if ($module -and $module.Version) {
+            $version = $module.Version.ToString()
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        $version = '0.0.0'
     }
 
     $templatePath = Join-Path -Path $PSScriptRoot -ChildPath '..' | Join-Path -ChildPath 'Data' | Join-Path -ChildPath 'report-template.html'
@@ -36,11 +44,71 @@ function ConvertTo-FylgyrHtml {
 
     $coveragePath = Join-Path -Path $PSScriptRoot -ChildPath '..' | Join-Path -ChildPath '..' | Join-Path -ChildPath '..' | Join-Path -ChildPath 'docs' | Join-Path -ChildPath 'COVERAGE.md'
     $coverageSummaryHtml = '<div class="coverage-card"><h3>Coverage Map</h3><p>Coverage summary unavailable.</p></div>'
+    $owaspTop10BaseUrl = 'https://owasp.org/www-project-top-10-ci-cd-security-risks'
+    $owaspControlUrlMap = @{
+        'CICD-SEC-1'  = 'https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-01-Insufficient-Flow-Control-Mechanisms'
+        'CICD-SEC-2'  = 'https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-02-Inadequate-Identity-And-Access-Management'
+        'CICD-SEC-3'  = 'https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-03-Dependency-Chain-Abuse'
+        'CICD-SEC-4'  = 'https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-04-Poisoned-Pipeline-Execution'
+        'CICD-SEC-5'  = 'https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-05-Insufficient-PBAC'
+        'CICD-SEC-6'  = 'https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-06-Insufficient-Credential-Hygiene'
+        'CICD-SEC-7'  = 'https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-07-Insecure-System-Configuration'
+        'CICD-SEC-8'  = 'https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-08-Ungoverned-Usage-of-3rd-Party-Services'
+        'CICD-SEC-9'  = 'https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-09-Improper-Artifact-Integrity-Validation'
+        'CICD-SEC-10' = 'https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-10-Insufficient-Logging-And-Visibility'
+    }
+    $buildOwaspControlUrl = {
+        param(
+            [string]$ControlId
+        )
+
+        if ($ControlId -match '^CICD-SEC-(\d+)$') {
+            $normalizedControlId = "CICD-SEC-$([int]$Matches[1])"
+            if ($owaspControlUrlMap.ContainsKey($normalizedControlId)) {
+                return [string]$owaspControlUrlMap[$normalizedControlId]
+            }
+        }
+
+        return "$owaspTop10BaseUrl/"
+    }
+
     $openGapIds = [System.Collections.Generic.List[string]]::new()
+    $coveredOwaspRisks = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $missingOwaspRisks = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $owaspRiskNamesById = @{}
+    $owaspTotalRiskCount = 0
     if (Test-Path -Path $coveragePath -PathType Leaf) {
         $coverageText = Get-Content -Path $coveragePath -Raw
         $coverageLineRaw = [regex]::Match($coverageText, '(?m)^\s*\*{0,2}\s*Coverage:[^\n]+').Value
         $openGapsLineRaw = [regex]::Match($coverageText, '(?m)^\s*\*{0,2}\s*Open gaps:\s*[^\n]+').Value
+
+        $owaspIdSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($owaspRow in [regex]::Matches($coverageText, '(?m)^\|\s*(CICD-SEC-\d+)\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|')) {
+            $owaspId = [string]$owaspRow.Groups[1].Value.Trim()
+            if ([string]::IsNullOrWhiteSpace($owaspId) -or -not $owaspIdSet.Add($owaspId)) {
+                continue
+            }
+
+            $owaspName = [string]$owaspRow.Groups[2].Value.Trim()
+            $coveringChecks = [string]$owaspRow.Groups[4].Value.Trim()
+            $owaspTotalRiskCount++
+            $owaspRiskNamesById[$owaspId] = $owaspName
+
+            $isEmDashPlaceholder = ($coveringChecks.Length -eq 1 -and [int][char]$coveringChecks[0] -eq 8212)
+            $isMissingCoverage = [string]::IsNullOrWhiteSpace($coveringChecks) -or $coveringChecks -in @('-', '--', '---', '----', '-----', '------') -or $isEmDashPlaceholder
+            if ($isMissingCoverage) {
+                $missingOwaspRisks.Add([PSCustomObject]@{
+                        Id   = $owaspId
+                        Name = $owaspName
+                    })
+            }
+            else {
+                $coveredOwaspRisks.Add([PSCustomObject]@{
+                        Id   = $owaspId
+                        Name = $owaspName
+                    })
+            }
+        }
 
         $coverageLine = if ($coverageLineRaw) { (($coverageLineRaw -replace '^\s*\*{0,2}\s*', '') -replace '\*{0,2}\s*$', '').Trim() } else { '' }
         $openGapsLine = if ($openGapsLineRaw) { (($openGapsLineRaw -replace '^\s*\*{0,2}\s*', '') -replace '\*{0,2}\s*$', '').Trim() } else { '' }
@@ -316,7 +384,39 @@ $groupHtml = @"
 
     $openGapPills = [System.Collections.Generic.List[string]]::new()
     foreach ($gapId in $openGapIds) {
-        $openGapPills.Add("<span class='pill'>$([System.Net.WebUtility]::HtmlEncode($gapId))</span>")
+        $gapName = ''
+        if ($owaspRiskNamesById.ContainsKey([string]$gapId)) {
+            $gapName = [string]$owaspRiskNamesById[[string]$gapId]
+        }
+
+        $gapLabel = if ([string]::IsNullOrWhiteSpace($gapName)) { [string]$gapId } else { "$gapId - $gapName" }
+        $gapUrl = & $buildOwaspControlUrl ([string]$gapId)
+        $openGapPills.Add("<a class='pill' href='$([System.Net.WebUtility]::HtmlEncode($gapUrl))' target='_blank' rel='noopener noreferrer'>$([System.Net.WebUtility]::HtmlEncode($gapLabel))</a>")
+    }
+
+    $coveredOwaspPills = [System.Collections.Generic.List[string]]::new()
+    foreach ($coveredOwaspRisk in $coveredOwaspRisks) {
+        $coveredLabel = if ([string]::IsNullOrWhiteSpace([string]$coveredOwaspRisk.Name)) {
+            [string]$coveredOwaspRisk.Id
+        }
+        else {
+            "$($coveredOwaspRisk.Id) - $($coveredOwaspRisk.Name)"
+        }
+        $coveredUrl = & $buildOwaspControlUrl ([string]$coveredOwaspRisk.Id)
+        $coveredOwaspPills.Add("<a class='pill' href='$([System.Net.WebUtility]::HtmlEncode($coveredUrl))' target='_blank' rel='noopener noreferrer'>$([System.Net.WebUtility]::HtmlEncode($coveredLabel))</a>")
+    }
+
+    if ($openGapPills.Count -eq 0 -and $missingOwaspRisks.Count -gt 0) {
+        foreach ($missingOwaspRisk in $missingOwaspRisks) {
+            $missingLabel = if ([string]::IsNullOrWhiteSpace([string]$missingOwaspRisk.Name)) {
+                [string]$missingOwaspRisk.Id
+            }
+            else {
+                "$($missingOwaspRisk.Id) - $($missingOwaspRisk.Name)"
+            }
+            $missingUrl = & $buildOwaspControlUrl ([string]$missingOwaspRisk.Id)
+            $openGapPills.Add("<a class='pill' href='$([System.Net.WebUtility]::HtmlEncode($missingUrl))' target='_blank' rel='noopener noreferrer'>$([System.Net.WebUtility]::HtmlEncode($missingLabel))</a>")
+        }
     }
 
     $prioritizedRiskListHtml = if ($prioritizedRiskItems.Count -gt 0) {
@@ -333,8 +433,21 @@ $groupHtml = @"
 
     $missingRiskHtml = if ($openGapPills.Count -gt 0) {
 @"
+<h3>OWASP CI/CD Coverage Context</h3>
+<p><strong>Missing means:</strong> this OWASP CI/CD Top 10 risk currently has no mapped Fylgyr check in coverage metadata.</p>
+<p><strong>Covered OWASP CI/CD risks ($($coveredOwaspRisks.Count)/$owaspTotalRiskCount):</strong></p>
+<p>$($coveredOwaspPills -join ' ')</p>
 <h3>Missing OWASP Coverage</h3>
 <p>$($openGapPills -join ' ')</p>
+"@
+    }
+    elseif ($coveredOwaspPills.Count -gt 0) {
+@"
+<h3>OWASP CI/CD Coverage Context</h3>
+<p><strong>Missing means:</strong> this OWASP CI/CD Top 10 risk currently has no mapped Fylgyr check in coverage metadata.</p>
+<p><strong>Covered OWASP CI/CD risks ($($coveredOwaspRisks.Count)/$owaspTotalRiskCount):</strong></p>
+<p>$($coveredOwaspPills -join ' ')</p>
+<h3>Missing OWASP Coverage</h3><p>No open OWASP gaps listed in coverage metadata.</p>
 "@
     }
     else {
@@ -349,6 +462,143 @@ $riskPrioritizationHtml = @"
 </div>
 $prioritizedRiskListHtml
 $missingRiskHtml
+"@
+
+    $overallRecommendationItems = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $overallRecommendationKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    $addOverallRecommendation = {
+        param(
+            [int]$Priority,
+            [string]$Key,
+            [string]$Text
+        )
+
+        if (-not $overallRecommendationKeys.Contains($Key)) {
+            $overallRecommendationKeys.Add($Key) | Out-Null
+            $overallRecommendationItems.Add([PSCustomObject]@{
+                    Priority = $Priority
+                    Text     = $Text
+                }) | Out-Null
+        }
+    }
+
+    if (@($riskCandidates | Where-Object { $_.Status -eq 'Error' }).Count -gt 0) {
+        & $addOverallRecommendation 0 'resolve-errors' 'P0 Resolve API and token scope errors first so scan coverage is complete before triage decisions.'
+    }
+
+    if (@($riskCandidates | Where-Object { $_.CheckName -eq 'OrgMfaPolicy' -and $_.Status -eq 'Fail' }).Count -gt 0) {
+        & $addOverallRecommendation 0 'org-mfa' 'P0 Enforce organization-wide MFA immediately to reduce account takeover risk from stolen credentials.'
+    }
+
+    if (@($riskCandidates | Where-Object { $_.CheckName -in @('PatPolicy', 'OAuthAppPolicy', 'GitHubAppSecurity') }).Count -gt 0) {
+        & $addOverallRecommendation 0 'token-governance' 'P0 Tighten token and app governance: least privilege, approval gates, and short-lived credentials where possible.'
+    }
+
+    if (@($riskCandidates | Where-Object { $_.CheckName -eq 'ActionPinning' -and $_.Status -eq 'Fail' }).Count -gt 0) {
+        & $addOverallRecommendation 1 'action-pinning' 'P1 Pin all third-party actions to full commit SHAs to reduce mutable-tag supply chain exposure.'
+    }
+
+    if (@($riskCandidates | Where-Object { $_.CheckName -eq 'EgressControl' }).Count -gt 0) {
+        & $addOverallRecommendation 1 'egress-control' 'P1 Enforce workflow egress controls in block mode to limit secret exfiltration and attacker callouts.'
+    }
+
+    if (@($riskCandidates | Where-Object { $_.CheckName -eq 'RunnerHygiene' }).Count -gt 0) {
+        & $addOverallRecommendation 1 'runner-isolation' 'P1 Isolate runners with ephemeral execution and segmented network paths; avoid long-lived shared runners.'
+    }
+
+    if (@($riskCandidates | Where-Object { $_.CheckName -eq 'BranchProtection' -or $_.CheckName -eq 'Rulesets' }).Count -gt 0) {
+        & $addOverallRecommendation 1 'branch-rulesets' 'P1 Keep strict default branch and tag protection baselines so stolen maintainer sessions cannot silently tamper with release paths.'
+    }
+
+    $orderedOverallRecommendations = @($overallRecommendationItems | Sort-Object -Property Priority, Text)
+    $overallRecommendationListItems = [System.Collections.Generic.List[string]]::new()
+    foreach ($recommendation in $orderedOverallRecommendations) {
+        $overallRecommendationListItems.Add("<li>$([System.Net.WebUtility]::HtmlEncode([string]$recommendation.Text))</li>") | Out-Null
+    }
+
+    $overallRecommendationListHtml = if ($overallRecommendationListItems.Count -gt 0) {
+@"
+<h3>Prioritized From This Scan</h3>
+<ul class="recommendation-list">
+  $($overallRecommendationListItems -join "`n  ")
+</ul>
+"@
+    }
+    else {
+        '<h3>Prioritized From This Scan</h3><p>No fail/warning/error findings detected.</p>'
+    }
+
+    $companionControlHtml = @"
+<div class="note-box">
+  <strong>Scope note:</strong> Controls in this section are companion recommendations for endpoint and network hardening. They are not directly validated by this scan unless a corresponding GitHub finding exists.
+</div>
+<h3>Recommended Companion Controls</h3>
+<ul class="recommendation-list">
+  <li>Extension governance: enforce publisher allowlists via Intune or Group Policy and use staged extension update rings for sensitive developer populations.</li>
+  <li>Endpoint protection: deploy Microsoft Defender XDR (or equivalent EDR), enable tamper protection, and maintain host isolation runbooks.</li>
+  <li>Network telemetry: keep DNS and outbound HTTPS visibility so unusual exfiltration behavior can be investigated quickly.</li>
+  <li>Runner isolation: keep CI runners ephemeral and in segmented network zones; integrate private networking where supported.</li>
+  <li>Identity and token resilience: prefer short-lived and least-privilege credentials, and require app approval workflows.</li>
+    <li>Emergency credential response: include GitHub Credential Revocation API in playbooks to rapidly revoke exposed classic and fine-grained PATs.</li>
+    <li>Dependency hardening on workstations: use package-manager cooldown controls to reduce exposure to freshly compromised package versions.</li>
+    <li>Workstation posture scanners (for example Bagel) can complement Fylgyr by inventorying local credential and configuration risk on developer endpoints.</li>
+</ul>
+"@
+
+    $overallRecommendationsHtml = @"
+$overallRecommendationListHtml
+$companionControlHtml
+"@
+
+    $defenderXdrRulesHtml = @"
+<div class="note-box">
+  <strong>Telemetry assumptions:</strong> Custom detections below require Defender for Endpoint data in Microsoft Defender XDR. GitHub identity and OAuth visibility may additionally require Defender for Cloud Apps integration and GitHub connector coverage.
+</div>
+<h3>Recommended Custom Detections</h3>
+<ul class="recommendation-list">
+    <li>Inventory VS Code extensions across endpoints and alert on known compromised versions.</li>
+  <li>Suspicious extension-driven command execution from developer tools.</li>
+  <li>Outbound connections to high-risk endpoints or unusual GitHub API usage patterns from developer workstations.</li>
+  <li>Persistence artifact creation in known post-compromise paths.</li>
+  <li>Potential credential-harvesting process patterns across shells and package managers.</li>
+</ul>
+<p class="code-title">Query 0: VS Code extension inventory in Defender XDR (MDE)</p>
+<pre>DeviceProcessEvents
+| where Timestamp > ago(30d)
+| where InitiatingProcessCommandLine has "\\.vscode\\extensions\\"
+| where InitiatingProcessCommandLine has "code.exe"
+| extend ExtensionName = extract(@"extensions\\([^\\]+)", 1, InitiatingProcessCommandLine)
+| distinct DeviceName, ExtensionName
+| sort by DeviceName asc</pre>
+<p class="code-title">Query 1: Suspicious npx GitHub install command</p>
+<pre>DeviceProcessEvents
+| where Timestamp > ago(7d)
+| where ProcessCommandLine has "npx -y github:"
+| where ProcessCommandLine has "#"
+| project Timestamp, DeviceName, InitiatingProcessFileName, FileName, ProcessCommandLine, AccountName</pre>
+<p class="code-title">Query 1b: Potential PAT material in process command line</p>
+<pre>DeviceProcessEvents
+| where Timestamp > ago(7d)
+| where ProcessCommandLine has_any ("ghp_", "github_pat_")
+| project Timestamp, DeviceName, InitiatingProcessFileName, FileName, ProcessCommandLine, AccountName</pre>
+<p class="code-title">Query 2: Potential exfiltration-related network activity</p>
+<pre>DeviceNetworkEvents
+| where Timestamp > ago(7d)
+| where RemoteUrl has_any ("api.github.com/search/commits", "fulcio.sigstore.dev", "rekor.sigstore.dev")
+| project Timestamp, DeviceName, InitiatingProcessFileName, RemoteUrl, RemoteIP, RemotePort</pre>
+<p class="code-title">Query 3: Persistence indicators on developer endpoints</p>
+<pre>DeviceFileEvents
+| where Timestamp > ago(7d)
+| where FolderPath has_any (".local/share/kitty", "Library/LaunchAgents", "/var/tmp")
+| where FileName has_any ("cat.py", "com.user.kitty-monitor.plist", ".gh_update_state")
+| project Timestamp, DeviceName, ActionType, FolderPath, FileName, InitiatingProcessFileName</pre>
+<p class="code-title">Query 4: GitHub cloud activity pivot (when CloudAppEvents is available)</p>
+<pre>CloudAppEvents
+| where Timestamp > ago(7d)
+| where Application == "GitHub"
+| where ActionType has_any ("OAuth", "Token", "Repository")
+| project Timestamp, AccountDisplayName, ActionType, ActivityObjects, IPAddress, UserAgent</pre>
 "@
 
     $scopeSections = [System.Collections.Generic.List[string]]::new()
@@ -397,6 +647,8 @@ $missingRiskHtml
     $html = $html.Replace('{{SCAN_SCOPE}}', $scanScopeHtml)
     $html = $html.Replace('{{TABLE_OF_CONTENTS}}', $tableOfContentsHtml)
     $html = $html.Replace('{{RISK_PRIORITIES}}', $riskPrioritizationHtml)
+    $html = $html.Replace('{{OVERALL_RECOMMENDATIONS}}', $overallRecommendationsHtml)
+    $html = $html.Replace('{{DEFENDER_XDR_RULES}}', $defenderXdrRulesHtml)
     $html = $html.Replace('{{COVERAGE_DASHBOARD}}', $coverageSummaryHtml)
     $html = $html.Replace('{{RESULT_SECTIONS}}', $resultSectionsHtml)
 
