@@ -113,6 +113,11 @@ jobs:
         with:
           subject-path: 'fylgyr-*.zip'
 
+      - name: Install manifest dependency
+        shell: pwsh
+        run: |
+          Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
+
       - name: Publish to PowerShell Gallery
         shell: pwsh
         env:
