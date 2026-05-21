@@ -2,6 +2,8 @@
 
 Attack catalog mapped to OWASP CI/CD Top 10 and MITRE ATT&CK supply-chain techniques. Empty cells are roadmap gaps.
 
+Last regenerated: 2026-05-20 (Phase 9 feature update; check-to-attack mappings unchanged).
+
 ## OWASP CI/CD Top 10
 
 | OWASP ID | Risk Name | Attack Catalog Entries | Covering Checks |

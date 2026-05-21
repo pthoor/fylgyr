@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{TITLE}}</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #4b5563;
+      --border: #d1d5db;
+      --pass: #0f766e;
+      --fail: #b91c1c;
+      --warn: #a16207;
+      --error: #7e22ce;
+      --info: #0e7490;
+      --suppressed: #155e75;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background: linear-gradient(160deg, #eff6ff 0%, #f8fafc 60%, #ecfeff 100%);
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+    }
+
+    h1, h2, h3, h4, h5 { margin: 0 0 8px 0; }
+    p { margin: 6px 0; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 8px;
+    }
+
+    .summary-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+      background: #f8fafc;
+    }
+
+    .coverage-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      background: #f9fafb;
+    }
+
+    .scope-block { margin-bottom: 18px; }
+    .scope-block > h3 {
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .group-meta {
+      margin: 4px 0 8px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toc-list {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .toc-list li {
+      margin: 4px 0;
+    }
+
+    .toc-count {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 6px;
+    }
+
+    .risk-list {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .risk-list li {
+      margin: 6px 0;
+    }
+
+    .recommendation-list {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .recommendation-list li {
+      margin: 6px 0;
+    }
+
+    .note-box {
+      border: 1px solid var(--border);
+      border-left: 4px solid #2563eb;
+      border-radius: 8px;
+      background: #f8fbff;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+
+    .code-title {
+      margin: 8px 0 4px 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .risk-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 6px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+
+    .repo-group { margin-bottom: 18px; }
+    .check-group { margin: 10px 0 14px 0; }
+
+    .finding {
+      border: 1px solid var(--border);
+      border-left-width: 6px;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 10px;
+      margin: 8px 0;
+    }
+
+    .status-fail { border-left-color: var(--fail); }
+    .status-warning { border-left-color: var(--warn); }
+    .status-error { border-left-color: var(--error); }
+    .status-info { border-left-color: var(--info); }
+    .status-suppressed { border-left-color: var(--suppressed); }
+    .status-pass { border-left-color: var(--pass); }
+
+    .finding-header {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .detail { color: var(--muted); }
+
+    .evidence-block {
+      margin-top: 8px;
+      border-top: 1px dashed var(--border);
+      padding-top: 8px;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    a { color: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="panel">
+      <h1>{{TITLE}}</h1>
+      <p><strong>Generated:</strong> {{GENERATED_AT}}</p>
+      <p><strong>Target:</strong> {{TARGET}}</p>
+      <p><strong>Version:</strong> {{VERSION}}</p>
+    </section>
+
+    <section class="panel">
+      <h2>Summary</h2>
+      <div class="summary-grid">
+        <div class="summary-item"><h3>{{SUMMARY_TOTAL}}</h3><p>Total</p></div>
+        <div class="summary-item"><h3>{{SUMMARY_PASS}}</h3><p>Pass</p></div>
+        <div class="summary-item"><h3>{{SUMMARY_FAIL}}</h3><p>Fail</p></div>
+        <div class="summary-item"><h3>{{SUMMARY_WARNING}}</h3><p>Warning</p></div>
+        <div class="summary-item"><h3>{{SUMMARY_ERROR}}</h3><p>Error</p></div>
+        <div class="summary-item"><h3>{{SUMMARY_INFO}}</h3><p>Info</p></div>
+        <div class="summary-item"><h3>{{SUMMARY_SUPPRESSED}}</h3><p>Suppressed</p></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      {{SCAN_SCOPE}}
+    </section>
+
+    <section class="panel">
+      <h2>Table of Contents</h2>
+      {{TABLE_OF_CONTENTS}}
+    </section>
+
+    <section class="panel">
+      <h2>Risk Prioritization</h2>
+      {{RISK_PRIORITIES}}
+    </section>
+
+    <section class="panel">
+      <h2>Overall Recommendations</h2>
+      {{OVERALL_RECOMMENDATIONS}}
+    </section>
+
+    <section class="panel">
+      <h2>Defender XDR Custom Detection Rules</h2>
+      {{DEFENDER_XDR_RULES}}
+    </section>
+
+    <section class="panel">
+      {{COVERAGE_DASHBOARD}}
+    </section>
+
+    <section class="panel">
+      <h2>Findings</h2>
+      {{RESULT_SECTIONS}}
+    </section>
+  </div>
+</body>
+</html>

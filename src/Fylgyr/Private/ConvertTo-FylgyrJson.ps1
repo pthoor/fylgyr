@@ -22,6 +22,7 @@ function ConvertTo-FylgyrJson {
             fail    = ($Results | Where-Object Status -EQ 'Fail').Count
             warning = ($Results | Where-Object Status -EQ 'Warning').Count
             error   = ($Results | Where-Object Status -EQ 'Error').Count
+            suppressed = ($Results | Where-Object Status -EQ 'Suppressed').Count
         }
         results = $Results
     }

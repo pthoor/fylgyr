@@ -117,7 +117,7 @@ function Write-FylgyrConsole {
                     }
                 }
                 else {
-                    $onlyInfo = @($failures | Where-Object { $_.Status -ne 'Info' }).Count -eq 0
+                    $onlyInfo = @($failures | Where-Object { $_.Status -notin @('Info', 'Suppressed') }).Count -eq 0
                     if ($passes.Count -gt 0) {
                         Write-Host "[$($passes.Count) passed, $($failures.Count) finding(s)]" -ForegroundColor Yellow
                     }
@@ -134,6 +134,7 @@ function Write-FylgyrConsole {
                             'Warning' { '[WARN]' }
                             'Error'   { '[ERR]' }
                             'Info'    { '[INFO]' }
+                            'Suppressed' { '[SUPP]' }
                             default   { '[?]' }
                         }
                         $color = switch ($r.Status) {
@@ -141,6 +142,7 @@ function Write-FylgyrConsole {
                             'Warning' { 'Yellow' }
                             'Error'   { 'Magenta' }
                             'Info'    { 'Cyan' }
+                            'Suppressed' { 'DarkCyan' }
                             default   { 'Gray' }
                         }
 
@@ -152,6 +154,26 @@ function Write-FylgyrConsole {
 
                         if ($r.AttackMapping.Count -gt 0) {
                             Write-Host "        Attacks:     $($r.AttackMapping -join ', ')" -ForegroundColor DarkGray
+                        }
+
+                        if ($r.PSObject.Properties.Name -contains 'Evidence' -and $r.Evidence -and $VerbosePreference -ne 'SilentlyContinue') {
+                            Write-Host '        Evidence:' -ForegroundColor DarkGray
+
+                            if ($r.Evidence.CommitSha) {
+                                Write-Host "          CommitSha: $($r.Evidence.CommitSha)" -ForegroundColor DarkGray
+                            }
+                            if ($r.Evidence.ScanTime) {
+                                Write-Host "          ScanTime:  $(([datetime]$r.Evidence.ScanTime).ToString('o'))" -ForegroundColor DarkGray
+                            }
+                            if ($r.Evidence.Permalink) {
+                                Write-Host "          Permalink: $($r.Evidence.Permalink)" -ForegroundColor DarkGray
+                            }
+                            if ($r.Evidence.YamlSnippet) {
+                                Write-Host '          YamlSnippet:' -ForegroundColor DarkGray
+                                foreach ($snippetLine in @([string]$r.Evidence.YamlSnippet -split "`n")) {
+                                    Write-Host "            $snippetLine" -ForegroundColor DarkGray
+                                }
+                            }
                         }
                     }
                 }
@@ -180,6 +202,7 @@ function Write-FylgyrConsole {
     $failCount    = ($Results | Where-Object Status -EQ 'Fail').Count
     $warnCount    = ($Results | Where-Object Status -EQ 'Warning').Count
     $errorCount   = ($Results | Where-Object Status -EQ 'Error').Count
+    $suppressedCount = ($Results | Where-Object Status -EQ 'Suppressed').Count
 
     Write-Host ''
     Write-Host "  $('-' * 60)" -ForegroundColor DarkGray
@@ -190,7 +213,9 @@ function Write-FylgyrConsole {
     Write-Host ', ' -NoNewline
     Write-Host "$warnCount warnings" -ForegroundColor Yellow -NoNewline
     Write-Host ', ' -NoNewline
-    Write-Host "$errorCount errors" -ForegroundColor Magenta
+    Write-Host "$errorCount errors" -ForegroundColor Magenta -NoNewline
+    Write-Host ', ' -NoNewline
+    Write-Host "$suppressedCount suppressed" -ForegroundColor DarkCyan
 
     if ($recommendationItems.Count -gt 0) {
         Write-Host ''

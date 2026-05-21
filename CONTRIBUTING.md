@@ -10,6 +10,16 @@ Thank you for helping improve supply chain security.
 4. Map findings to campaign IDs from `src/Fylgyr/Data/attacks.json`.
 5. Run `Invoke-ScriptAnalyzer -Path ./src -Recurse` and `Invoke-Pester ./tests`.
 
+## Local Dev Dependencies
+
+Install required tooling once per environment:
+
+```powershell
+Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
+Install-Module -Name Pester -MinimumVersion 5.0 -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
+Install-Module -Name PSScriptAnalyzer -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
+```
+
 ## Add a New Attack Mapping
 
 Open a PR that updates `src/Fylgyr/Data/attacks.json` with a new object including all required fields:

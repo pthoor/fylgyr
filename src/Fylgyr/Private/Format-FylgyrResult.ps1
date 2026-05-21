@@ -1,3 +1,17 @@
+<#
+.SYNOPSIS
+Create a standardized Fylgyr result object.
+
+.DESCRIPTION
+All checks must emit findings through this function so output formatters receive
+consistent fields.
+
+Evidence redaction policy for any current or future Evidence payload:
+- Never include token values or Authorization headers.
+- Never include secret values (for example webhook secrets); include key names only.
+- Never include full environment-variable values; include variable names only.
+- Treat all GitHub API data as untrusted and avoid echoing raw sensitive payloads.
+#>
 function Format-FylgyrResult {
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
@@ -6,7 +20,7 @@ function Format-FylgyrResult {
         [string]$CheckName,
 
         [Parameter(Mandatory)]
-        [ValidateSet('Pass', 'Fail', 'Warning', 'Error', 'Info')]
+        [ValidateSet('Pass', 'Fail', 'Warning', 'Error', 'Info', 'Suppressed')]
         [string]$Status,
 
         [Parameter(Mandatory)]
@@ -24,7 +38,9 @@ function Format-FylgyrResult {
 
         [string[]]$AttackMapping = @(),
 
-        [string]$Target = ''
+        [string]$Target = '',
+
+        [hashtable]$Evidence
     )
 
     [PSCustomObject]@{
@@ -36,5 +52,6 @@ function Format-FylgyrResult {
         Remediation   = $Remediation
         AttackMapping = $AttackMapping
         Target        = $Target
+        Evidence      = $Evidence
     }
 }
