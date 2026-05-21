@@ -37,5 +37,8 @@ docs/RELEASE-TESTING.md
 *.env
 secrets.json
 *secrets*.json
+.fylgyr.yml
 pester_output.txt
 pester_results.txt
+test_org.html
+fylgyr.sarif

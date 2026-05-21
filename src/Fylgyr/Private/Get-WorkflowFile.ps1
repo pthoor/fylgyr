@@ -18,7 +18,7 @@ function Get-WorkflowFile {
     }
     catch {
         if ($_.Exception.Message -match '404' -or $_.Exception.Message -match 'Not Found') {
-            return @()
+            return [PSCustomObject[]]@()
         }
         throw
     }
@@ -28,7 +28,7 @@ function Get-WorkflowFile {
     }
 
     if (-not $workflowEntries -or $workflowEntries.Count -eq 0) {
-        return @()
+        return [PSCustomObject[]]@()
     }
 
     $workflowFiles = [System.Collections.Generic.List[PSCustomObject]]::new()

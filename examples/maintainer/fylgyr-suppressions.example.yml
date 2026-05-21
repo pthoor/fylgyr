@@ -1,0 +1,20 @@
+# Fylgyr suppression examples
+#
+# Copy this file to your repository root as .fylgyr.yml
+# and keep suppressions narrow, temporary, and documented.
+
+suppressions:
+  - check: ActionPinning
+    resource: .github/workflows/ci.yml
+    reason: Temporary exception while migrating to SHA-pinned internal action
+    expires: 2026-07-01
+
+  - check: EgressControl
+    resource: .github/workflows/release.yml
+    reason: Pending rollout of hardened egress policy in release pipeline
+    expires: 2026-06-15
+
+  - check: CodeOwner
+    resource: CODEOWNERS
+    reason: Backup maintainer onboarding in progress
+    expires: 2026-06-30

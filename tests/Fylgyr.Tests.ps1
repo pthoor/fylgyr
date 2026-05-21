@@ -511,6 +511,461 @@ jobs:
         $checkResults.Count | Should -BeGreaterOrEqual 3
     }
 
+    It 'marks matching findings as Suppressed when BaselinePath is provided' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+'@
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Test-ActionPinning {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'ActionPinning'
+                    Status        = 'Fail'
+                    Severity      = 'High'
+                    Resource      = '.github/workflows/ci.yml'
+                    Detail        = 'Unpinned action reference: actions/checkout@v4'
+                    Remediation   = 'Pin to a full SHA.'
+                    AttackMapping = @()
+                    Target        = ''
+                }
+            )
+        }
+
+        $baseline = [PSCustomObject]@{
+            results = @(
+                [PSCustomObject]@{
+                    CheckName = 'ActionPinning'
+                    Status = 'Fail'
+                    Severity = 'High'
+                    Resource = '.github/workflows/ci.yml'
+                    Detail = 'Unpinned action reference: actions/checkout@v4'
+                    Remediation = 'Pin to a full SHA.'
+                }
+            )
+        }
+
+        $baselineFile = New-TemporaryFile
+        $baseline | ConvertTo-Json -Depth 5 | Set-Content -Path $baselineFile.FullName
+
+        try {
+            $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -BaselinePath $baselineFile.FullName
+        }
+        finally {
+            Remove-Item -Path $baselineFile.FullName -ErrorAction SilentlyContinue
+        }
+
+        $suppressed = $results | Where-Object { $_.CheckName -eq 'ActionPinning' }
+        $suppressed | Should -Not -BeNullOrEmpty
+        $suppressed[0].Status | Should -Be 'Suppressed'
+    }
+
+    It 'does not suppress Error findings when BaselinePath is provided' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Test-ActionPinning {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'ActionPinning'
+                    Status        = 'Error'
+                    Severity      = 'High'
+                    Resource      = '.github/workflows/ci.yml'
+                    Detail        = 'ActionPinning check failed.'
+                    Remediation   = 'Fix check execution.'
+                    AttackMapping = @()
+                    Target        = ''
+                }
+            )
+        }
+
+        $baseline = [PSCustomObject]@{
+            results = @(
+                [PSCustomObject]@{
+                    CheckName = 'ActionPinning'
+                    Status = 'Error'
+                    Severity = 'High'
+                    Resource = '.github/workflows/ci.yml'
+                    Detail = 'ActionPinning check failed.'
+                    Remediation = 'Fix check execution.'
+                }
+            )
+        }
+
+        $baselineFile = New-TemporaryFile
+        $baseline | ConvertTo-Json -Depth 5 | Set-Content -Path $baselineFile.FullName
+
+        try {
+            $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -BaselinePath $baselineFile.FullName
+        }
+        finally {
+            Remove-Item -Path $baselineFile.FullName -ErrorAction SilentlyContinue
+        }
+
+        $finding = $results | Where-Object { $_.CheckName -eq 'ActionPinning' }
+        $finding | Should -Not -BeNullOrEmpty
+        $finding[0].Status | Should -Be 'Error'
+    }
+
+    It 'returns BaselineDiff error result when BaselinePath is invalid' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+
+        $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -BaselinePath '/tmp/does-not-exist-baseline.json'
+        $baselineError = $results | Where-Object { $_.CheckName -eq 'BaselineDiff' }
+        $baselineError | Should -Not -BeNullOrEmpty
+        $baselineError[0].Status | Should -Be 'Error'
+    }
+
+    It 'suppresses matching findings from config suppression rules' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Test-ActionPinning {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'ActionPinning'
+                    Status        = 'Fail'
+                    Severity      = 'High'
+                    Resource      = '.github/workflows/ci.yml'
+                    Detail        = 'Unpinned action reference.'
+                    Remediation   = 'Pin action.'
+                    AttackMapping = @()
+                    Target        = ''
+                }
+            )
+        }
+        Mock -ModuleName Fylgyr Get-FylgyrConfigSuppression {
+            return [PSCustomObject]@{
+                Rules = @(
+                    [PSCustomObject]@{
+                        Check = 'ActionPinning'
+                        Resource = '.github/workflows/ci.yml'
+                        Reason = 'Accepted temporary risk'
+                        ExpiresUtc = $null
+                    }
+                )
+                Diagnostics = @()
+            }
+        }
+
+        $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token'
+        $suppressed = $results | Where-Object { $_.CheckName -eq 'ActionPinning' }
+        $suppressed | Should -Not -BeNullOrEmpty
+        $suppressed[0].Status | Should -Be 'Suppressed'
+        $suppressed[0].Detail | Should -BeLike '*Suppressed by .fylgyr.yml*'
+    }
+
+    It 'keeps findings active and adds expiry note when suppression is expired' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Test-ActionPinning {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'ActionPinning'
+                    Status        = 'Fail'
+                    Severity      = 'High'
+                    Resource      = '.github/workflows/ci.yml'
+                    Detail        = 'Unpinned action reference.'
+                    Remediation   = 'Pin action.'
+                    AttackMapping = @()
+                    Target        = ''
+                }
+            )
+        }
+        Mock -ModuleName Fylgyr Get-FylgyrConfigSuppression {
+            return [PSCustomObject]@{
+                Rules = @(
+                    [PSCustomObject]@{
+                        Check = 'ActionPinning'
+                        Resource = '.github/workflows/ci.yml'
+                        Reason = 'Legacy exception'
+                        ExpiresUtc = [datetime]::UtcNow.AddDays(-2)
+                    }
+                )
+                Diagnostics = @()
+            }
+        }
+
+        $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token'
+        $finding = $results | Where-Object { $_.CheckName -eq 'ActionPinning' }
+        $finding | Should -Not -BeNullOrEmpty
+        $finding[0].Status | Should -Be 'Fail'
+        $finding[0].Detail | Should -BeLike '*Suppression expired on*'
+    }
+
+    It 'does not suppress when config suppression target does not match finding target' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Test-ActionPinning {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'ActionPinning'
+                    Status        = 'Fail'
+                    Severity      = 'High'
+                    Resource      = '.github/workflows/ci.yml'
+                    Detail        = 'Unpinned action reference.'
+                    Remediation   = 'Pin action.'
+                    AttackMapping = @()
+                    Target        = ''
+                }
+            )
+        }
+        Mock -ModuleName Fylgyr Get-FylgyrConfigSuppression {
+            return [PSCustomObject]@{
+                Rules = @(
+                    [PSCustomObject]@{
+                        Check = 'ActionPinning'
+                        Resource = '.github/workflows/ci.yml'
+                        Reason = 'Accepted temporary risk'
+                        ExpiresUtc = $null
+                        Target = 'other/repo'
+                    }
+                )
+                Diagnostics = @()
+            }
+        }
+
+        $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token'
+        $finding = $results | Where-Object { $_.CheckName -eq 'ActionPinning' }
+        $finding | Should -Not -BeNullOrEmpty
+        $finding[0].Status | Should -Be 'Fail'
+    }
+
+    It 'surfaces config diagnostics as ConfigSuppression results' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Get-FylgyrConfigSuppression {
+            return [PSCustomObject]@{
+                Rules = @()
+                Diagnostics = @(
+                    [PSCustomObject]@{
+                        Status = 'Warning'
+                        Severity = 'Low'
+                        Detail = 'Invalid suppression entry.'
+                        Remediation = 'Fix config.'
+                    }
+                )
+            }
+        }
+
+        $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token'
+        $configResult = $results | Where-Object { $_.CheckName -eq 'ConfigSuppression' }
+        $configResult | Should -Not -BeNullOrEmpty
+        $configResult[0].Status | Should -Be 'Warning'
+    }
+
+    It 'skips config suppressions when IgnoreConfig is set' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Test-ActionPinning {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'ActionPinning'
+                    Status        = 'Fail'
+                    Severity      = 'High'
+                    Resource      = '.github/workflows/ci.yml'
+                    Detail        = 'Unpinned action reference.'
+                    Remediation   = 'Pin action.'
+                    AttackMapping = @()
+                    Target        = ''
+                }
+            )
+        }
+        Mock -ModuleName Fylgyr Get-FylgyrConfigSuppression {
+            return [PSCustomObject]@{
+                Rules = @(
+                    [PSCustomObject]@{
+                        Check = 'ActionPinning'
+                        Resource = '.github/workflows/ci.yml'
+                        Reason = 'Accepted temporary risk'
+                        ExpiresUtc = $null
+                    }
+                )
+                Diagnostics = @()
+            }
+        } -ParameterFilter { -not $IgnoreConfig }
+        Mock -ModuleName Fylgyr Get-FylgyrConfigSuppression {
+            return [PSCustomObject]@{ Rules = @(); Diagnostics = @() }
+        } -ParameterFilter { $IgnoreConfig }
+
+        $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -IgnoreConfig
+        $finding = $results | Where-Object { $_.CheckName -eq 'ActionPinning' }
+        $finding | Should -Not -BeNullOrEmpty
+        $finding[0].Status | Should -Be 'Fail'
+    }
+
+    It 'calls Add-FylgyrEvidence when IncludeEvidence is set' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Add-FylgyrEvidence {
+            param($Results)
+            return $Results
+        }
+
+        $null = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -IncludeEvidence
+        Assert-MockCalled -ModuleName Fylgyr Add-FylgyrEvidence -Times 1
+    }
+
+    It 'sets LASTEXITCODE to 1 when FailOn threshold is met' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Test-BranchProtection {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'BranchProtection'
+                    Status        = 'Fail'
+                    Severity      = 'High'
+                    Resource      = 'test/repo (branch: main)'
+                    Detail        = 'Branch protection missing.'
+                    Remediation   = 'Enable branch protection.'
+                    AttackMapping = @()
+                    Target        = ''
+                }
+            )
+        }
+
+        $global:LASTEXITCODE = 0
+        $null = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -FailOn High
+        $global:LASTEXITCODE | Should -Be 1
+    }
+
+    It 'sets LASTEXITCODE to 0 when findings are below FailOn threshold' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: push"
+        })
+
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+        Mock -ModuleName Fylgyr Test-BranchProtection {
+            return @(
+                [PSCustomObject]@{
+                    CheckName     = 'BranchProtection'
+                    Status        = 'Fail'
+                    Severity      = 'High'
+                    Resource      = 'test/repo (branch: main)'
+                    Detail        = 'Branch protection missing.'
+                    Remediation   = 'Enable branch protection.'
+                    AttackMapping = @()
+                    Target        = ''
+                }
+            )
+        }
+
+        $global:LASTEXITCODE = 1
+        $null = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -FailOn Critical
+        $global:LASTEXITCODE | Should -Be 0
+    }
+
+    It 'returns ChangedOnly error when Repo is not provided' {
+        $results = Invoke-Fylgyr -Owner 'acme' -Token 'fake-token' -ChangedOnly
+        $changedOnlyError = $results | Where-Object { $_.CheckName -eq 'ChangedOnly' }
+        $changedOnlyError | Should -Not -BeNullOrEmpty
+        $changedOnlyError[0].Status | Should -Be 'Error'
+    }
+
+    It 'skips repo-level checks in ChangedOnly mode' {
+        $fakeWorkflows = @(
+            [PSCustomObject]@{
+                Name    = 'ci.yml'
+                Path    = '.github/workflows/ci.yml'
+                Content = "name: CI`non: pull_request"
+            },
+            [PSCustomObject]@{
+                Name    = 'release.yml'
+                Path    = '.github/workflows/release.yml'
+                Content = "name: Release`non: push"
+            }
+        )
+
+        Mock -ModuleName Fylgyr Get-FylgyrChangedWorkflowPath { return @('.github/workflows/ci.yml') }
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+
+        $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -ChangedOnly -SinceRef origin/main
+
+        Assert-MockCalled -ModuleName Fylgyr Test-BranchProtection -Times 0
+        ($results | Where-Object { $_.CheckName -eq 'ChangedOnly' -and $_.Status -eq 'Error' }) | Should -BeNullOrEmpty
+    }
+
+    It 'returns ChangedOnly info when no changed workflow files are detected' {
+        $fakeWorkflows = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = "name: CI`non: pull_request"
+        })
+
+        Mock -ModuleName Fylgyr Get-FylgyrChangedWorkflowPath { return @() }
+        Mock -ModuleName Fylgyr Get-WorkflowFile { return $fakeWorkflows }
+
+        $results = Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -ChangedOnly -SinceRef origin/main
+        $changedOnlyInfo = $results | Where-Object { $_.CheckName -eq 'ChangedOnly' }
+        $changedOnlyInfo | Should -Not -BeNullOrEmpty
+        $changedOnlyInfo[0].Status | Should -Be 'Info'
+        $changedOnlyInfo[0].Target | Should -Be 'test/repo'
+    }
+
+    It 'rejects ChangedOnly SinceRef values that start with a dash' {
+        {
+            Invoke-Fylgyr -Owner 'test' -Repo 'repo' -Token 'fake-token' -ChangedOnly -SinceRef '--help'
+        } | Should -Throw
+    }
+
     It 'runs org checks once when IncludeOrgChecks is used without Repo' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             param($Endpoint)
@@ -537,7 +992,7 @@ jobs:
             )
         }
 
-        $results = Invoke-Fylgyr -Owner 'acme' -Token 'fake-token' -IncludeOrgChecks
+        $results = Invoke-Fylgyr -Owner 'acme' -Token 'fake-token' -IncludeOrgChecks -ThrottleLimit 1
         ($results | Where-Object CheckName -EQ 'OrgMfaPolicy') | Should -Not -BeNullOrEmpty
         Assert-MockCalled -ModuleName Fylgyr Invoke-FylgyrOrgScan -Times 1
     }
@@ -601,6 +1056,127 @@ jobs:
         # Other checks should still have run
         $otherChecks = $results | Where-Object { $_.CheckName -ne 'Test-ActionPinning' }
         $otherChecks.Count | Should -BeGreaterOrEqual 2
+    }
+}
+
+Describe 'Get-FylgyrOrgScanThrottle' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'uses minimum of requested throttle and repo count when rate metadata is unavailable' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw 'rate_limit unavailable' }
+
+        $throttle = InModuleScope Fylgyr {
+            Get-FylgyrOrgScanThrottle -RequestedThrottle 5 -RepoTotal 2 -Token 'fake-token'
+        }
+
+        $throttle | Should -Be 2
+    }
+
+    It 'forces throttle to 1 when rate limit remaining is zero' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return [PSCustomObject]@{
+                resources = [PSCustomObject]@{
+                    core = [PSCustomObject]@{ remaining = 0 }
+                }
+            }
+        }
+
+        $throttle = InModuleScope Fylgyr {
+            Get-FylgyrOrgScanThrottle -RequestedThrottle 6 -RepoTotal 6 -Token 'fake-token'
+        }
+
+        $throttle | Should -Be 1
+    }
+
+    It 'applies conservative clamp based on remaining core budget' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return [PSCustomObject]@{
+                resources = [PSCustomObject]@{
+                    core = [PSCustomObject]@{ remaining = 450 }
+                }
+            }
+        }
+
+        $throttle = InModuleScope Fylgyr {
+            Get-FylgyrOrgScanThrottle -RequestedThrottle 8 -RepoTotal 10 -Token 'fake-token'
+        }
+
+        $throttle | Should -Be 2
+    }
+
+    It 'never exceeds requested throttle when remaining budget is high' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return [PSCustomObject]@{
+                resources = [PSCustomObject]@{
+                    core = [PSCustomObject]@{ remaining = 5000 }
+                }
+            }
+        }
+
+        $throttle = InModuleScope Fylgyr {
+            Get-FylgyrOrgScanThrottle -RequestedThrottle 3 -RepoTotal 20 -Token 'fake-token'
+        }
+
+        $throttle | Should -Be 3
+    }
+}
+
+Describe 'Add-FylgyrEvidence' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'adds commit, permalink and YAML snippet evidence for workflow findings' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'repos/test/repo') {
+                return [PSCustomObject]@{ default_branch = 'main' }
+            }
+
+            if ($Endpoint -eq 'repos/test/repo/commits/main') {
+                return [PSCustomObject]@{ sha = 'abc123abc123abc123abc123abc123abc123abcd' }
+            }
+
+            throw 'unexpected endpoint'
+        }
+
+        $inputResults = @(
+            [PSCustomObject]@{
+                CheckName   = 'ActionPinning'
+                Status      = 'Fail'
+                Severity    = 'High'
+                Resource    = '.github/workflows/ci.yml:3'
+                Detail      = 'Unpinned action reference.'
+                Remediation = 'Pin action.'
+                Target      = 'test/repo'
+            }
+        )
+
+        $workflowFiles = @(
+            [PSCustomObject]@{
+                Name    = 'ci.yml'
+                Path    = '.github/workflows/ci.yml'
+                Content = "name: CI`non: push`njobs:`n  build: {}"
+            }
+        )
+
+        $results = InModuleScope Fylgyr -Parameters @{
+            InputResults = $inputResults
+            InputWorkflowFiles = $workflowFiles
+        } {
+            Add-FylgyrEvidence -Results $InputResults -WorkflowFiles $InputWorkflowFiles -Owner 'test' -Repo 'repo' -Token 'fake-token'
+        }
+
+        $results[0].Evidence | Should -Not -BeNullOrEmpty
+        $results[0].Evidence.CommitSha | Should -Be 'abc123abc123abc123abc123abc123abc123abcd'
+        $results[0].Evidence.Permalink | Should -BeLike '*github.com/test/repo/blob/*/.github/workflows/ci.yml#L3'
+        $results[0].Evidence.YamlSnippet | Should -Match '0003:'
     }
 }
 
