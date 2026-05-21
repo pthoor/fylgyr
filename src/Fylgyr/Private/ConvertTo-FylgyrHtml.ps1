@@ -1,6 +1,6 @@
 function ConvertTo-FylgyrHtml {
     [CmdletBinding()]
-    [OutputType([string])]
+    [OutputType([string], [void])]
     param(
         [Parameter(Mandatory)]
         [PSCustomObject[]]$Results,
