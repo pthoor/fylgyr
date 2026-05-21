@@ -1,0 +1,36 @@
+flowchart LR
+    A[GitHub Repository and Org State] --> B[Invoke-Fylgyr Mode Both]
+    B --> C[Audit Checks]
+    B --> D[Drift Checks]
+
+    D --> E{Data Source}
+    E -->|Primary| F[Org Audit Log API]
+    E -->|Fallback| G[Baseline Diff Snapshot]
+
+    C --> H[Unified Findings Stream]
+    D --> H
+
+    H --> I[OutputFormat LogAnalytics NDJSON]
+    I --> J[Send-FylgyrToLogAnalytics]
+
+    J --> K{Auth Mode}
+    K -->|Managed Identity| L[Azure Function Timer]
+    K -->|Federated OIDC| M[GitHub Actions Cron]
+    K -->|Client Secret Fallback| N[Service Principal]
+
+    J --> O[Logs Ingestion API]
+    O --> P[DCR transformKql]
+    P --> Q[Fylgyr_CL Table]
+
+    Q --> R[Sentinel Analytics Rules]
+    Q --> S[Sentinel Workbook]
+
+    subgraph Private Network Optional
+      T[AMPLS]
+      U[Private Endpoint]
+      V[DCE]
+    end
+
+    J --> V
+    V --> U
+    U --> T

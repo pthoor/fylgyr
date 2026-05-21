@@ -1,0 +1,9 @@
+name: Fylgyr-Drift-TokenExposure-Chain
+severity: Critical
+description: Correlated token-risk and repository-access burst drift
+query: |
+  Fylgyr_CL
+  | where Mode_s == "Drift"
+  | where CheckName_s == "RecentTokenExposure"
+  | where Severity_s in ("High", "Critical")
+  | project TimeGenerated, Resource_s, Severity_s, Detail_s, AttackMapping_s

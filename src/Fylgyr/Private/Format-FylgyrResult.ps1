@@ -20,7 +20,7 @@ function Format-FylgyrResult {
         [string]$CheckName,
 
         [Parameter(Mandatory)]
-        [ValidateSet('Pass', 'Fail', 'Warning', 'Error', 'Info', 'Suppressed')]
+        [ValidateSet('Pass', 'Fail', 'Warning', 'Error', 'Info', 'Suppressed', 'Drift')]
         [string]$Status,
 
         [Parameter(Mandatory)]
@@ -40,7 +40,10 @@ function Format-FylgyrResult {
 
         [string]$Target = '',
 
-        [hashtable]$Evidence
+        [hashtable]$Evidence,
+
+        [ValidateSet('Audit', 'Drift')]
+        [string]$Mode = 'Audit'
     )
 
     [PSCustomObject]@{
@@ -53,5 +56,6 @@ function Format-FylgyrResult {
         AttackMapping = $AttackMapping
         Target        = $Target
         Evidence      = $Evidence
+        Mode          = $Mode
     }
 }

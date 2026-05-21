@@ -134,6 +134,7 @@ function Write-FylgyrConsole {
                             'Warning' { '[WARN]' }
                             'Error'   { '[ERR]' }
                             'Info'    { '[INFO]' }
+                            'Drift'   { '[DRFT]' }
                             'Suppressed' { '[SUPP]' }
                             default   { '[?]' }
                         }
@@ -142,6 +143,7 @@ function Write-FylgyrConsole {
                             'Warning' { 'Yellow' }
                             'Error'   { 'Magenta' }
                             'Info'    { 'Cyan' }
+                            'Drift'   { 'DarkYellow' }
                             'Suppressed' { 'DarkCyan' }
                             default   { 'Gray' }
                         }
@@ -202,6 +204,7 @@ function Write-FylgyrConsole {
     $failCount    = ($Results | Where-Object Status -EQ 'Fail').Count
     $warnCount    = ($Results | Where-Object Status -EQ 'Warning').Count
     $errorCount   = ($Results | Where-Object Status -EQ 'Error').Count
+    $driftCount   = ($Results | Where-Object Status -EQ 'Drift').Count
     $suppressedCount = ($Results | Where-Object Status -EQ 'Suppressed').Count
 
     Write-Host ''
@@ -214,6 +217,8 @@ function Write-FylgyrConsole {
     Write-Host "$warnCount warnings" -ForegroundColor Yellow -NoNewline
     Write-Host ', ' -NoNewline
     Write-Host "$errorCount errors" -ForegroundColor Magenta -NoNewline
+    Write-Host ', ' -NoNewline
+    Write-Host "$driftCount drift" -ForegroundColor DarkYellow -NoNewline
     Write-Host ', ' -NoNewline
     Write-Host "$suppressedCount suppressed" -ForegroundColor DarkCyan
 

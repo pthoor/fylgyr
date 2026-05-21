@@ -1,6 +1,6 @@
 @{
     RootModule = 'Fylgyr.psm1'
-    ModuleVersion = '0.7.2'
+    ModuleVersion = '0.7.5'
     GUID = 'f3e1c20d-3f0d-4a40-a4e3-9dca27b6bd4a'
     Author = 'Pierre Thoor'
     CompanyName = 'Community'
@@ -52,6 +52,15 @@
         'Test-WebhookSecurity'
         'Test-WorkflowPermission'
         'Test-BinaryArtifact'
+        'Test-RecentCollaboratorChange'
+        'Test-RecentAppAuthorization'
+        'Test-RecentProtectionChange'
+        'Test-RecentForcePush'
+        'Test-RecentRunnerRegistration'
+        'Test-RecentSecretChange'
+        'Test-RecentTokenExposure'
+        'Test-RecentWorkflowAdd'
+        'Send-FylgyrToLogAnalytics'
     )
     CmdletsToExport = @()
     VariablesToExport = @()

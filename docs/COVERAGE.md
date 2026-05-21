@@ -2,7 +2,7 @@
 
 Attack catalog mapped to OWASP CI/CD Top 10 and MITRE ATT&CK supply-chain techniques. Empty cells are roadmap gaps.
 
-Last regenerated: 2026-05-20 (Phase 9 feature update; check-to-attack mappings unchanged).
+Last regenerated: 2026-05-21 (Phase 9.5 drift mode update).
 
 ## OWASP CI/CD Top 10
 
@@ -51,5 +51,5 @@ Checks targeting open OWASP/MITRE gaps, in priority order:
 | CICD-SEC-9 — OIDC trusted publishing without environment gating | closed by `Test-OidcTrust` | v0.6.0 |
 | CICD-SEC-9 — unsigned releases, missing attestations | closed by `Test-ArtifactAttestation`, `Test-ArtifactPoisoning` | v0.6.0 |
 | CICD-SEC-9 — cache keys derived from attacker-controlled refs | closed by `Test-CacheIntegrity` | v0.6.0 |
-| CICD-SEC-10 / T1078.004 / T1213 — token-risk events correlated with abnormal repository-access bursts | `Test-RecentTokenExposure` | Phase 9.5 |
+| CICD-SEC-10 / T1078.004 / T1213 — token-risk events correlated with abnormal repository-access bursts | closed by `Test-RecentTokenExposure` | v0.7.5 |
 | CICD-SEC-2 — MFA, PAT policy, outside collaborators | closed by Phase 7 org checks | v0.5.0 |

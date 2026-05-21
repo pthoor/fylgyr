@@ -1,0 +1,8 @@
+name: Fylgyr-Drift-RunnerRegistration
+severity: High
+description: New self-hosted runner registration drift
+query: |
+  Fylgyr_CL
+  | where Mode_s == "Drift"
+  | where CheckName_s == "RecentRunnerRegistration"
+  | project TimeGenerated, Resource_s, Severity_s, Detail_s, AttackMapping_s

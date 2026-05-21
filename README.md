@@ -225,6 +225,46 @@ Abridged example (a real scan runs ~30 checks per repo):
 | SARIF | `-OutputFormat SARIF` | SARIF 2.1.0 for GitHub Code Scanning integration |
 | NDJSON | `-OutputFormat NDJSON` | Newline-delimited JSON (one finding per line) with `_meta` scan context |
 | HTML | `-OutputFormat HTML` | Standalone report with summary cards, coverage dashboard, and grouped findings |
+| LogAnalytics | `-OutputFormat LogAnalytics` | ASIM-oriented NDJSON for Azure Monitor Logs / Sentinel ingestion |
+
+## Drift Mode
+
+Phase 9.5 introduces drift telemetry for suspicious configuration and trust-boundary changes.
+
+```powershell
+# Audit-only (default)
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Mode Audit
+
+# Drift-only
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Mode Drift -BaselinePath './last-scan.json'
+
+# Audit + Drift in one run
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Mode Both -BaselinePath './last-scan.json'
+```
+
+Drift mode requires at least one of:
+
+- `-BaselinePath` from a previous scan.
+- Organization audit-log API access (`admin:org`, GitHub Enterprise Cloud).
+
+If neither is available, drift mode fails with an explicit prerequisite error.
+
+## Sentinel Quickstart
+
+```powershell
+# 1) Generate Log Analytics-shaped output
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Mode Both -OutputFormat LogAnalytics -OutputPath './fylgyr-la.ndjson'
+
+# 2) Ingest to Azure Monitor (managed identity example)
+Get-Content ./fylgyr-la.ndjson |
+  Send-FylgyrToLogAnalytics `
+    -DcrImmutableId 'dcr-00000000000000000000000000000000' `
+    -DceUri 'https://example.westeurope-1.ingest.monitor.azure.com' `
+    -StreamName 'Custom-FylgyrRaw' `
+    -UseManagedIdentity
+```
+
+Full setup and private-endpoint guidance: [docs/SENTINEL.md](docs/SENTINEL.md).
 
 ### NDJSON for SIEM pipelines
 

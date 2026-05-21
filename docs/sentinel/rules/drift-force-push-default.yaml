@@ -1,0 +1,9 @@
+name: Fylgyr-Drift-ForcePush-Default
+severity: Critical
+description: Force-push drift on default branch
+query: |
+  Fylgyr_CL
+  | where Mode_s == "Drift"
+  | where CheckName_s == "RecentForcePush"
+  | where Severity_s in ("High", "Critical")
+  | project TimeGenerated, Resource_s, Severity_s, Detail_s, AttackMapping_s

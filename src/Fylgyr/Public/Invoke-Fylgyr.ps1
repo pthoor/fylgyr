@@ -10,8 +10,11 @@ function Invoke-Fylgyr {
         [ValidatePattern('^[a-zA-Z0-9._-]+$')]
         [string]$Repo,
 
-        [ValidateSet('Object', 'JSON', 'SARIF', 'Console', 'NDJSON', 'HTML')]
+        [ValidateSet('Object', 'JSON', 'SARIF', 'Console', 'NDJSON', 'HTML', 'LogAnalytics')]
         [string]$OutputFormat = 'Object',
+
+        [ValidateSet('Audit', 'Drift', 'Both')]
+        [string]$Mode = 'Audit',
 
         [switch]$IncludeOrgChecks,
 
@@ -24,6 +27,9 @@ function Invoke-Fylgyr {
 
         [ValidatePattern('^(?!-)[a-zA-Z0-9._/-]+$')]
         [string]$SinceRef = 'origin/main',
+
+        [ValidateRange(1, 720)]
+        [int]$SinceHours = 168,
 
         [string]$BaselinePath,
 
@@ -44,6 +50,10 @@ function Invoke-Fylgyr {
             throw 'GitHub token not provided. Use -Token or set $env:GITHUB_TOKEN.'
         }
 
+        if ($ChangedOnly -and $Mode -ne 'Audit') {
+            throw 'ChangedOnly mode is supported only with -Mode Audit.'
+        }
+
         $allResults = [System.Collections.Generic.List[PSCustomObject]]::new()
         $scannedTargets = [System.Collections.Generic.List[string]]::new()
         $scanId = [Guid]::NewGuid().ToString()
@@ -58,6 +68,7 @@ function Invoke-Fylgyr {
         #   Get-FylgyrOwnerContext to avoid repeated users/{owner} and user calls.
         $script:FylgyrOwnerRunnerGroupsChecked = @{}
         $script:FylgyrOwnerContextCache = @{}
+        $script:FylgyrOrgAuditLogCache = @{}
     }
 
     process {
@@ -101,9 +112,33 @@ function Invoke-Fylgyr {
                 $repos.Add($r.name)
             }
 
-            if ($IncludeOrgChecks) {
+            $requiresDrift = $Mode -in @('Drift', 'Both')
+            if ($requiresDrift -and -not $BaselinePath) {
+                try {
+                    [void](Get-OrgAuditLog -Owner $Owner -Token $Token -SinceHours $SinceHours)
+                }
+                catch {
+                    $allResults.Add((Format-FylgyrResult `
+                        -CheckName 'DriftPrerequisite' `
+                        -Status 'Error' `
+                        -Severity 'High' `
+                        -Resource $Owner `
+                        -Detail "Drift mode requires either -BaselinePath or organization audit-log access. Prerequisite check failed: $($_.Exception.Message)" `
+                        -Remediation 'Provide -BaselinePath from a previous scan, or grant admin:org audit-log access on GitHub Enterprise Cloud.' `
+                        -Target $Owner `
+                        -Mode 'Drift'))
+                    return
+                }
+            }
+
+            if ($IncludeOrgChecks -and $Mode -in @('Audit', 'Both')) {
                 $orgResults = Invoke-FylgyrOrgScan -Owner $Owner -Token $Token
                 foreach ($result in $orgResults) { $allResults.Add($result) }
+            }
+
+            if ($IncludeOrgChecks -and $Mode -in @('Drift', 'Both')) {
+                $orgDriftResults = Invoke-FylgyrOrgDriftScan -Owner $Owner -Token $Token -SinceHours $SinceHours -BaselinePath $BaselinePath -IgnoreConfig:$IgnoreConfig
+                foreach ($result in $orgDriftResults) { $allResults.Add($result) }
             }
 
             if ($repos.Count -eq 0) {
@@ -122,7 +157,7 @@ function Invoke-Fylgyr {
             $effectiveThrottle = Get-FylgyrOrgScanThrottle -RequestedThrottle $ThrottleLimit -RepoTotal $repoTotal -Token $Token
 
             $isPesterRun = $null -ne (Get-Variable -Name PesterPreference -Scope Global -ErrorAction SilentlyContinue)
-            $useParallel = ($effectiveThrottle -gt 1) -and ($repoTotal -gt 1) -and (-not $isPesterRun)
+            $useParallel = ($effectiveThrottle -gt 1) -and ($repoTotal -gt 1) -and (-not $isPesterRun) -and $Mode -eq 'Audit'
 
             if ($useParallel) {
                 $moduleRoot = Split-Path -Path $PSScriptRoot -Parent
@@ -186,8 +221,15 @@ function Invoke-Fylgyr {
                         -PercentComplete $pct `
                         -Id 1
 
-                    $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $repoName -Token $Token -ReusableWorkflowAllowlist $ReusableWorkflowAllowlist -ChangedOnly:$ChangedOnly -ChangedWorkflowPaths $changedWorkflowPaths -IgnoreConfig:$IgnoreConfig -IncludeEvidence:$IncludeEvidence
-                    foreach ($result in $repoResults) { $allResults.Add($result) }
+                    if ($Mode -in @('Audit', 'Both')) {
+                        $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $repoName -Token $Token -ReusableWorkflowAllowlist $ReusableWorkflowAllowlist -ChangedOnly:$ChangedOnly -ChangedWorkflowPaths $changedWorkflowPaths -IgnoreConfig:$IgnoreConfig -IncludeEvidence:$IncludeEvidence
+                        foreach ($result in $repoResults) { $allResults.Add($result) }
+                    }
+
+                    if ($Mode -in @('Drift', 'Both')) {
+                        $driftResults = Invoke-FylgyrDriftScan -Owner $Owner -Repo $repoName -Token $Token -SinceHours $SinceHours -BaselinePath $BaselinePath -IgnoreConfig:$IgnoreConfig
+                        foreach ($result in $driftResults) { $allResults.Add($result) }
+                    }
                     $scannedTargets.Add("$Owner/$repoName")
                 }
 
@@ -211,8 +253,33 @@ function Invoke-Fylgyr {
                 }
             }
 
-            $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $Repo -Token $Token -ReusableWorkflowAllowlist $ReusableWorkflowAllowlist -ChangedOnly:$ChangedOnly -ChangedWorkflowPaths $changedWorkflowPaths -IgnoreConfig:$IgnoreConfig -IncludeEvidence:$IncludeEvidence
-            foreach ($result in $repoResults) { $allResults.Add($result) }
+            if ($Mode -in @('Drift', 'Both') -and -not $BaselinePath) {
+                try {
+                    [void](Get-OrgAuditLog -Owner $Owner -Token $Token -SinceHours $SinceHours)
+                }
+                catch {
+                    $allResults.Add((Format-FylgyrResult `
+                        -CheckName 'DriftPrerequisite' `
+                        -Status 'Error' `
+                        -Severity 'High' `
+                        -Resource "$Owner/$Repo" `
+                        -Detail "Drift mode requires either -BaselinePath or organization audit-log access. Prerequisite check failed: $($_.Exception.Message)" `
+                        -Remediation 'Provide -BaselinePath from a previous scan, or grant admin:org audit-log access on GitHub Enterprise Cloud.' `
+                        -Target "$Owner/$Repo" `
+                        -Mode 'Drift'))
+                    return
+                }
+            }
+
+            if ($Mode -in @('Audit', 'Both')) {
+                $repoResults = Invoke-FylgyrScan -Owner $Owner -Repo $Repo -Token $Token -ReusableWorkflowAllowlist $ReusableWorkflowAllowlist -ChangedOnly:$ChangedOnly -ChangedWorkflowPaths $changedWorkflowPaths -IgnoreConfig:$IgnoreConfig -IncludeEvidence:$IncludeEvidence
+                foreach ($result in $repoResults) { $allResults.Add($result) }
+            }
+
+            if ($Mode -in @('Drift', 'Both')) {
+                $driftResults = Invoke-FylgyrDriftScan -Owner $Owner -Repo $Repo -Token $Token -SinceHours $SinceHours -BaselinePath $BaselinePath -IgnoreConfig:$IgnoreConfig
+                foreach ($result in $driftResults) { $allResults.Add($result) }
+            }
             $scannedTargets.Add("$Owner/$Repo")
         }
     }
@@ -236,7 +303,7 @@ function Invoke-Fylgyr {
             'unknown'
         }
 
-        if ($BaselinePath) {
+        if ($BaselinePath -and $Mode -in @('Audit', 'Both')) {
             try {
                 $baselineFingerprints = Get-FylgyrBaselineFingerprintSet -BaselinePath $BaselinePath
                 foreach ($result in $resultsArray) {
@@ -290,6 +357,9 @@ function Invoke-Fylgyr {
         }
         elseif ($OutputFormat -eq 'NDJSON') {
             ConvertTo-FylgyrNdjson -Results $resultsArray -ScanId $scanId -ScanStartTime $scanStartTime -OutputPath $OutputPath
+        }
+        elseif ($OutputFormat -eq 'LogAnalytics') {
+            ConvertTo-FylgyrLogAnalytics -Results $resultsArray -ScanId $scanId -ScanStartTime $scanStartTime -OutputPath $OutputPath
         }
         elseif ($OutputFormat -eq 'HTML') {
             ConvertTo-FylgyrHtml -Results $resultsArray -Target $displayTarget -ScannedTargets $scannedTargets.ToArray() -OutputPath $OutputPath
