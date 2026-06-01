@@ -17,7 +17,9 @@ function Get-OrgAuditLog {
         $script:FylgyrOrgAuditLogCache = @{}
     }
 
-    $cacheKey = "$Owner|$SinceHours"
+    $tokenHashBytes = [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($Token))
+    $tokenHash = ([System.BitConverter]::ToString($tokenHashBytes) -replace '-', '')
+    $cacheKey = "$Owner|$SinceHours|$tokenHash"
     if ($script:FylgyrOrgAuditLogCache.ContainsKey($cacheKey)) {
         return @($script:FylgyrOrgAuditLogCache[$cacheKey])
     }

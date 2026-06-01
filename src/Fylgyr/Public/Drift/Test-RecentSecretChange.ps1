@@ -55,11 +55,11 @@ function Test-RecentSecretChange {
     }
 
     $secretEvents = @($events | Where-Object {
-        $_.action -match '(^|\.)secret\.(create|update|delete)$|org\.secret\.|repo\.secret\.'
+        $_.action -match '^(org|repo)\.secret\.(create|update|delete|remove)$'
     })
 
     if ($Repo) {
-        $secretEvents = @($secretEvents | Where-Object { $_.repo -eq $Repo })
+        $secretEvents = @($secretEvents | Where-Object { $_.repo -eq "$Owner/$Repo" })
     }
 
     if ($secretEvents.Count -eq 0) {

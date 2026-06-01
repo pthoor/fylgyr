@@ -93,11 +93,11 @@ function Test-RecentForcePush {
             -AttackMapping @('trivy-tag-poisoning', 'trivy-force-push-main') `
             -Target $target `
             -Evidence @{
-                Source = 'events-api'
-                Branch = $branchName
-                    ChangedAt = $pushRecord.created_at
-                    ChangedBy = if ($pushRecord.actor) { $pushRecord.actor.login } else { $null }
-                    EventId = $pushRecord.id
+                Source    = 'events-api'
+                Branch    = $branchName
+                ChangedAt = $pushRecord.created_at
+                ChangedBy = if ($pushRecord.actor) { $pushRecord.actor.login } else { $null }
+                EventId   = $pushRecord.id
             } `
             -Mode 'Drift'))
     }
