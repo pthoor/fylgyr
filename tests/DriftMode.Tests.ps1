@@ -147,6 +147,130 @@ Describe 'Drift checks' {
         $results = Test-RecentProtectionChange -Owner 'acme' -Repo 'repo' -Token 'fake-token' -BaselinePath '/tmp/base.json'
         $results[0].Status | Should -Be 'Drift'
     }
+
+    It 'Test-RecentCollaboratorChange reports drift for a MemberEvent with write permission' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return @(
+                [PSCustomObject]@{
+                    id = '99'
+                    type = 'MemberEvent'
+                    created_at = [datetime]::UtcNow.ToString('o')
+                    actor = [PSCustomObject]@{ login = 'attacker' }
+                    payload = [PSCustomObject]@{
+                        action = 'added'
+                        member = [PSCustomObject]@{
+                            login = 'attacker'
+                            permissions = [PSCustomObject]@{ push = $true; admin = $false }
+                        }
+                    }
+                }
+            )
+        }
+
+        $results = Test-RecentCollaboratorChange -Owner 'acme' -Repo 'repo' -Token 'fake-token'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Drift'
+        $results[0].Severity | Should -Be 'Medium'
+    }
+
+    It 'Test-RecentCollaboratorChange returns Info when no events and no baseline provided' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -like '*/events*') { return @() }
+            if ($Endpoint -like '*/collaborators*') { return @() }
+        }
+
+        $results = Test-RecentCollaboratorChange -Owner 'acme' -Repo 'repo' -Token 'fake-token'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Info'
+    }
+
+    It 'Test-RecentRunnerRegistration reports drift from audit log runner event' {
+        $results = Test-RecentRunnerRegistration -Owner 'acme' -Repo 'repo' -Token 'fake-token' -AuditEvents @(
+            [PSCustomObject]@{
+                action = 'self_hosted_runner.create'
+                created_at = [datetime]::UtcNow.ToString('o')
+                actor = 'attacker'
+                repo = 'repo'
+                data = $null
+            }
+        )
+
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Drift'
+        $results[0].Severity | Should -Be 'High'
+    }
+
+    It 'Test-RecentRunnerRegistration returns Info when no audit events and no baseline' {
+        Mock -ModuleName Fylgyr Get-OrgAuditLog { return @() }
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -like '*/actions/runners*') {
+                return [PSCustomObject]@{ runners = @() }
+            }
+        }
+
+        $results = Test-RecentRunnerRegistration -Owner 'acme' -Repo 'repo' -Token 'fake-token'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Info'
+    }
+
+    It 'Test-RecentSecretChange reports drift from audit log secret event' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
+
+        $results = Test-RecentSecretChange -Owner 'acme' -Token 'fake-token' -AuditEvents @(
+            [PSCustomObject]@{
+                action = 'org.secret.create'
+                created_at = [datetime]::UtcNow.ToString('o')
+                actor = 'attacker'
+                repo = $null
+            }
+        )
+
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Drift'
+        $results[0].Severity | Should -Be 'Medium'
+    }
+
+    It 'Test-RecentSecretChange returns Pass when no secret events' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
+        Mock -ModuleName Fylgyr Get-OrgAuditLog { return @() }
+
+        $results = Test-RecentSecretChange -Owner 'acme' -Token 'fake-token'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'Test-RecentTokenExposure returns Info for personal accounts' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'User' } }
+
+        $results = Test-RecentTokenExposure -Owner 'pthoor' -Token 'fake-token'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Info'
+    }
+
+    It 'Test-RecentTokenExposure escalates to Critical when token risk correlates with repo access burst' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
+
+        $burstEvents = 1..6 | ForEach-Object {
+            [PSCustomObject]@{
+                action = 'repo.access'
+                created_at = [datetime]::UtcNow.ToString('o')
+                actor = 'attacker'
+            }
+        }
+
+        $tokenEvent = [PSCustomObject]@{
+            action = 'org_credential_authorization.grant'
+            created_at = [datetime]::UtcNow.ToString('o')
+            actor = 'attacker'
+        }
+
+        $results = Test-RecentTokenExposure -Owner 'acme' -Token 'fake-token' -AuditEvents (@($tokenEvent) + $burstEvents)
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Drift'
+        $results[0].Severity | Should -Be 'Critical'
+    }
 }
 
 Describe 'Log Analytics output' {
@@ -159,7 +283,7 @@ Describe 'Log Analytics output' {
     It 'formats ASIM-oriented NDJSON for Log Analytics' {
         $line = InModuleScope Fylgyr {
             $results = @(
-                (Format-FylgyrResult -CheckName 'RecentProtectionChange' -Status 'Drift' -Severity 'High' -Resource 'acme/repo' -Detail 'changed' -Remediation 'fix' -Mode 'Drift' -Evidence @{ From = @{ a = 1 }; To = @{ a = 2 } })
+                (Format-FylgyrResult -CheckName 'RecentProtectionChange' -Status 'Drift' -Severity 'High' -Resource '.github/workflows/ci.yml' -Target 'acme/repo' -Detail 'changed' -Remediation 'fix' -Mode 'Drift' -Evidence @{ From = @{ a = 1 }; To = @{ a = 2 } })
             )
             ConvertTo-FylgyrLogAnalytics -Results $results -ScanId ([guid]::NewGuid().ToString()) -ScanStartTime ([datetime]::UtcNow)
         }
@@ -168,5 +292,9 @@ Describe 'Log Analytics output' {
         $parsed.EventVendor | Should -Be 'Fylgyr'
         $parsed.EventSchema | Should -Be 'ChangeEvent'
         $parsed.Mode_s | Should -Be 'Drift'
+        $parsed.Target_s | Should -Be 'acme/repo'
+        $parsed.Owner_s | Should -Be 'acme'
+        $parsed.Repo_s | Should -Be 'repo'
+        $parsed.Resource_s | Should -Be '.github/workflows/ci.yml'
     }
 }

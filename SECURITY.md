@@ -11,11 +11,49 @@
 
 Please use GitHub's private vulnerability reporting flow for this repository.
 
-- Go to the **Security** tab in this repository.
-- Create a private vulnerability report using **GitHub Security Advisories**.
-- Include clear reproduction steps, impact, and any known mitigations.
+1. Go to this repository's **Security** tab.
+2. Open **Advisories**.
+3. Click **Report a vulnerability** (or **New draft security advisory** if shown).
+4. Submit a private report that includes:
+	- clear reproduction steps
+	- affected branch, tag, or release version
+	- impact statement (what an attacker can do)
+	- expected vs actual behavior
+	- supporting evidence (logs/screenshots/commits) with secrets redacted
 
 Do not report vulnerabilities by email or in public issues.
+
+## Report Template (Copy/Paste)
+
+Use this template in your private advisory submission:
+
+```markdown
+## Summary
+Short description of the vulnerability.
+
+## Affected Component
+- Repository:
+- Branch/Tag/Version:
+- File/Workflow (if known):
+
+## Impact
+What can an attacker do if this is exploited?
+
+## Reproduction Steps
+1.
+2.
+3.
+
+## Expected vs Actual Behavior
+- Expected:
+- Actual:
+
+## Evidence
+- Logs/Screenshots/Commits (redact all secrets):
+
+## Suggested Mitigation (Optional)
+Any workaround or fix ideas.
+```
 
 ## Response Expectations
 

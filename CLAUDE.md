@@ -159,7 +159,7 @@ Each `Test-*.ps1` check should:
 | `Test-RecentTokenExposure` | Token-risk + repo-access burst correlation drift |
 | `Test-RecentWorkflowAdd` | New workflow execution-path drift |
 
-### Drift mode and Sentinel integration (Phase 9.5)
+### Drift mode and Sentinel integration
 
 - `Invoke-Fylgyr` supports `-Mode Audit|Drift|Both` (default `Audit`).
 - Drift findings use `Status = 'Drift'` and include `Mode = 'Drift'` on result objects.
@@ -170,17 +170,17 @@ Each `Test-*.ps1` check should:
     - managed identity
     - federated token/OIDC
     - client secret fallback
-- Private endpoint topology is supported through DCE + AMPLS configuration documented in `docs/SENTINEL.md`.
+- Public-endpoint ingestion is documented in `docs/SENTINEL.md` for the current rollout, with private networking handled as a future hardening track.
 
 ### Gaps for future checks
 
 When designing new checks, prioritize these still-open areas:
-- **Workflow injection** — detect `${{ github.event.* }}` in `run:` steps (Phase 8: `Test-ScriptInjection`)
-- **OIDC hardening** — verify workflows scope OIDC trust correctly (Phase 8: `Test-OidcTrust`)
-- **Artifact integrity** — detect unsigned releases, missing attestations, unpinned container images (Phase 8: `Test-ArtifactAttestation`, `Test-ArtifactPoisoning`)
-- **Cache poisoning** — detect cache keys derived from attacker-controlled refs (Phase 8: `Test-CacheIntegrity`)
+- **Workflow injection** — detect `${{ github.event.* }}` in `run:` steps (covered by `Test-ScriptInjection`)
+- **OIDC hardening** — verify workflows scope OIDC trust correctly (covered by `Test-OidcTrust`)
+- **Artifact integrity** — detect unsigned releases, missing attestations, unpinned container images (covered by `Test-ArtifactAttestation`, `Test-ArtifactPoisoning`)
+- **Cache poisoning** — detect cache keys derived from attacker-controlled refs (covered by `Test-CacheIntegrity`)
 - **Reusable workflow trust** — detect calls to reusable workflows from untrusted external repos (unplanned)
-- **Org-level policy gaps** — MFA, default permissions, PAT policy, outside collaborators, action restrictions (Phase 7)
+- **Org-level policy gaps** — MFA, default permissions, PAT policy, outside collaborators, action restrictions
 
 ## Release process
 

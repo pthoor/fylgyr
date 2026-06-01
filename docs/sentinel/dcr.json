@@ -33,6 +33,9 @@
               { "name": "Status_s", "type": "string" },
               { "name": "Mode_s", "type": "string" },
               { "name": "Resource_s", "type": "string" },
+              { "name": "Target_s", "type": "string" },
+              { "name": "Owner_s", "type": "string" },
+              { "name": "Repo_s", "type": "string" },
               { "name": "Detail_s", "type": "string" },
               { "name": "Remediation_s", "type": "string" },
               { "name": "AttackMapping_s", "type": "string" },
@@ -57,7 +60,7 @@
             "streams": ["Custom-FylgyrRaw"],
             "destinations": ["fylgyrDestination"],
             "outputStream": "Custom-Fylgyr_CL",
-            "transformKql": "source | project TimeGenerated=todatetime(TimeGenerated), Type='Fylgyr_CL', EventVendor=tostring(EventVendor), EventProduct=tostring(EventProduct), EventSchema=tostring(EventSchema), EventType=tostring(EventType), ScanId_g=tostring(ScanId_g), ScanStartTime_dt=todatetime(ScanStartTime_dt), FylgyrVersion_s=tostring(FylgyrVersion_s), CheckName_s=tostring(CheckName_s), Severity_s=tostring(Severity_s), Status_s=tostring(Status_s), Mode_s=tostring(Mode_s), Resource_s=tostring(Resource_s), Detail_s=tostring(Detail_s), Remediation_s=tostring(Remediation_s), AttackMapping_s=tostring(AttackMapping_s), DriftFrom_s=tostring(DriftFrom_s), DriftTo_s=tostring(DriftTo_s), EvidenceYaml_s=tostring(EvidenceYaml_s), EvidenceCommitSha_s=tostring(EvidenceCommitSha_s), EvidencePermalink_s=tostring(EvidencePermalink_s)"
+            "transformKql": "source | project TimeGenerated, EventVendor, EventProduct, EventSchema, EventType, ScanId_g, ScanStartTime_dt, FylgyrVersion_s, CheckName_s, Severity_s, Status_s, Mode_s, Resource_s, Target_s, Owner_s, Repo_s, Detail_s, Remediation_s, AttackMapping_s, DriftFrom_s, DriftTo_s, EvidenceYaml_s, EvidenceCommitSha_s, EvidencePermalink_s"
           }
         ]
       }

@@ -1,68 +1,200 @@
-# Fylgyr Sentinel Integration (Phase 9.5)
+# Fylgyr Microsoft Sentinel Integration
 
 This guide explains how to stream Fylgyr findings to Microsoft Sentinel through Azure Monitor Logs Ingestion API.
 
-## What ships in Phase 9.5
+## Why use Fylgyr with Microsoft Sentinel
 
-- Drift mode in `Invoke-Fylgyr` (`-Mode Drift` and `-Mode Both`)
+Fylgyr and Microsoft Sentinel solve different parts of the same problem:
+
+- Fylgyr gives attack-mapped findings with clear remediation context.
+- Microsoft Sentinel gives central detection, alert routing, workbooks, and SOC workflows.
+- Together, they provide actionable supply-chain posture telemetry that can be queried, correlated, and alerted on.
+
+## Current scope and assumptions
+
+This integration currently targets public Azure Monitor ingestion over TLS 1.2+.
+
+Deployment model: Bicep-first. Use the single resource-group scoped template at `docs/sentinel/deploy/fylgyr-sentinel.bicep` for Azure resource deployment and configuration.
+
+- GitHub-hosted runners are supported.
+- No VNet integration is required for the initial setup.
+- AMPLS and private-endpoint topology are intentionally out of scope for this guide.
+
+If private networking is needed later, treat it as a future hardening track after baseline telemetry is stable.
+
+## Enterprise-scale placement recommendation
+
+For enterprise landing zones, the default recommendation is to deploy this solution under the Security management group and a dedicated Security subscription.
+
+Why this is the default:
+
+- Keeps SOC telemetry and detection engineering ownership centralized.
+- Enables consistent RBAC, policy, retention, and incident routing controls.
+- Reduces operational drift across business units.
+
+Alternative model:
+
+- Decentralized workspaces per business unit can be used when regulatory or data residency requirements require local ownership.
+- If you use this model, keep central detection standards and content governance to avoid rule drift.
+
+## What is included
+
+- Mode support in `Invoke-Fylgyr` (`-Mode Audit`, `-Mode Drift`, `-Mode Both`; Sentinel schedules usually use `-Mode Both`)
 - Log Analytics formatter (`-OutputFormat LogAnalytics`)
 - Ingestion helper: `Send-FylgyrToLogAnalytics`
-- Sentinel artifacts:
-  - `docs/sentinel/dcr.json`
+- Bicep deployment assets:
+  - `docs/sentinel/deploy/fylgyr-sentinel.bicep` (single resource-group template for workspace, Sentinel onboarding, DCE, DCR, and optional DCR RBAC assignment)
+  - `docs/sentinel/deploy/fylgyr-sentinel.bicepparam`
   - `docs/sentinel/table-schema.json`
+- Operations assets:
   - `docs/sentinel/rules/*.yaml`
   - `docs/sentinel/workbook.json`
   - `docs/sentinel/github-actions-cron.yml`
   - `docs/sentinel/azure-function/*`
-  - `docs/sentinel/architecture.mmd`
+  - `docs/sentinel/architecture.md`
 
-## Authentication model (secure-by-default)
+## Recommended operating model
 
-`Send-FylgyrToLogAnalytics` supports these auth modes in order of preference:
+In this guide, "drift" means change-over-time telemetry: events that indicate your trust boundary or protections changed recently, not just whether a setting is currently compliant.
 
-1. Managed Identity (`-UseManagedIdentity`) for Azure Functions or other Azure-hosted runtimes.
-2. Workload identity federation (OIDC) by passing a federated token (`-FederatedToken` or `-FederatedTokenFile`).
-3. Service principal client secret (`-ClientSecret`) as fallback only.
+Mode selection:
 
-Never print secrets or tokens to logs.
+- `-Mode Audit`: posture snapshot only.
+- `-Mode Drift`: change events only (from org audit log and/or baseline diff).
+- `-Mode Both`: posture + change telemetry together (recommended for most Microsoft Sentinel schedules).
 
-## Required Azure permissions
+Use a dedicated scheduled ingestion job as your default pattern.
 
-Assign `Monitoring Metrics Publisher` on the Data Collection Rule (DCR) to the identity that sends data.
+- Run every 6 hours as a practical baseline.
+- Keep manual dispatch enabled for incident response and validation.
+- Add event-driven runs only for high-signal paths (for example workflow-file changes).
+- Do not emit full Microsoft Sentinel telemetry on every application CI run unless there is a specific use case.
 
-For deployment automation, additional Contributor scopes may be needed on DCR/DCE resource groups.
+Why this model works:
 
-## Endpoint model
+- Drift checks are lookback-based and fit periodic polling.
+- Scheduled runs reduce duplicate findings and alert noise.
+- Security telemetry stays independent from application build outcomes.
 
-`Send-FylgyrToLogAnalytics` accepts either:
+## Architecture diagrams
 
-- `-DcrEndpointUri` for direct DCR ingestion endpoint.
-- `-DceUri` for Data Collection Endpoint path.
+- End-to-end solution architecture: `docs/ARCHITECTURE.md`
+- Microsoft Sentinel ingestion flow: `docs/sentinel/architecture.md`
 
-If your environment uses private networking, use a DCE path with AMPLS/private endpoint.
+## Setup and configuration
 
-## Private endpoint support
+### 1) Deploy Azure ingestion resources (Bicep)
 
-Phase 9.5 supports private endpoint topology when you configure Azure Monitor Private Link Scope (AMPLS):
+Deploy with the single resource-group scoped Bicep template (`docs/sentinel/deploy/fylgyr-sentinel.bicep`).
 
-1. Create AMPLS.
-2. Add Log Analytics workspace and DCE to AMPLS.
-3. Create private endpoint connected to AMPLS.
-4. Configure DNS zones for Azure Monitor private endpoints.
-5. Set ingestion access mode to `PrivateOnly` where required.
-6. Validate ingestion path resolves to private IPs from the scanning runtime.
+This template can create or re-use the Log Analytics workspace, either onboard Sentinel (`sentinelMode = 'new'`) or use existing Sentinel onboarding (`sentinelMode = 'existing'`), create or re-use the DCE, configure the DCR stream/transform, create or re-use Key Vault for `GITHUB_TOKEN` secret reference, and optionally assign `Monitoring Metrics Publisher` on the DCR.
 
-If private link is not configured, ingestion works via public endpoint over TLS 1.2+.
+`runtimeMode` controls runtime assets:
 
-## Quick start
+- `githubActions` (default): ingestion infrastructure only.
+- `azureFunction`: ingestion infrastructure plus Azure Function runtime infrastructure (storage account, plan, function app, managed identity DCR role assignment, and managed identity Key Vault secret-read role assignment).
 
-### 1) Generate Log Analytics-shaped NDJSON
+For detailed deployment parameters and post-deploy steps, use the install guide at `docs/sentinel/deploy/README.md`.
+
+Most organizations should use existing workspace/Microsoft Sentinel mode:
+
+- `workspaceMode = 'existing'`
+- `sentinelMode = 'existing'`
+
+Prerequisites for deployment commands:
+
+- Azure CLI installed and available in your shell.
+- Signed in to Azure and targeting the correct subscription.
+- Bicep support available in Azure CLI (`az bicep`).
+- If `az --version` returns "command not found", install Azure CLI first: https://learn.microsoft.com/cli/azure/install-azure-cli
+
+```powershell
+# Verify Azure CLI is installed
+Get-Command az -ErrorAction SilentlyContinue
+az --version
+
+# Update Azure CLI (after it is installed)
+az upgrade --yes
+
+# Sign in and select subscription
+az login
+az account set --subscription '<subscription-id-or-name>'
+
+# Ensure Bicep support is available in Azure CLI
+az bicep install
+az bicep version
+```
+
+Example Bicep deployment:
+
+```powershell
+az deployment group create `
+  --resource-group <rg-name> `
+  --template-file docs/sentinel/deploy/fylgyr-sentinel.bicep `
+  --parameters docs/sentinel/deploy/fylgyr-sentinel.bicepparam
+```
+
+Capture outputs:
+
+- `dcrImmutableId`
+- `dceLogsIngestionUri`
+- `streamNameOut`
+
+### 2) Configure identity and Azure role
+
+Supported auth modes, in preferred order:
+
+1. Managed Identity (`-UseManagedIdentity`) for Azure-hosted runtimes.
+2. Workload identity federation (OIDC) with federated token input.
+3. Client secret fallback (`-ClientSecret`) only when required.
+
+Grant `Monitoring Metrics Publisher` on the target DCR to the ingestion identity.
+
+For `runtimeMode = 'azureFunction'`, also ensure the Function managed identity has `Key Vault Secrets User` on the vault that contains the GitHub token secret.
+
+### 3) Choose ingestion runtime pattern
+
+#### Option A: GitHub Actions (OIDC)
+
+Use `docs/sentinel/github-actions-cron.yml`.
+
+Requirements:
+
+- Workflow permissions include `id-token: write` and `contents: read`.
+- Azure federated credential configured for the workflow identity.
+- Repo/org secrets set for `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_DCR_IMMUTABLE_ID`, and `AZURE_DCE_URI`.
+
+#### Option B: Azure Function timer (Managed Identity)
+
+Use files under `docs/sentinel/azure-function/`.
+
+Requirements:
+
+- Function App managed identity enabled.
+- Required app settings configured (`FYLGYR_OWNER`, `FYLGYR_DCR_IMMUTABLE_ID`, `FYLGYR_DCE_URI`, `GITHUB_TOKEN`; optional `FYLGYR_REPO`, `FYLGYR_STREAM_NAME`, `FYLGYR_MODULE_SOURCE`).
+- `FYLGYR_REPO` behavior:
+  - set to scan a single repository under `FYLGYR_OWNER`.
+  - leave empty to enumerate and scan all repositories for `FYLGYR_OWNER`.
+- `GITHUB_TOKEN` should be provided through Key Vault secret reference (generated by the Bicep template from Key Vault parameters).
+- Use a fine-grained PAT in that Key Vault secret. Recommended repository permissions: `Contents: Read`, `Administration: Read`, `Secret scanning alerts: Read`, `Dependabot alerts: Read`.
+- Module source behavior (`FYLGYR_MODULE_SOURCE`):
+  - `Bundled` (default): bundled module only (no PSGallery dependency).
+  - `Auto`: PSGallery latest install with bundled fallback.
+  - `Gallery`: PSGallery latest install only.
+- If using `Gallery` or `Auto`, the worker needs outbound HTTPS access to PowerShell Gallery.
+- DCR role assignment (`Monitoring Metrics Publisher`) granted to the function identity.
+- Key Vault role assignment (`Key Vault Secrets User`) granted to the function identity.
+- Publish Function zip package (run.ps1 + function.json + bundled module) with `scripts/publish-fylgyr-function-package.ps1`.
+
+### 4) Run scan and ingest
+
+Generate Log Analytics-formatted NDJSON:
 
 ```powershell
 Invoke-Fylgyr -Owner 'my-org' -Repo 'my-repo' -Mode Both -OutputFormat LogAnalytics -OutputPath './fylgyr-la.ndjson'
 ```
 
-### 2) Send to Azure Monitor Logs
+Send to Azure Monitor Logs:
 
 ```powershell
 Get-Content ./fylgyr-la.ndjson |
@@ -73,29 +205,21 @@ Get-Content ./fylgyr-la.ndjson |
     -UseManagedIdentity
 ```
 
-### 3) Query data in Sentinel
+### 5) Validate in Sentinel
 
 ```kql
 Fylgyr_CL
 | where TimeGenerated > ago(1h)
-| project TimeGenerated, Mode_s, CheckName_s, Severity_s, Resource_s, Detail_s
+| project TimeGenerated, Mode_s, CheckName_s, Severity_s, Owner_s, Repo_s, Target_s, Resource_s, Detail_s
 ```
 
-## GitHub Actions pattern (OIDC)
+Attribution columns in `Fylgyr_CL`:
 
-Use the sample workflow in `docs/sentinel/github-actions-cron.yml`.
+- `Target_s`: canonical target context emitted by the check (for example `owner/repo`, org resource identifiers).
+- `Owner_s`: extracted owner when `Target_s` or `Resource_s` contains an `owner/repo` prefix.
+- `Repo_s`: extracted repository when `Target_s` or `Resource_s` contains an `owner/repo` prefix.
 
-- Request `id-token: write` in workflow permissions.
-- Use Azure Login with federated credentials.
-- Avoid storing client secrets in GitHub.
-
-## Azure Function pattern (Managed Identity)
-
-Use files under `docs/sentinel/azure-function/`.
-
-- Enable system- or user-assigned managed identity.
-- Grant identity `Monitoring Metrics Publisher` on DCR.
-- Keep DCE and workspace in private-link scope when required.
+Then enable the sample analytics rules in `docs/sentinel/rules/` and tune lookback/suppression for your cadence.
 
 ## Security controls implemented in Fylgyr
 

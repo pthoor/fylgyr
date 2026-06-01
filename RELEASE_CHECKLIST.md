@@ -1,8 +1,8 @@
 # Release Checklist
 
-## Phase 1 Merge Readiness
+## Merge Readiness
 
-- [ ] Phase 1 PR merged to main from phase1/foundation.
+- [ ] Release PR merged to main.
 - [ ] CI workflow is green on main.
 - [ ] Repository settings enforce branch protection on main.
 - [ ] PSGALLERY_API_KEY exists in repository secrets.
@@ -45,4 +45,4 @@ git push origin v0.1.0
 ## Post-Release
 
 - [ ] Verify Install-Module Fylgyr from a clean environment.
-- [ ] Open Phase 2 tracking issue and milestone.
+- [ ] Open next milestone tracking issue and milestone.
