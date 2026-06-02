@@ -44,7 +44,12 @@ jobs:
       - name: Run PSScriptAnalyzer
         shell: pwsh
         run: |
-          Invoke-ScriptAnalyzer -Path ./src -Recurse -Severity @('Error', 'Warning')
+          $issues = Invoke-ScriptAnalyzer -Path ./src -Recurse
+          $blocking = @($issues | Where-Object { $_.Severity -in @('Error', 'Warning') })
+          if ($blocking.Count -gt 0) {
+            $blocking | Format-Table RuleName, Severity, ScriptName, Line, Message -AutoSize | Out-String | Write-Host
+            exit 1
+          }
 
       - name: Run Pester tests
         shell: pwsh
