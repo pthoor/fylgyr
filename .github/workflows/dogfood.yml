@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
 
       - name: Harden runner egress
         uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2
@@ -45,6 +47,14 @@ jobs:
             Owner       = '${{ github.repository_owner }}'
             Repo        = '${{ github.event.repository.name }}'
             Token       = $env:GITHUB_TOKEN
+          }
+
+          if ('${{ github.event_name }}' -eq 'pull_request') {
+            # On PRs, evaluate only changed workflow files versus the base branch.
+            # This avoids deadlocks where default-branch repo-level findings block
+            # the very PR intended to remediate them.
+            $scanParams.ChangedOnly = $true
+            $scanParams.SinceRef = 'origin/${{ github.base_ref }}'
           }
 
           # Single Object scan — reused for console output and failure check
