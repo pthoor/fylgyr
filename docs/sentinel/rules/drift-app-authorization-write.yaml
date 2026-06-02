@@ -1,0 +1,9 @@
+name: Fylgyr-Drift-AppAuthorization-Write
+severity: High
+description: New app authorization drift with write-like scope risk
+query: |
+  Fylgyr_CL
+  | where Mode_s == "Drift"
+  | where CheckName_s == "RecentAppAuthorization"
+  | where Severity_s in ("High", "Critical")
+  | project TimeGenerated, Resource_s, Severity_s, Detail_s, AttackMapping_s

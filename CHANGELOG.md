@@ -6,6 +6,46 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-05-21
+
+### Added
+
+- Drift execution mode support in `Invoke-Fylgyr`:
+	- `-Mode Audit|Drift|Both`
+	- `-SinceHours` lookback window
+- Eight drift checks:
+	- `Test-RecentCollaboratorChange`
+	- `Test-RecentAppAuthorization`
+	- `Test-RecentProtectionChange`
+	- `Test-RecentForcePush`
+	- `Test-RecentRunnerRegistration`
+	- `Test-RecentSecretChange`
+	- `Test-RecentTokenExposure`
+	- `Test-RecentWorkflowAdd`
+- Drift helper primitives:
+	- `Get-OrgAuditLog` with per-run cache
+	- `Compare-FylgyrBaseline` snapshot diff helper using `Get-FylgyrFingerprint`
+- Sentinel output and ingestion:
+	- `-OutputFormat LogAnalytics` via `ConvertTo-FylgyrLogAnalytics`
+	- `Send-FylgyrToLogAnalytics` for DCR/Logs Ingestion API posting (managed identity, federated token, or secret fallback)
+- Sentinel implementation artifacts:
+	- `docs/SENTINEL.md`
+	- `docs/sentinel/dcr.json`
+	- `docs/sentinel/table-schema.json`
+	- `docs/sentinel/rules/*.yaml`
+	- `docs/sentinel/workbook.json`
+	- `docs/sentinel/github-actions-cron.yml`
+	- `docs/sentinel/azure-function/*`
+	- architecture diagrams: `docs/sentinel/architecture.drawio`, `docs/sentinel/architecture.mmd`
+- Pester coverage for drift orchestration and Log Analytics formatting in `tests/DriftMode.Tests.ps1`.
+
+### Changed
+
+- `Format-FylgyrResult` now supports `Status = Drift` and `Mode = Audit|Drift`.
+- Console/JSON/SARIF/HTML formatters updated for drift findings.
+- Module loader now dot-sources `.ps1` files recursively under `Public/` and `Private/`.
+- Module manifest version bumped to `0.7.5` and exports updated for drift/Sentinel functions.
+
 ## [0.7.4] - 2026-05-21
 
 ### Changed
@@ -53,8 +93,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Documentation
 
 - Added `docs/PRE-COMMIT.md` with changed-only hook recipe.
-- README expanded with Phase 9 usage examples for NDJSON, HTML, evidence, suppressions, changed-only, CI gates, and performance tuning.
-- `docs/COVERAGE.md` regenerated marker updated for Phase 9.
+- README expanded with usage examples for NDJSON, HTML, evidence, suppressions, changed-only, CI gates, and performance tuning.
+- `docs/COVERAGE.md` regenerated marker updated for the drift telemetry update.
 
 ### Tests
 
@@ -103,7 +143,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ### Changed
 
-- `Invoke-FylgyrScan` workflow check pipeline now includes all new Phase 8 workflow checks.
+- `Invoke-FylgyrScan` workflow check pipeline now includes all new workflow deep-analysis checks.
 - `Test-RunnerHygiene` expanded to flag self-hosted runners with `discussion`, `issue_comment`, and `workflow_dispatch` triggers, plus missing `types:` filters for high-risk event families.
 - `Test-ScriptInjection` remediation now explicitly documents the current `env:` interpolation limitation.
 - `ConvertTo-FylgyrSarif` org/repo sentinel labeling improved for org-scoped checks (including `Rulesets`) and qualified resources.
@@ -150,12 +190,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ### Changed
 
-- `Invoke-GitHubApi` GraphQL usage is now explicit and phase-aligned:
+- `Invoke-GitHubApi` GraphQL usage is now explicit and release-aligned:
 	- Added `-Query` and `-Variables` parameters for GraphQL requests.
 	- Added GraphQL `errors[]` response surfacing as sanitized PowerShell errors.
 	- `-AllPages` is now explicitly rejected for GraphQL calls (cursor pagination required).
 	- Backward compatibility preserved for legacy GraphQL calls that passed query text through `-Endpoint`.
-- `Test-GitHubAppSecurity` extended in place (no rename) with Phase 7 detections:
+- `Test-GitHubAppSecurity` extended in place (no rename) with org-governance detections:
 	- `organization_administration:write`
 	- all-repos write-scope blast radius analysis
 	- suspicious combinations (`members:write + contents:write`, `secrets:write + actions:write`)
@@ -211,7 +251,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - `Test-WebhookSecurity` check — audits repository webhooks for missing shared secrets. Without a secret, receivers cannot authenticate payloads and an attacker who learns the webhook URL can forge or replay events to downstream CI, chat, or deploy automation. Degrades gracefully to Info on 403 (requires Webhooks:read scope). Maps to `codecov-bash-uploader`.
 - `Test-BinaryArtifact` check — walks the default branch tree via the git trees API and flags committed binary files (`.exe`, `.dll`, `.so`, `.dylib`, `.bin`, `.jar`, `.war`, `.a`, `.o`, `.pyc`, `.class`). Handles truncated trees (>100 k entries) with an Info result. Maps to `solarwinds-orion`.
 - `Get-RepoTree` private helper — fetches the recursive git tree for the default branch, used by `Test-BinaryArtifact`.
-- `committed-credentials-exposure` attack catalog entry — covers Uber 2016 (AWS keys in private repo, 57M records) and Toyota 2022 (partner credentials exposed five years). Maps to `CICD-SEC-5`, `T1552.001`. Seeded for Phase 6.2's `Test-SecretScanning` enhancement.
+- `committed-credentials-exposure` attack catalog entry — covers Uber 2016 (AWS keys in private repo, 57M records) and Toyota 2022 (partner credentials exposed five years). Maps to `CICD-SEC-5`, `T1552.001`. Seeded for a future `Test-SecretScanning` enhancement.
 - `owaspCiCd` and `mitre` fields added to all 20 attack catalog entries. Pester now enforces both fields are present and non-empty for every entry.
 - `docs/COVERAGE.md` — OWASP CI/CD Top 10 × MITRE ATT&CK supply-chain technique coverage matrix with roadmap signal for open gaps.
 - `docs/CATALOG-MAINTENANCE.md` — monthly triage cadence, sources to watch, triage rubric, schema requirements, and catalog-only release policy.
@@ -326,7 +366,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ### Added
 
-- Initial Fylgyr Phase 1 foundation scaffold.
+- Initial Fylgyr foundation scaffold.
 - Repository governance files: Code of Conduct, Security Policy, CODEOWNERS, issue templates, and PR template.
 - GitHub Actions workflows for CI and PSGallery release with SHA-pinned actions and least-privilege permissions.
 - PowerShell module skeleton under src/Fylgyr.

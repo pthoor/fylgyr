@@ -9,6 +9,7 @@ out/
 output/
 dist/
 artifacts/
+.tmp/
 
 # Test and tool output
 TestResults/

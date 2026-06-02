@@ -1,6 +1,7 @@
 # Fylgyr Maintainer Guide
 
 This guide is for solo open-source maintainers who want fast, practical supply chain checks without enterprise setup.
+It is intended for maintainers using Fylgyr in their own repositories.
 
 ## Five-minute install
 
@@ -138,7 +139,7 @@ This flow does not hard-fail PRs on findings. Results go to Security > Code scan
 - It does not run org-policy checks by default.
 - It does not provide continuous drift detection beyond your scheduled workflow runs.
 
-If you later need continuous drift/IR workflows, watch the Phase 9.5 roadmap items.
+If you later need continuous drift and incident-response workflows, use the Sentinel integration guidance in docs/SENTINEL.md.
 
 ## Complementary tools for secret forensics
 

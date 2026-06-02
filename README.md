@@ -11,15 +11,36 @@ Built for maintainers and security teams, Fylgyr emphasizes explainable findings
 
 Unlike score-based tools such as [OpenSSF Scorecard](https://securityscorecards.dev/), Fylgyr is **attack-mapped, not score-based**. Every finding explains which known campaign it aligns with and why that behavior matters.
 
-### Why "Fylgyr"?
+## Why "Fylgyr"?
 
 In Norse mythology, a *fylgja* (plural *fylgjur*) is a supernatural guardian spirit that accompanies a person throughout their life. Often appearing as an animal, the fylgja watches over its ward and can serve as a warning of danger ahead. Fylgyr serves the same role for your repositories — a vigilant guardian that watches for supply chain threats others might miss.
 
-## Quick Start
+## Why Fylgyr + Microsoft Sentinel
+
+Fylgyr gives you high-context findings. Microsoft Sentinel gives you operational visibility and alerting at scale.
+
+Use them together when you need both:
+
+- **Explainable detections:** findings map directly to known attack campaigns, not opaque numeric scores.
+- **Security operations workflow:** stream findings into Sentinel tables, analytics rules, and workbooks for triage and escalation.
+- **Low-noise drift monitoring:** run scheduled scans to detect trust-boundary and policy changes without alerting on every CI execution.
+- **Practical rollout:** start with GitHub-hosted runners and public Azure Monitor ingestion over TLS, then harden runtime/networking later.
+
+## Quick Start for local use:
+
+> Prerequisites:
+>
+> - PowerShell 7+
+> - GitHub token for scans (for local runs, use a fine-grained Personal Access Token (PAT))
+> - Optional (only for provenance verification): GitHub CLI (`gh`)
+> - Windows install for GitHub CLI: `winget install --id GitHub.cli --exact`
 
 ```powershell
 # Install from PowerShell Gallery
 Install-Module Fylgyr
+
+# Provide a GitHub token (required for local runs, this is typically a fine-grained PAT)
+$env:GITHUB_TOKEN = Read-Host -Prompt 'GitHub PAT' -MaskInput
 
 # Scan a single repository
 Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo'
@@ -29,9 +50,14 @@ Invoke-Fylgyr -Owner 'myorg'
 
 # Scan organization repositories + org-level policy controls (opt-in)
 Invoke-Fylgyr -Owner 'myorg' -IncludeOrgChecks
+
+# Optional cleanup
+Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
 ```
 
-> Requires PowerShell 7+ and a GitHub token. Fylgyr reads `$env:GITHUB_TOKEN` by default, or you can pass `-Token` explicitly:
+> Why cleanup? Removing token variables after use reduces accidental exposure in later commands, logs, child processes, and shared terminal output.
+
+> Requires PowerShell 7+ and a GitHub token. For local runs, this is typically a fine-grained PAT. In GitHub Actions, the built-in `GITHUB_TOKEN` can run workflow-file checks. Fylgyr reads `$env:GITHUB_TOKEN` by default, or you can pass `-Token` explicitly:
 >
 > ```powershell
 > # Preferred: load from SecretManagement (or your secret manager)
@@ -50,7 +76,9 @@ Invoke-Fylgyr -Owner 'myorg' -IncludeOrgChecks
 >
 > **Fylgyr strongly recommends [fine-grained PATs](docs/PERMISSIONS.md#recommended-token--fine-grained-pat)** for default operation. Core repository checks and most organization checks work with least-privilege fine-grained permissions, and no feature requires a classic PAT. Some organization governance APIs (currently PAT policy evidence endpoints) can be restricted by GitHub to GitHub App token types; in those contexts Fylgyr reports advisory `Info` results instead of a misleading fail. Never hardcode tokens; load them from a secret manager.
 
-## Maintainer Quickstart
+## Maintainer of open-source projects - Quick Start Guide
+
+> If you're a maintainer of popular open-source projects looking for quick local use, start here. For Sentinel integration, see the next section. Recent supply-chain attacks have shown that public repositories are high-value targets. Fylgyr helps you find and fix weaknesses before attackers do.
 
 If you maintain a personal open-source repo, start here.
 
@@ -58,8 +86,18 @@ If you maintain a personal open-source repo, start here.
 
 ```powershell
 Install-Module Fylgyr -Repository PSGallery -Force
-$token = Get-Secret -Name 'FYLGYR_PAT' -AsPlainText
+
+# Run against your repo with a GitHub token (PAT recommended for full check coverage)
+
+$token = Read-Host -Prompt 'PAT' -MaskInput
+
+# Or load from SecretManagement and pass directly (recommended for scripts and automation)
+# $token = Get-Secret -Name 'FYLGYR_PAT' -AsPlainText
+
+# Run the scan, and change output format as needed (Console, JSON, SARIF, etc.)
 Invoke-Fylgyr -Owner 'your-user-or-org' -Repo 'your-repo' -OutputFormat Console -Token $token
+
+# Remove the token variable after use to avoid accidental exposure in the session
 Remove-Variable token -ErrorAction SilentlyContinue
 ```
 
@@ -67,8 +105,8 @@ Remove-Variable token -ErrorAction SilentlyContinue
 
 3. Optional: start from the suppression template and copy it to the repository root:
 
-```bash
-cp examples/maintainer/fylgyr-suppressions.example.yml .fylgyr.yml
+```powershell
+Copy-Item -Path 'examples/maintainer/fylgyr-suppressions.example.yml' -Destination '.fylgyr.yml'
 ```
 
 ```yaml
@@ -115,7 +153,7 @@ jobs:
 
 This workflow intentionally does not fail PRs on findings. It uploads findings to Security > Code scanning for triage.
 
-Read the full maintainer guide: [docs/MAINTAINER-GUIDE.md](docs/MAINTAINER-GUIDE.md).
+Read the full maintainer guide for tool users: [docs/MAINTAINER-GUIDE.md](docs/MAINTAINER-GUIDE.md).
 
 ## Recommended Protection Baseline
 
@@ -225,6 +263,58 @@ Abridged example (a real scan runs ~30 checks per repo):
 | SARIF | `-OutputFormat SARIF` | SARIF 2.1.0 for GitHub Code Scanning integration |
 | NDJSON | `-OutputFormat NDJSON` | Newline-delimited JSON (one finding per line) with `_meta` scan context |
 | HTML | `-OutputFormat HTML` | Standalone report with summary cards, coverage dashboard, and grouped findings |
+| LogAnalytics | `-OutputFormat LogAnalytics` | ASIM-oriented NDJSON for Azure Monitor Logs / Sentinel ingestion |
+
+## Drift Mode
+
+Drift mode detects security-relevant change events ("drift") over time, not just current state.
+
+- `Audit`: point-in-time posture checks against the repository/org as it exists now.
+- `Drift`: recent trust-boundary and policy changes (for example force-pushes, protection weakening, new runner registration, secret changes).
+- `Both`: combines posture (`Audit`) and change telemetry (`Drift`) in one run.
+
+```powershell
+# Audit-only (default)
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Mode Audit
+
+# Drift-only
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Mode Drift -BaselinePath './last-scan.json'
+
+# Audit + Drift in one run
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Mode Both -BaselinePath './last-scan.json'
+```
+
+Drift mode requires at least one of:
+
+- `-BaselinePath` from a previous scan.
+- Organization audit-log API access (`admin:org`, GitHub Enterprise Cloud).
+
+If neither is available, drift mode fails with an explicit prerequisite error.
+
+## Microsoft Sentinel Quick Start
+
+For Sentinel pipelines, `-Mode Both` is usually the right default: you get baseline posture findings and recent-change (drift) signals in the same telemetry stream.
+
+Recommended operating model:
+
+- Run a dedicated scheduled ingestion workflow (for example every 6 hours).
+- Add manual dispatch for incident response and validation runs.
+- Avoid sending full telemetry on every application CI workflow run unless you have a specific detection reason.
+
+Full setup and configuration guidance (public-ingestion scope): [docs/SENTINEL.md](docs/SENTINEL.md).
+
+```powershell
+# 1) Generate Log Analytics-shaped output
+Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -Mode Both -OutputFormat LogAnalytics -OutputPath './fylgyr-la.ndjson'
+
+# 2) Ingest to Azure Monitor (managed identity example)
+Get-Content ./fylgyr-la.ndjson |
+  Send-FylgyrToLogAnalytics `
+    -DcrImmutableId 'dcr-00000000000000000000000000000000' `
+    -DceUri 'https://example.westeurope-1.ingest.monitor.azure.com' `
+    -StreamName 'Custom-FylgyrRaw' `
+    -UseManagedIdentity
+```
 
 ### NDJSON for SIEM pipelines
 
@@ -267,6 +357,8 @@ Evidence fields include `YamlSnippet`, `CommitSha`, `ScanTime`, and `Permalink` 
 
 ### Config-file suppressions (`.fylgyr.yml`)
 
+> Use config-file suppressions for repository-specific exceptions and risk acceptance. This is ideal for public repositories where maintainers may want to acknowledge certain risks without losing the benefits of other checks and future drift monitoring.
+
 Per-repository suppressions are supported via `.fylgyr.yml`:
 
 ```yaml
@@ -281,8 +373,8 @@ There is no dedicated "suppression file path" parameter. Fylgyr automatically lo
 
 Starter template:
 
-```bash
-cp examples/maintainer/fylgyr-suppressions.example.yml .fylgyr.yml
+```powershell
+Copy-Item -Path 'examples/maintainer/fylgyr-suppressions.example.yml' -Destination '.fylgyr.yml'
 ```
 
 Use `-IgnoreConfig` to skip config suppression processing for strict runs.
@@ -323,10 +415,10 @@ Add a workflow to run Fylgyr on every push and PR. Results appear in your reposi
 
 A ready-to-use workflow template is available at [`docs/fylgyr-workflow.yml`](docs/fylgyr-workflow.yml). Copy it to your repo:
 
-```bash
+```powershell
 # From your repository root
-mkdir -p .github/workflows
-cp docs/fylgyr-workflow.yml .github/workflows/fylgyr.yml
+New-Item -ItemType Directory -Path '.github/workflows' -Force | Out-Null
+Copy-Item -Path 'docs/fylgyr-workflow.yml' -Destination '.github/workflows/fylgyr.yml'
 # Or simply copy the file from the Fylgyr repo
 ```
 
@@ -530,10 +622,24 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 Use this baseline for coordinated disclosure hygiene on public and private repositories:
 
 1. Enable Private Vulnerability Reporting in repository Settings > Security.
-2. Maintain `SECURITY.md` with a private reporting path, scope, and safe-harbor language.
+2. Maintain SECURITY.md with a private reporting path, scope, and safe-harbor language.
 3. Define and publish response expectations, for example acknowledge within 3 business days and provide triage/remediation updates on a predictable cadence.
-4. Avoid routing vulnerability reports to public issue templates; keep the private channel as the default path for security disclosures.
+4. Keep vulnerability reports out of public issues by making private reporting the default path.
 5. Review and test the disclosure path periodically so maintainers can respond quickly when a report arrives.
+
+For first-time reporters, publish these exact steps in SECURITY.md:
+
+1. Open the target repository on GitHub.
+2. Go to Security > Advisories.
+3. Click Report a vulnerability (or New draft security advisory).
+4. Submit a private report with:
+  - clear reproduction steps
+  - affected branch, tag, or release version
+  - impact statement and expected vs actual behavior
+  - proof-of-concept artifacts (logs, screenshots, commits) with secrets redacted
+5. Wait for maintainer acknowledgement in the advisory thread (do not open a public issue while unpatched).
+
+If a repository does not support Private Vulnerability Reporting (PVR) on its plan, SECURITY.md should provide an alternate private contact path with the same required report fields.
 
 ## Compatibility
 
@@ -543,15 +649,33 @@ Fylgyr targets `github.com`. GitHub Enterprise Server (GHES) is **not supported 
 
 Starting from v0.4.1 every Fylgyr release includes a [SLSA build provenance attestation](https://slsa.dev/provenance/v1). You can verify the published module was built from the expected source:
 
-```bash
-gh attestation verify --owner pthoor oci://ghcr.io/pthoor/fylgyr:<version>
+GitHub CLI is not required to run Fylgyr scans. It is only required for the provenance verification commands below.
+
+Prerequisites for the commands below:
+
+- Install GitHub CLI (`gh`): https://cli.github.com/
+- Windows install (winget): `winget install --id GitHub.cli --exact`
+- Confirm CLI is available: `gh --version`
+- Recommended: authenticate first with `gh auth login`
+
+```powershell
+# List available release versions (latest first)
+gh release list --repo pthoor/Fylgyr --limit 10
+
+# Resolve latest release tag/version automatically
+$tag = gh release view --repo pthoor/Fylgyr --json tagName --jq .tagName
+$version = $tag.TrimStart('v')
+
+# Download and verify the latest attested artifact
+gh release download $tag --repo pthoor/Fylgyr --pattern "fylgyr-$version.zip" --dir .
+gh attestation verify "./fylgyr-$version.zip" --repo pthoor/Fylgyr
+
+# Example with a fixed version
+gh release download v0.7.4 --repo pthoor/Fylgyr --pattern "fylgyr-0.7.4.zip" --dir .
+gh attestation verify ./fylgyr-0.7.4.zip --repo pthoor/Fylgyr
 ```
 
-Or verify the PSGallery nupkg directly after downloading it:
-
-```bash
-gh attestation verify fylgyr.<version>.nupkg --owner pthoor
-```
+Note: verification is tied to the exact attested artifact bytes. If you already installed Fylgyr with `Install-Module`, you still need the original release zip (or another byte-identical copy) to verify provenance.
 
 ## Attack Catalog
 
@@ -612,6 +736,11 @@ Fylgyr is a security tool and holds itself to the same standard it applies to th
 See [SECURITY.md](SECURITY.md) for vulnerability reporting, scope, and security design principles.
 
 ## Architecture
+
+Architecture diagrams (end-to-end solution and Sentinel ingestion flow):
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/sentinel/architecture.md](docs/sentinel/architecture.md)
 
 ```
 src/Fylgyr/

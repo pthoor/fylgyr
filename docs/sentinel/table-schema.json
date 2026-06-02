@@ -1,0 +1,33 @@
+{
+  "tableName": "Fylgyr_CL",
+  "description": "Fylgyr security findings and drift telemetry for Sentinel",
+  "columns": [
+    { "name": "TimeGenerated", "type": "datetime", "required": true },
+    { "name": "Type", "type": "string", "required": true },
+    { "name": "EventVendor", "type": "string" },
+    { "name": "EventProduct", "type": "string" },
+    { "name": "EventSchema", "type": "string" },
+    { "name": "EventType", "type": "string" },
+    { "name": "Mode_s", "type": "string" },
+    { "name": "CheckName_s", "type": "string" },
+    { "name": "Severity_s", "type": "string" },
+    { "name": "Status_s", "type": "string" },
+    { "name": "Resource_s", "type": "string" },
+    { "name": "Target_s", "type": "string" },
+    { "name": "Owner_s", "type": "string" },
+    { "name": "Repo_s", "type": "string" },
+    { "name": "Detail_s", "type": "string" },
+    { "name": "Remediation_s", "type": "string" },
+    { "name": "AttackMapping_s", "type": "string" },
+    { "name": "OwaspCiCd_s", "type": "string" },
+    { "name": "Mitre_s", "type": "string" },
+    { "name": "DriftFrom_s", "type": "string" },
+    { "name": "DriftTo_s", "type": "string" },
+    { "name": "EvidenceYaml_s", "type": "string" },
+    { "name": "EvidenceCommitSha_s", "type": "string" },
+    { "name": "EvidencePermalink_s", "type": "string" },
+    { "name": "ScanId_g", "type": "string" },
+    { "name": "ScanStartTime_dt", "type": "datetime" },
+    { "name": "FylgyrVersion_s", "type": "string" }
+  ]
+}

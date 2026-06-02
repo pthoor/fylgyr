@@ -150,16 +150,37 @@ Each `Test-*.ps1` check should:
 | `Test-WebhookSecurity` | Secret exfiltration (webhook payload forgery / replay) |
 | `Test-BinaryArtifact` | Build system compromise (committed binary backdoors) |
 | `Test-PublishIntegrity` | Build system compromise (package/release publish trust and provenance) |
+| `Test-RecentCollaboratorChange` | Post-compromise persistence (drift) |
+| `Test-RecentAppAuthorization` | App authorization drift / token theft follow-on |
+| `Test-RecentProtectionChange` | Branch protection weakening drift |
+| `Test-RecentForcePush` | Direct history rewrite drift |
+| `Test-RecentRunnerRegistration` | Runner persistence drift |
+| `Test-RecentSecretChange` | Secret lifecycle drift |
+| `Test-RecentTokenExposure` | Token-risk + repo-access burst correlation drift |
+| `Test-RecentWorkflowAdd` | New workflow execution-path drift |
+
+### Drift mode and Sentinel integration
+
+- `Invoke-Fylgyr` supports `-Mode Audit|Drift|Both` (default `Audit`).
+- Drift findings use `Status = 'Drift'` and include `Mode = 'Drift'` on result objects.
+- Drift checks prefer org audit log data (`Get-OrgAuditLog`) and fall back to baseline snapshot diff (`Compare-FylgyrBaseline`) where applicable.
+- Baseline fallback findings must clearly state fidelity limitations (no actor attribution).
+- `-OutputFormat LogAnalytics` emits ASIM-oriented NDJSON suitable for Sentinel.
+- `Send-FylgyrToLogAnalytics` posts to Logs Ingestion API using DCR immutable ID and supports:
+    - managed identity
+    - federated token/OIDC
+    - client secret fallback
+- Public-endpoint ingestion is documented in `docs/SENTINEL.md` for the current rollout, with private networking handled as a future hardening track.
 
 ### Gaps for future checks
 
 When designing new checks, prioritize these still-open areas:
-- **Workflow injection** — detect `${{ github.event.* }}` in `run:` steps (Phase 8: `Test-ScriptInjection`)
-- **OIDC hardening** — verify workflows scope OIDC trust correctly (Phase 8: `Test-OidcTrust`)
-- **Artifact integrity** — detect unsigned releases, missing attestations, unpinned container images (Phase 8: `Test-ArtifactAttestation`, `Test-ArtifactPoisoning`)
-- **Cache poisoning** — detect cache keys derived from attacker-controlled refs (Phase 8: `Test-CacheIntegrity`)
+- **Workflow injection** — detect `${{ github.event.* }}` in `run:` steps (covered by `Test-ScriptInjection`)
+- **OIDC hardening** — verify workflows scope OIDC trust correctly (covered by `Test-OidcTrust`)
+- **Artifact integrity** — detect unsigned releases, missing attestations, unpinned container images (covered by `Test-ArtifactAttestation`, `Test-ArtifactPoisoning`)
+- **Cache poisoning** — detect cache keys derived from attacker-controlled refs (covered by `Test-CacheIntegrity`)
 - **Reusable workflow trust** — detect calls to reusable workflows from untrusted external repos (unplanned)
-- **Org-level policy gaps** — MFA, default permissions, PAT policy, outside collaborators, action restrictions (Phase 7)
+- **Org-level policy gaps** — MFA, default permissions, PAT policy, outside collaborators, action restrictions
 
 ## Release process
 

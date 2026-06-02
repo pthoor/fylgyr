@@ -110,8 +110,20 @@ Required classic scopes: `repo` (full), `read:org`, `security_events`, `workflow
 | `Test-SignedCommit` | `repos/{o}/{r}/branches/{branch}/protection/required_signatures` | Administration: read |
 | `Test-WebhookSecurity` | `repos/{o}/{r}/hooks` | Webhooks: read (requires `admin:repo_hook` on classic PAT) |
 | `Test-WorkflowPermission` | Workflow files (`.github/workflows/*`) | Contents: read |
+| `Test-RecentCollaboratorChange` | `repos/{o}/{r}/events`, `repos/{o}/{r}/collaborators` | Metadata: read, Administration: read |
+| `Test-RecentAppAuthorization` | `orgs/{o}/audit-log`, `orgs/{o}/installations` | Organization Administration: read |
+| `Test-RecentProtectionChange` | `orgs/{o}/audit-log`, `repos/{o}/{r}/branches/{b}/protection`, `repos/{o}/{r}/rulesets` | Organization Administration: read, Repository Administration: read |
+| `Test-RecentForcePush` | `repos/{o}/{r}/events` | Metadata: read |
+| `Test-RecentRunnerRegistration` | `orgs/{o}/audit-log`, `repos/{o}/{r}/actions/runners`, `orgs/{o}/actions/runners` | Actions: read, Organization Self-hosted runners: read |
+| `Test-RecentSecretChange` | `orgs/{o}/audit-log` | Organization Administration: read |
+| `Test-RecentTokenExposure` | `orgs/{o}/audit-log` | Organization Administration: read |
+| `Test-RecentWorkflowAdd` | `repos/{o}/{r}/contents/.github/workflows` (via workflow inventory helper) | Contents: read |
 
 All checks additionally require **Metadata: read** — this is mandatory for every fine-grained PAT and cannot be disabled.
+
+## Sentinel ingestion permissions
+
+`Send-FylgyrToLogAnalytics` requires Azure RBAC `Monitoring Metrics Publisher` on the target DCR. Prefer managed identity (Azure Function) or workload federation (GitHub OIDC) over client secrets.
 
 ## Common errors and what they mean
 

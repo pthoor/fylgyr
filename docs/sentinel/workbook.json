@@ -1,0 +1,67 @@
+{
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json",
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Fylgyr Sentinel Workbook\n\nSecurity drift and audit telemetry from Fylgyr_CL"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "Fylgyr_CL | where TimeGenerated > ago(24h) | summarize TotalFindings=count(), DriftFindings=countif(Mode_s == 'Drift'), HighCritical=countif(Severity_s in ('High','Critical'))",
+        "size": 1,
+        "title": "Top-line (24h)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "Fylgyr_CL | where TimeGenerated > ago(30d) | summarize Count=count() by bin(TimeGenerated, 1d), Severity_s | render timechart",
+        "size": 1,
+        "title": "Severity Over Time",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "Fylgyr_CL | where TimeGenerated > ago(30d) | summarize Findings=count() by Resource_s | top 10 by Findings",
+        "size": 1,
+        "title": "Top Resources",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "Fylgyr_CL | where TimeGenerated > ago(30d) and Mode_s == 'Drift' | project TimeGenerated, Resource_s, CheckName_s, Severity_s, Detail_s | order by TimeGenerated desc",
+        "size": 1,
+        "title": "Drift Timeline",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "Fylgyr_CL | where TimeGenerated > ago(30d) | summarize Count=count() by AttackMapping_s | top 20 by Count",
+        "size": 1,
+        "title": "Attack Campaign Exposure",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      }
+    }
+  ]
+}

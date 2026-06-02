@@ -1,0 +1,69 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "dcrName": { "type": "string", "defaultValue": "fylgyr-dcr" },
+    "workspaceResourceId": { "type": "string" },
+    "location": { "type": "string", "defaultValue": "westeurope" },
+    "dceResourceId": { "type": "string" }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2023-03-11",
+      "name": "[parameters('dcrName')]",
+      "location": "[parameters('location')]",
+      "kind": "Direct",
+      "properties": {
+        "dataCollectionEndpointId": "[parameters('dceResourceId')]",
+        "streamDeclarations": {
+          "Custom-FylgyrRaw": {
+            "columns": [
+              { "name": "TimeGenerated", "type": "datetime" },
+              { "name": "Type", "type": "string" },
+              { "name": "EventVendor", "type": "string" },
+              { "name": "EventProduct", "type": "string" },
+              { "name": "EventSchema", "type": "string" },
+              { "name": "EventType", "type": "string" },
+              { "name": "ScanId_g", "type": "string" },
+              { "name": "ScanStartTime_dt", "type": "datetime" },
+              { "name": "FylgyrVersion_s", "type": "string" },
+              { "name": "CheckName_s", "type": "string" },
+              { "name": "Severity_s", "type": "string" },
+              { "name": "Status_s", "type": "string" },
+              { "name": "Mode_s", "type": "string" },
+              { "name": "Resource_s", "type": "string" },
+              { "name": "Target_s", "type": "string" },
+              { "name": "Owner_s", "type": "string" },
+              { "name": "Repo_s", "type": "string" },
+              { "name": "Detail_s", "type": "string" },
+              { "name": "Remediation_s", "type": "string" },
+              { "name": "AttackMapping_s", "type": "string" },
+              { "name": "DriftFrom_s", "type": "string" },
+              { "name": "DriftTo_s", "type": "string" },
+              { "name": "EvidenceYaml_s", "type": "string" },
+              { "name": "EvidenceCommitSha_s", "type": "string" },
+              { "name": "EvidencePermalink_s", "type": "string" }
+            ]
+          }
+        },
+        "destinations": {
+          "logAnalytics": [
+            {
+              "name": "fylgyrDestination",
+              "workspaceResourceId": "[parameters('workspaceResourceId')]"
+            }
+          ]
+        },
+        "dataFlows": [
+          {
+            "streams": ["Custom-FylgyrRaw"],
+            "destinations": ["fylgyrDestination"],
+            "outputStream": "Custom-Fylgyr_CL",
+            "transformKql": "source | project TimeGenerated, EventVendor, EventProduct, EventSchema, EventType, ScanId_g, ScanStartTime_dt, FylgyrVersion_s, CheckName_s, Severity_s, Status_s, Mode_s, Resource_s, Target_s, Owner_s, Repo_s, Detail_s, Remediation_s, AttackMapping_s, DriftFrom_s, DriftTo_s, EvidenceYaml_s, EvidenceCommitSha_s, EvidencePermalink_s"
+          }
+        ]
+      }
+    }
+  ]
+}
