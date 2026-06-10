@@ -438,6 +438,26 @@ function Invoke-FylgyrScan {
             -Target $target))
     }
 
+    # Composite/JS action definition files (action.yml) are outside the changed-workflow
+    # model, so only fetch them for full scans.
+    $actionFiles = @()
+    if (-not $fetchFailed -and -not $ChangedOnly) {
+        try {
+            $actionFiles = @(Get-ActionDefinitionFile -Owner $Owner -Repo $Repo -Token $Token)
+        }
+        catch {
+            $actionFiles = @()
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'ActionPinning' `
+                -Status 'Warning' `
+                -Severity 'Low' `
+                -Resource $target `
+                -Detail "Could not fetch composite action definition files: $($_.Exception.Message)" `
+                -Remediation 'Verify the token has contents:read access; composite action.yml files were not scanned for pinning.' `
+                -Target $target))
+        }
+    }
+
     if ($fetchFailed) {
         # Error already recorded above
     }
@@ -484,10 +504,32 @@ function Invoke-FylgyrScan {
             -Detail 'No workflow files found in .github/workflows.' `
             -Remediation 'No action needed if this repository does not use GitHub Actions.' `
             -Target $target))
+
+        # A repo can ship composite actions without any workflow of its own; still
+        # scan their pinning.
+        if ($actionFiles.Count -gt 0) {
+            try {
+                $checkResults = Test-ActionPinning -ActionFiles $actionFiles
+                foreach ($r in $checkResults) {
+                    $r.Target = $target
+                    $results.Add($r)
+                }
+            }
+            catch {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName 'Test-ActionPinning' `
+                    -Status 'Error' `
+                    -Severity 'Critical' `
+                    -Resource $target `
+                    -Detail "Check failed with error: $($_.Exception.Message)" `
+                    -Remediation 'Review the error and re-run.' `
+                    -Target $target))
+            }
+        }
     }
     else {
         $workflowChecks = @(
-            @{ Name = 'Test-ActionPinning';      Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-ActionPinning';      Params = @{ WorkflowFiles = $workflowFiles; ActionFiles = $actionFiles } }
             @{ Name = 'Test-DangerousTrigger';   Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-ScriptInjection';    Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-ArtifactPoisoning';  Params = @{ WorkflowFiles = $workflowFiles } }

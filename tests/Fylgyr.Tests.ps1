@@ -167,6 +167,85 @@ jobs:
         $fail = $results | Where-Object Status -EQ 'Fail'
         $fail | Should -HaveCount 2
     }
+
+    It 'flags an unpinned uses inside a composite action.yml' {
+        $action = @([PSCustomObject]@{
+            Name    = 'action.yml'
+            Path    = '.github/actions/build/action.yml'
+            Content = @'
+name: build
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+'@
+        })
+
+        $results = Test-ActionPinning -WorkflowFiles @() -ActionFiles $action
+        $fail = $results | Where-Object Status -EQ 'Fail'
+        $fail | Should -HaveCount 1
+        $fail[0].Detail | Should -BeLike '*composite action file*actions/checkout@v4*'
+        $fail[0].Resource | Should -BeLike '.github/actions/build/action.yml:*'
+    }
+
+    It 'passes a SHA-pinned composite action.yml' {
+        $action = @([PSCustomObject]@{
+            Name    = 'action.yml'
+            Path    = 'action.yml'
+            Content = @'
+name: build
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+'@
+        })
+
+        $results = Test-ActionPinning -WorkflowFiles @() -ActionFiles $action
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+}
+
+Describe 'Get-ActionDefinitionFile' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'selects action.yml/action.yaml blobs and decodes their content' {
+        InModuleScope Fylgyr {
+            Mock Get-RepoTree {
+                return [PSCustomObject]@{
+                    tree = @(
+                        [PSCustomObject]@{ path = 'action.yml'; type = 'blob'; sha = 'aaa' }
+                        [PSCustomObject]@{ path = '.github/actions/foo/action.yaml'; type = 'blob'; sha = 'bbb' }
+                        [PSCustomObject]@{ path = 'docs/action.yml.bak'; type = 'blob'; sha = 'ccc' }
+                        [PSCustomObject]@{ path = 'src'; type = 'tree'; sha = 'ddd' }
+                    )
+                }
+            }
+            Mock Invoke-GitHubApi {
+                param($Endpoint)
+                $body = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes('name: x'))
+                return [PSCustomObject]@{ content = $body }
+            }
+
+            $files = Get-ActionDefinitionFile -Owner 'o' -Repo 'r' -Token 't'
+            @($files).Count | Should -Be 2
+            ($files.Path | Sort-Object) | Should -Be @('.github/actions/foo/action.yaml', 'action.yml')
+            $files[0].Content | Should -Be 'name: x'
+        }
+    }
+
+    It 'returns empty when the repo has no action definition files' {
+        InModuleScope Fylgyr {
+            Mock Get-RepoTree { return [PSCustomObject]@{ tree = @([PSCustomObject]@{ path = 'README.md'; type = 'blob'; sha = 'aaa' }) } }
+            $files = Get-ActionDefinitionFile -Owner 'o' -Repo 'r' -Token 't'
+            @($files).Count | Should -Be 0
+        }
+    }
 }
 
 Describe 'Test-DangerousTrigger' {
@@ -291,6 +370,53 @@ jobs:
         $results[0].Status | Should -Be 'Warning'
         $results[0].Severity | Should -Be 'Medium'
     }
+
+    It 'emits one could-not-verify advisory when the approval policy read is forbidden (403)' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'a.yml'
+            Path    = '.github/workflows/a.yml'
+            Content = "name: A`non: pull_request_target`njobs:`n  x:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo hi"
+        }, [PSCustomObject]@{
+            Name    = 'b.yml'
+            Path    = '.github/workflows/b.yml'
+            Content = "name: B`non: pull_request_target`njobs:`n  y:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo hi"
+        })
+
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '403 Forbidden' }
+
+        $results = Test-DangerousTrigger -WorkflowFiles $wf -Owner 'o' -Repo 'r' -Token 't'
+        $notVerified = $results | Where-Object { $_.Detail -like '*Could not verify*' }
+        $notVerified | Should -HaveCount 1
+        $notVerified[0].Severity | Should -Be 'Low'
+        $notVerified[0].Resource | Should -Be 'o/r'
+    }
+
+    It 'emits the missing-gate advisory (not could-not-verify) on a 404' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'a.yml'
+            Path    = '.github/workflows/a.yml'
+            Content = "name: A`non: pull_request_target`njobs:`n  x:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo hi"
+        })
+
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '404 Not Found' }
+
+        $results = Test-DangerousTrigger -WorkflowFiles $wf -Owner 'o' -Repo 'r' -Token 't'
+        ($results | Where-Object { $_.Detail -like '*Could not verify*' }) | Should -BeNullOrEmpty
+        ($results | Where-Object { $_.Detail -like '*first-time contributor approval*' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'does not emit could-not-verify when no pull_request_target workflow is present' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'a.yml'
+            Path    = '.github/workflows/a.yml'
+            Content = "name: A`non: push`njobs:`n  x:`n    runs-on: ubuntu-latest`n    steps:`n      - run: echo hi"
+        })
+
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '403 Forbidden' }
+
+        $results = Test-DangerousTrigger -WorkflowFiles $wf -Owner 'o' -Repo 'r' -Token 't'
+        ($results | Where-Object { $_.Detail -like '*Could not verify*' }) | Should -BeNullOrEmpty
+    }
 }
 
 Describe 'Test-WorkflowPermission' {
@@ -402,6 +528,8 @@ Describe 'Invoke-Fylgyr' {
         Mock -ModuleName Fylgyr Test-Rulesets             { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-WebhookSecurity      { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-BinaryArtifact       { return @($stubResult) }
+        # Isolate composite action.yml fetching from the network for orchestration tests.
+        Mock -ModuleName Fylgyr Get-ActionDefinitionFile  { return @() }
     }
 
     It 'returns an Error result when workflow fetch fails' {
@@ -1454,6 +1582,93 @@ jobs:
         $fail = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Detail -like '*production*' }
         $fail | Should -Not -BeNullOrEmpty
         $fail[0].Severity | Should -Be 'High'
+    }
+
+    It 'flags workflow_run referencing secrets as High' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'wr.yml'
+            Path    = '.github/workflows/wr.yml'
+            Content = @'
+name: WR
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ${{ secrets.NPM_TOKEN }}
+'@
+        })
+
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'environments') { return [PSCustomObject]@{ environments = @() } }
+            return $null
+        }
+
+        $results = Test-ForkSecretExposure -WorkflowFiles $wf -Owner 'test' -Repo 'repo' -Token 'fake-token'
+        $fail = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Detail -like '*workflow_run*' }
+        $fail | Should -Not -BeNullOrEmpty
+        $fail[0].Severity | Should -Be 'High'
+        $fail[0].AttackMapping | Should -Contain 'artifact-poisoning-workflow-run'
+    }
+
+    It 'detects bracket-notation secret references' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'pr-target.yml'
+            Path    = '.github/workflows/pr-target.yml'
+            Content = @'
+name: PR Target
+on:
+  pull_request_target:
+    types: [opened]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ${{ secrets['DEPLOY_KEY'] }}
+'@
+        })
+
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'environments') { return [PSCustomObject]@{ environments = @() } }
+            return $null
+        }
+
+        $results = Test-ForkSecretExposure -WorkflowFiles $wf -Owner 'test' -Repo 'repo' -Token 'fake-token'
+        $fail = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Detail -like '*DEPLOY_KEY*' }
+        $fail | Should -Not -BeNullOrEmpty
+        $fail[0].Severity | Should -Be 'Critical'
+    }
+
+    It 'does not flag a bracket-notation GITHUB_TOKEN reference' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'pr-target.yml'
+            Path    = '.github/workflows/pr-target.yml'
+            Content = @'
+name: PR Target
+on:
+  pull_request_target:
+    types: [opened]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ${{ secrets['GITHUB_TOKEN'] }}
+'@
+        })
+
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'environments') { return [PSCustomObject]@{ environments = @() } }
+            return $null
+        }
+
+        $results = Test-ForkSecretExposure -WorkflowFiles $wf -Owner 'test' -Repo 'repo' -Token 'fake-token'
+        ($results | Where-Object { $_.Detail -like '*GITHUB_TOKEN*' }) | Should -BeNullOrEmpty
     }
 }
 
