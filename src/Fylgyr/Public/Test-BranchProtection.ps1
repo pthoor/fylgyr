@@ -63,10 +63,11 @@
         return $false
     }
 
+    $escapedBranch = ConvertTo-FylgyrEscapedPathSegment -Value $defaultBranch
     $protection = $null
     $classicProtectionState = 'Unknown'
     try {
-        $protection = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/branches/$defaultBranch/protection" -Token $Token
+        $protection = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/branches/$escapedBranch/protection" -Token $Token
         $classicProtectionState = 'Available'
     }
     catch {
@@ -194,7 +195,7 @@
 
             if (-not $hasRulesOnListResponse -and $ruleset.PSObject.Properties['id'] -and $ruleset.id) {
                 try {
-                    $rulesetId = [string]$ruleset.id
+                    $rulesetId = ConvertTo-FylgyrEscapedPathSegment -Value ([string]$ruleset.id)
                     $rulesetDetail = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/rulesets/$rulesetId" -Token $Token
                     if ($rulesetDetail -and $rulesetDetail.PSObject.Properties['rules'] -and $rulesetDetail.rules -and @($rulesetDetail.rules).Count -gt 0) {
                         $resolvedRuleset = $rulesetDetail

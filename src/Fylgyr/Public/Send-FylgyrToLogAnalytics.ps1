@@ -145,14 +145,23 @@ function Send-FylgyrToLogAnalytics {
                         throw 'ClientSecret is required when no managed identity or federated token is provided.'
                     }
 
-                    $plainSecret = [System.Net.NetworkCredential]::new('', $ClientSecret).Password
-                    $tokenResponse = Invoke-RestMethod -Method POST -Uri "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token" -Body @{
-                        client_id = $ClientId
-                        client_secret = $plainSecret
-                        scope = 'https://monitor.azure.com//.default'
-                        grant_type = 'client_credentials'
-                    } -ContentType 'application/x-www-form-urlencoded' -ErrorAction Stop
-                    $token = [string]$tokenResponse.access_token
+                    $plainSecret = $null
+                    try {
+                        $plainSecret = [System.Net.NetworkCredential]::new('', $ClientSecret).Password
+                        $tokenResponse = Invoke-RestMethod -Method POST -Uri "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token" -Body @{
+                            client_id = $ClientId
+                            client_secret = $plainSecret
+                            scope = 'https://monitor.azure.com//.default'
+                            grant_type = 'client_credentials'
+                        } -ContentType 'application/x-www-form-urlencoded' -ErrorAction Stop
+                        $token = [string]$tokenResponse.access_token
+                    }
+                    finally {
+                        # .NET strings are immutable so the value cannot be zeroed in place;
+                        # drop the reference so it is no longer reachable from session state.
+                        $plainSecret = $null
+                        Remove-Variable -Name plainSecret -ErrorAction SilentlyContinue
+                    }
                 }
             }
             catch {

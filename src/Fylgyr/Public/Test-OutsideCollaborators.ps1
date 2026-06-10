@@ -107,7 +107,9 @@ function Test-OutsideCollaborators {
 
             $permissionChecks++
             try {
-                $perm = Invoke-GitHubApi -Endpoint "repos/$Owner/$repoName/collaborators/$username/permission" -Token $Token
+                $escapedRepoName = ConvertTo-FylgyrEscapedPathSegment -Value $repoName
+                $escapedUsername = ConvertTo-FylgyrEscapedPathSegment -Value $username
+                $perm = Invoke-GitHubApi -Endpoint "repos/$Owner/$escapedRepoName/collaborators/$escapedUsername/permission" -Token $Token
             }
             catch {
                 $permMsg = $_.Exception.Message

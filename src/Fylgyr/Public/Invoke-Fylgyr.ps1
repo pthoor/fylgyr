@@ -66,9 +66,12 @@ function Invoke-Fylgyr {
         #   `orgs/{Owner}/...` block on second and later repos in an org-wide scan.
         # - FylgyrOwnerContextCache: owner type/token-owner/plan cache used by
         #   Get-FylgyrOwnerContext to avoid repeated users/{owner} and user calls.
+        # - FylgyrOwnerAccountChecked: Test-AccountSecurity/Test-AccountKey consult this
+        #   so account-level checks run once per owner across an org-wide repo scan.
         $script:FylgyrOwnerRunnerGroupsChecked = @{}
         $script:FylgyrOwnerContextCache = @{}
         $script:FylgyrOrgAuditLogCache = @{}
+        $script:FylgyrOwnerAccountChecked = @{}
     }
 
     process {

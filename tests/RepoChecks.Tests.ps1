@@ -250,6 +250,32 @@ Describe 'Test-BranchProtection' {
         $fail = $results | Where-Object Status -EQ 'Fail'
         ($fail | Where-Object { $_.Detail -like '*pull request reviews*' }) | Should -HaveCount 1
     }
+
+    It 'percent-encodes a slash-containing default branch in the protection endpoint' {
+        $script:protectionEndpoint = $null
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'repos/[^/]+/[^/]+$') {
+                return [PSCustomObject]@{ default_branch = 'release/v1' }
+            }
+            $script:protectionEndpoint = $Endpoint
+            return [PSCustomObject]@{
+                allow_force_pushes            = [PSCustomObject]@{ enabled = $false }
+                allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                required_pull_request_reviews = [PSCustomObject]@{
+                    required_approving_review_count = 1
+                    dismiss_stale_reviews           = $true
+                }
+                required_status_checks        = [PSCustomObject]@{ strict = $true; contexts = @('ci') }
+            }
+        }
+
+        $null = Test-BranchProtection -Owner 'org' -Repo 'repo' -Token 'fake-token'
+        # The slash inside the branch name must be encoded so it is not read as a
+        # path separator (which would 404) or steer the request to another path.
+        $script:protectionEndpoint | Should -Match 'branches/release%2Fv1/protection'
+        $script:protectionEndpoint | Should -Not -Match 'branches/release/v1/protection'
+    }
 }
 
 Describe 'Test-SecretScanning' {

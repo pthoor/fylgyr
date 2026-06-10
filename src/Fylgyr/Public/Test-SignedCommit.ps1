@@ -37,10 +37,11 @@ function Test-SignedCommit {
     }
 
     $resource = "$target (branch: $defaultBranch)"
+    $escapedBranch = ConvertTo-FylgyrEscapedPathSegment -Value $defaultBranch
 
     try {
         $signatures = Invoke-GitHubApi `
-            -Endpoint "repos/$Owner/$Repo/branches/$defaultBranch/protection/required_signatures" `
+            -Endpoint "repos/$Owner/$Repo/branches/$escapedBranch/protection/required_signatures" `
             -Token $Token
     }
     catch {
