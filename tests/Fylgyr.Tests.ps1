@@ -528,6 +528,10 @@ Describe 'Invoke-Fylgyr' {
         Mock -ModuleName Fylgyr Test-Rulesets             { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-WebhookSecurity      { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-BinaryArtifact       { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-PrivateVulnReporting { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-DefaultTokenPermission { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-DeployKey            { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-TagProtection        { return @($stubResult) }
         # Isolate composite action.yml fetching from the network for orchestration tests.
         Mock -ModuleName Fylgyr Get-ActionDefinitionFile  { return @() }
     }
@@ -1146,6 +1150,8 @@ jobs:
         Mock -ModuleName Fylgyr Test-PatPolicy { return @() }
         Mock -ModuleName Fylgyr Test-GitHubAppSecurity { return @() }
         Mock -ModuleName Fylgyr Test-Rulesets { return @() }
+        Mock -ModuleName Fylgyr Test-DefaultTokenPermission { return @() }
+        Mock -ModuleName Fylgyr Test-OrgSecretVisibility { return @() }
 
         $results = InModuleScope Fylgyr {
             Invoke-FylgyrOrgScan -Owner 'acme' -Token 'fake-token'

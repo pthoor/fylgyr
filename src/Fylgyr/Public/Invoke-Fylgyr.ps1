@@ -612,6 +612,9 @@ function Invoke-FylgyrScan {
             @{ Name = 'Test-Rulesets';             Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-BinaryArtifact';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-PrivateVulnReporting'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-DefaultTokenPermission'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-DeployKey';            Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-TagProtection';        Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
         )
 
         foreach ($entry in $repoChecks) {
@@ -674,6 +677,8 @@ function Invoke-FylgyrOrgScan {
         @{ Name = 'Test-PatPolicy';             Params = @{ Owner = $Owner; Token = $Token } }
         @{ Name = 'Test-GitHubAppSecurity';     Params = @{ Owner = $Owner; Token = $Token } }
         @{ Name = 'Test-Rulesets';              Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-DefaultTokenPermission'; Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-OrgSecretVisibility';   Params = @{ Owner = $Owner; Token = $Token } }
     )
 
     foreach ($entry in $orgChecks) {
