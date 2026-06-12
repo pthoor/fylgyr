@@ -53,7 +53,7 @@ Status meanings:
 - Info: Advisory or not-applicable signal.
 - Error: The check could not complete (usually token scope/API access).
 
-## Personal-account behavior (all 19 checks)
+## Personal-account behavior (per-repo checks)
 
 | Check | Personal account behavior | Notes |
 |---|---|---|
@@ -76,6 +76,13 @@ Status meanings:
 | Test-GitHubAppSecurity | Info skip possible | If token owner does not match scanned user account |
 | Test-WebhookSecurity | Apply | Degrades to Info if webhook scope is unavailable |
 | Test-BinaryArtifact | Apply | Repository tree inspection |
+| Test-DefaultTokenPermission | Apply | Repo-scope `GITHUB_TOKEN` default; requires Administration: read |
+| Test-DeployKey | Apply | Requires Administration: read |
+| Test-TagProtection | Apply | Evaluates tag ruleset rule depth; ruleset absence is reported by Test-Rulesets |
+| Test-AccountSecurity | Apply (personal accounts only) | 2FA status verifiable only when the token belongs to the scanned account; otherwise Info advisory |
+| Test-AccountKey | Apply (personal accounts only) | Flags stale SSH keys and expired GPG keys; key dates require the token owner's own account |
+
+`Test-AccountSecurity` and `Test-AccountKey` run once per owner per scan — they target maintainer *account takeover* (the xz-utils / event-stream / ua-parser-js pattern) rather than repository settings. If you pass `-IncludeOrgChecks` against a personal account, Fylgyr emits one consolidated notice for the non-applicable organization checks and runs these two account checks instead.
 
 ## Drop-in workflow
 

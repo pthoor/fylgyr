@@ -57,7 +57,7 @@ Create at <https://github.com/settings/personal-access-tokens/new>.
 - **Organization permissions** (all *Read-only*):
   - Administration
   - Members
-  - Secrets (only if you want `Test-ForkSecretExposure` to enumerate org-level Actions secrets)
+  - Secrets (only if you want `Test-OrgSecretVisibility` to enumerate org-level Actions secrets)
 
 ### If fine-grained PATs are not available
 
@@ -91,7 +91,13 @@ Required classic scopes: `repo` (full), `read:org`, `security_events`, `workflow
 | `Test-TriggerFilter` | Workflow files (`.github/workflows/*`) | Contents: read |
 | `Test-EnvironmentProtection` | `repos/{o}/{r}/environments` | Actions: read |
 | `Test-ForkPullPolicy` | Workflow files (`.github/workflows/*`) | Contents: read |
-| `Test-ForkSecretExposure` | `repos/{o}/{r}/environments`, `orgs/{o}/actions/secrets` | Actions: read, **Org Secrets: read** |
+| `Test-ForkSecretExposure` | Workflow files, `repos/{o}/{r}/environments` | Contents: read, Actions: read |
+| `Test-OrgSecretVisibility` | `orgs/{o}/actions/secrets` | **Organization Secrets: read** |
+| `Test-DefaultTokenPermission` | `repos/{o}/{r}/actions/permissions/workflow`, `orgs/{o}/actions/permissions/workflow` | Repository Administration: read; Organization Administration: read (org scope) |
+| `Test-DeployKey` | `repos/{o}/{r}/keys` | Repository Administration: read |
+| `Test-TagProtection` | `repos/{o}/{r}/rulesets` | Metadata: read |
+| `Test-AccountSecurity` | `users/{owner}`, `user` | None beyond Metadata: read; 2FA status is only returned when the token belongs to the scanned account |
+| `Test-AccountKey` | `user/keys` + `user/gpg_keys` (token owner) or `users/{owner}/keys` + `users/{owner}/gpg_keys` (public fallback) | Classic: `read:user`, `read:gpg_key` for the authenticated endpoints; fine-grained: account permissions "Git SSH keys: read" and "GPG keys: read". Degrades to public key listings (no creation dates) without them |
 | `Test-IpAllowlist` | GraphQL `organization { ipAllowListEntries }` | Organization Administration: read |
 | `Test-OrgMfaPolicy` | `orgs/{o}` | Organization Administration: read |
 | `Test-OrgDefaultPermissions` | `orgs/{o}` | Organization Administration: read |
@@ -135,7 +141,7 @@ All checks additionally require **Metadata: read** — this is mandatory for eve
 | Org-level checks (`Test-OrgMfaPolicy`, `Test-OrgDefaultPermissions`, `Test-IpAllowlist`, `Test-AuditLogStreaming`, `Test-OAuthAppPolicy`, `Test-OrgActionRestrictions`, `Test-OutsideCollaborators`, `Test-GitHubAppSecurity`, `Test-RunnerHygiene`) return `Error` while repo-level checks pass | Token has repo permissions but no org permissions | Add **Org Administration: read** and **Org Members: read** as needed; for `Test-RunnerHygiene`, also include **Organization Self-hosted runners: read** |
 | `Test-PatPolicy` returns `Info` with endpoint unavailable/partial analysis | PAT policy endpoints unavailable in plan context, or endpoint token-type requirements not met | Treat as advisory; verify PAT governance in org settings, and if API verification is required use supported GitHub App token types/permissions from GitHub REST docs |
 | `Test-Rulesets` (org scope) returns `Info` for insufficient permissions | Fine-grained PAT lacks Organization Administration: write required by `GET /orgs/{org}/rulesets` in current GitHub API permission mapping | Keep least-privilege PAT for normal scans; use a dedicated elevated audit token only when org-level ruleset verification is needed |
-| `Test-ForkSecretExposure` skips org-secret enumeration | Missing **Org Secrets: read** | Optional — add only if you need org-wide secret visibility |
+| `Test-OrgSecretVisibility` returns `Error`/`Info` instead of enumerating org secrets | Missing **Org Secrets: read** | Optional — add only if you need org-wide secret visibility (runs with `-IncludeOrgChecks`) |
 
 ## Why not a GitHub App?
 

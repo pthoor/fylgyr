@@ -291,6 +291,9 @@ Drift mode requires at least one of:
 
 If neither is available, drift mode fails with an explicit prerequisite error.
 
+> [!IMPORTANT]
+> **Baseline integrity.** The baseline JSON drives finding *suppression* — anyone who can modify the baseline file can silently hide drift findings from the next scan. Store baselines where the scan identity has read access but ordinary contributors do not, never commit them to the repository being scanned, and prefer immutable storage (see [docs/SENTINEL.md](docs/SENTINEL.md) for an Azure Blob immutability-policy pattern).
+
 ## Microsoft Sentinel Quick Start
 
 For Sentinel pipelines, `-Mode Both` is usually the right default: you get baseline posture findings and recent-change (drift) signals in the same telemetry stream.
@@ -539,7 +542,9 @@ Use `-IncludeOrgChecks` to run organization-level policy checks once per owner b
 Invoke-Fylgyr -Owner 'myorg' -IncludeOrgChecks
 ```
 
-Org-level checks are intentionally skipped for single-repository scans (`-Repo`) to keep repo audits focused and deterministic.
+Org-level checks are intentionally skipped for single-repository scans (`-Repo`) to keep repo audits focused and deterministic. Note that org-level Actions secret visibility (`OrgSecretVisibility`) is part of the org check set, so that signal requires an org-wide scan with `-IncludeOrgChecks`.
+
+When the owner is a **personal account**, `-IncludeOrgChecks` emits a single consolidated notice listing the organization-policy checks that do not apply, and runs the personal-account equivalents (`AccountSecurity`, `AccountKey`) instead — so a solo-maintainer scan produces signal rather than a dozen "not applicable" rows.
 
 ### Reusable workflow trust allowlist
 
@@ -579,9 +584,9 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 
 | Check | Detects | Severity | Attack Mapping |
 |---|---|---|---|
-| `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise` |
+| `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA — in workflows and in composite action definitions (`action.yml`/`action.yaml`) | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise` |
 | `DangerousTrigger` | `pull_request_target` / `workflow_run` with untrusted code checkout, missing actor restrictions, secret exposure in PRT context | Critical | `nx-pwn-request`, `prt-scan-ai-automated`, `trivy-supply-chain-2026`, `azure-karpenter-pwn-request`, `hackerbot-claw` |
-| `ScriptInjection` | Untrusted GitHub event expressions interpolated into `run:` blocks | Critical | `github-actions-script-injection` |
+| `ScriptInjection` | Untrusted GitHub event expressions interpolated into `run:` and `github-script` blocks — including bracket notation and indirection through `env:` variables | Critical | `github-actions-script-injection` |
 | `ArtifactPoisoning` | Downloaded artifacts executed without integrity verification, especially across `workflow_run` boundaries | High | `artifact-poisoning-workflow-run` |
 | `OidcTrust` | `id-token: write` without environment scoping (elevated when publish-adjacent) | High | `oidc-trust-abuse`, `bitwarden-cli-2026-04` |
 | `CacheIntegrity` | Cache keys derived from attacker-controlled refs (for example `github.head_ref`) | Medium | `cache-poisoning-pr-branch` |
@@ -592,7 +597,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `WorkflowPermission` | Missing top-level `permissions:` block in workflow files | Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
 | `PublishIntegrity` | Publish workflows missing provenance, trusted publishing, or artifact signing signals | High | `shai-hulud-npm-worm`, `lottie-player-npm-compromise`, `ua-parser-js-npm-compromise`, `bitwarden-cli-2026-04`, `event-stream-hijack` |
 | `EgressControl` | Missing or audit-only network egress filtering in workflows | Medium | `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise`, `trivy-supply-chain-2026`, `codecov-bash-uploader` |
-| `ForkSecretExposure` | Secrets accessible to fork PRs, unprotected environments, unrestricted org secrets | Critical | `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request` |
+| `ForkSecretExposure` | Secrets referenced in `pull_request_target`/`workflow_run` workflows, unprotected environments reachable from fork PRs | Critical | `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request` |
 | `GitHubAppSecurity` | Overly permissive organization GitHub App installations (including org-admin, all-repos write, and dangerous permission combinations) | Critical | `github-app-token-theft` |
 | `BranchProtection` | Weak or missing default branch protection rules | High | `codecov-bash-uploader` |
 | `SecretScanning` | Secret Scanning disabled, high/critical open alerts, or alert telemetry unavailable to token scope | High | `committed-credentials-exposure`, `uber-credential-leak`, `axios-npm-token-leak` |
@@ -607,6 +612,11 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `WebhookSecurity` | Repository webhooks configured without a secret for payload authentication | Low | `codecov-bash-uploader` |
 | `BinaryArtifact` | Binary files (`.exe`, `.dll`, `.so`, `.jar`, etc.) committed in the repository tree | Low | `solarwinds-orion` |
 | `Rulesets` | Missing modern branch/tag rulesets or missing tag protection (warns if repo has no tags yet; fails when tags exist) | High | `trivy-tag-poisoning`, `actions-cool-issues-helper-compromise`, `trivy-force-push-main` |
+| `DefaultTokenPermission` | Platform default `GITHUB_TOKEN` permission set to write, or workflows allowed to approve pull requests (repo and org scope) | High | `tj-actions-shai-hulud`, `nx-pwn-request`, `prt-scan-ai-automated` |
+| `DeployKey` | Deploy keys with write access (MFA-less, unattributed push path) or stale read-only keys | High | `committed-credentials-exposure`, `codecov-bash-uploader` |
+| `TagProtection` | Active tag rulesets missing `deletion`/`non_fast_forward` rules (release retagging primitive) | High | `trivy-tag-poisoning`, `actions-cool-issues-helper-compromise` |
+| `AccountSecurity` | Personal account without two-factor authentication (verifiable only with a token owned by the scanned account) | Critical | `dropbox-github-breach`, `github-device-code-phishing`, `ua-parser-js-npm-compromise` |
+| `AccountKey` | Stale account SSH keys (>2 years) and expired GPG signing keys on personal accounts | Low | `gentoo-github-compromise`, `xz-utils-backdoor` |
 | `OrgMfaPolicy` | Organization does not require MFA for members | Critical | `dropbox-github-breach` |
 | `OrgDefaultPermissions` | Default org repository permission is broader than read/none | High | `gentoo-github-compromise` |
 | `IpAllowlist` | Organization has no IP allowlist entries (enterprise recommendation) | Medium | `github-device-code-phishing`, `uber-credential-leak` |
@@ -615,6 +625,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `OrgActionRestrictions` | Organization allows unrestricted third-party GitHub Actions | High | `tj-actions-shai-hulud` |
 | `OutsideCollaborators` | Outside collaborators retain write/admin repository access | High | `uber-credential-leak` |
 | `PatPolicy` | Organization PAT governance cannot be verified or appears weak | High | `uber-credential-leak`, `github-device-code-phishing` |
+| `OrgSecretVisibility` | Organization Actions secrets visible to all repositories (`visibility: all`) | High | `prt-scan-ai-automated`, `hackerbot-claw`, `axios-npm-token-leak` |
 | `PrivateVulnReporting` | Repository private vulnerability reporting (PVR) disabled or unsupported | Low | `xz-utils-backdoor` |
 
 ## Private Vulnerability Reporting Baseline
@@ -748,6 +759,8 @@ src/Fylgyr/
 ├── Fylgyr.psm1              # Entry point (dot-sources Public/ and Private/)
 ├── Public/
 │   ├── Invoke-Fylgyr.ps1    # Orchestrator + output formatting
+│   ├── Test-AccountKey.ps1
+│   ├── Test-AccountSecurity.ps1
 │   ├── Test-ActionPinning.ps1
 │   ├── Test-ArtifactAttestation.ps1
 │   ├── Test-ArtifactPoisoning.ps1
@@ -756,14 +769,17 @@ src/Fylgyr/
 │   ├── Test-CodeOwner.ps1
 │   ├── Test-CodeScanning.ps1
 │   ├── Test-DangerousTrigger.ps1
+│   ├── Test-DefaultTokenPermission.ps1
 │   ├── Test-DependabotAlert.ps1
 │   ├── Test-DependencyReview.ps1
+│   ├── Test-DeployKey.ps1
 │   ├── Test-EgressControl.ps1
 │   ├── Test-EnvironmentProtection.ps1
 │   ├── Test-ForkPullPolicy.ps1
 │   ├── Test-ForkSecretExposure.ps1
 │   ├── Test-GitHubAppSecurity.ps1
 │   ├── Test-OidcTrust.ps1
+│   ├── Test-OrgSecretVisibility.ps1
 │   ├── Test-PrivateVulnReporting.ps1
 │   ├── Test-RepoVisibility.ps1
 │   ├── Test-ReusableWorkflowTrust.ps1
@@ -772,6 +788,7 @@ src/Fylgyr/
 │   ├── Test-ScriptInjection.ps1
 │   ├── Test-SecretScanning.ps1
 │   ├── Test-SignedCommit.ps1
+│   ├── Test-TagProtection.ps1
 │   ├── Test-TriggerFilter.ps1
 │   ├── Test-WebhookSecurity.ps1
 │   ├── Test-BinaryArtifact.ps1
@@ -779,6 +796,8 @@ src/Fylgyr/
 ├── Private/
 │   ├── Invoke-GitHubApi.ps1       # REST/GraphQL wrapper with pagination
 │   ├── Get-WorkflowFile.ps1       # Fetches workflows via Git Trees API
+│   ├── Get-ActionDefinitionFile.ps1 # Fetches composite action.yml files via Git Trees API
+│   ├── ConvertTo-FylgyrEscapedPathSegment.ps1 # URL-encodes API-derived path segments
 │   ├── Get-RunBlock.ps1           # Extracts run: blocks (including block scalars)
 │   ├── Get-WorkflowJobBlock.ps1   # Extracts per-job YAML blocks for job-scoped checks
 │   ├── Get-FylgyrOwnerContext.ps1 # Owner/persona context helper (type, plan, token owner)

@@ -221,10 +221,20 @@ Attribution columns in `Fylgyr_CL`:
 
 Then enable the sample analytics rules in `docs/sentinel/rules/` and tune lookback/suppression for your cadence.
 
+## Baseline integrity (drift mode)
+
+The drift baseline (`-BaselinePath`) drives finding *suppression*: drift mode reports differences from the baseline, so anyone who can rewrite the baseline file can silently hide a malicious change from the next scan. Treat the baseline as a security artifact:
+
+- **Store baselines in immutable or write-restricted storage.** For Azure-hosted pipelines, use an Azure Blob Storage container with a [time-based immutability policy (WORM)](https://learn.microsoft.com/azure/storage/blobs/immutable-storage-overview), versioning enabled, and write access restricted to the scan identity (managed identity or federated workflow). Each scan writes a new versioned snapshot rather than overwriting.
+- **Never commit baselines to the repository being scanned.** A contributor with push access to the scanned repo must not be able to influence what the next scan suppresses.
+- **Restrict reads to the scan identity and security team.** Baselines describe your protection posture — useful reconnaissance for an attacker.
+- **Prefer audit-log-backed drift where available.** Audit-log findings carry actor attribution and do not depend on baseline integrity; baseline diff is the fallback path.
+
 ## Security controls implemented in Fylgyr
 
 - HTTPS-only GitHub API communication.
 - Drift findings include `Evidence.Source` (`audit-log` or `baseline-diff`).
 - Baseline fallback details explicitly note missing actor attribution.
+- Baseline JSON parsing is depth-bounded and failures degrade to a controlled `BaselineDiff` error result.
 - Log ingestion retry uses bounded exponential backoff.
-- No token values included in findings or evidence payloads.
+- No token values included in findings or evidence payloads; the client-secret fallback clears the plaintext secret immediately after token acquisition.

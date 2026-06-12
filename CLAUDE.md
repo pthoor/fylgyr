@@ -150,6 +150,12 @@ Each `Test-*.ps1` check should:
 | `Test-WebhookSecurity` | Secret exfiltration (webhook payload forgery / replay) |
 | `Test-BinaryArtifact` | Build system compromise (committed binary backdoors) |
 | `Test-PublishIntegrity` | Build system compromise (package/release publish trust and provenance) |
+| `Test-DefaultTokenPermission` | Excessive permissions (platform default `GITHUB_TOKEN` write) |
+| `Test-DeployKey` | Insufficient branch protection (MFA-less deploy-key push persistence) |
+| `Test-TagProtection` | Action/tool poisoning (release retagging via mutable tags) |
+| `Test-OrgSecretVisibility` | Secret exfiltration (org secrets exposed to every repo) |
+| `Test-AccountSecurity` | Account takeover (solo-maintainer 2FA posture) |
+| `Test-AccountKey` | Account takeover (stale/expired maintainer credentials) |
 | `Test-RecentCollaboratorChange` | Post-compromise persistence (drift) |
 | `Test-RecentAppAuthorization` | App authorization drift / token theft follow-on |
 | `Test-RecentProtectionChange` | Branch protection weakening drift |
