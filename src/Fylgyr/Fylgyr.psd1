@@ -15,6 +15,8 @@
     )
     FunctionsToExport = @(
         'Invoke-Fylgyr'
+        'Test-AccountKey'
+        'Test-AccountSecurity'
         'Test-ActionPinning'
         'Test-ArtifactAttestation'
         'Test-ArtifactPoisoning'

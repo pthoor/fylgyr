@@ -615,6 +615,8 @@ function Invoke-FylgyrScan {
             @{ Name = 'Test-DefaultTokenPermission'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-DeployKey';            Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-TagProtection';        Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-AccountSecurity';      Params = @{ Owner = $Owner; Token = $Token } }
+            @{ Name = 'Test-AccountKey';           Params = @{ Owner = $Owner; Token = $Token } }
         )
 
         foreach ($entry in $repoChecks) {
@@ -665,6 +667,53 @@ function Invoke-FylgyrOrgScan {
 
     $target = "org/$Owner"
     $results = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+    # Personal accounts: every org check would individually emit a "personal account"
+    # Info result (10+ near-identical lines). Emit one consolidated note, run the
+    # personal-account equivalents, and skip the org loop. 'Unknown' owners fall
+    # through so each check can report its own error.
+    $ownerContext = Get-FylgyrOwnerContext -Owner $Owner -Token $Token
+    if ($ownerContext.Type -eq 'User') {
+        $skippedChecks = @(
+            'OrgMfaPolicy', 'OrgDefaultPermissions', 'IpAllowlist', 'AuditLogStreaming',
+            'OAuthAppPolicy', 'OrgActionRestrictions', 'OutsideCollaborators', 'PatPolicy',
+            'GitHubAppSecurity', 'Rulesets', 'DefaultTokenPermission', 'OrgSecretVisibility'
+        )
+        $results.Add((Format-FylgyrResult `
+            -CheckName 'OrgChecks' `
+            -Status 'Info' `
+            -Severity 'Info' `
+            -Resource "user/$Owner" `
+            -Detail "Owner '$Owner' is a personal account; $($skippedChecks.Count) organization-policy checks do not apply: $($skippedChecks -join ', '). Personal-account equivalents (AccountSecurity, AccountKey) run instead." `
+            -Remediation 'No action needed.' `
+            -Target "user/$Owner"))
+
+        foreach ($entry in @(
+            @{ Name = 'Test-AccountSecurity'; Params = @{ Owner = $Owner; Token = $Token } }
+            @{ Name = 'Test-AccountKey';      Params = @{ Owner = $Owner; Token = $Token } }
+        )) {
+            try {
+                $checkParams = $entry.Params
+                $checkResults = & $entry.Name @checkParams
+                foreach ($r in $checkResults) {
+                    $r.Target = "user/$Owner"
+                    $results.Add($r)
+                }
+            }
+            catch {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName ($entry.Name -replace '^Test-', '') `
+                    -Status 'Error' `
+                    -Severity 'Medium' `
+                    -Resource "user/$Owner" `
+                    -Detail "Check failed with error: $($_.Exception.Message)" `
+                    -Remediation 'Review the error and re-run.' `
+                    -Target "user/$Owner"))
+            }
+        }
+
+        return $results.ToArray()
+    }
 
     $orgChecks = @(
         @{ Name = 'Test-OrgMfaPolicy';          Params = @{ Owner = $Owner; Token = $Token } }
