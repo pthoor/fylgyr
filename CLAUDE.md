@@ -135,8 +135,11 @@ Each `Test-*.ps1` check should:
 | `Test-DangerousTrigger` | Pwn request |
 | `Test-WorkflowPermission` | Excessive permissions |
 | `Test-RunnerHygiene` | Runner abuse |
-| `Test-BranchProtection` | Insufficient branch protection |
-| `Test-SecretScanning` | Secret exfiltration, Missing scanning |
+| `Test-BranchProtection` | Insufficient branch protection (incl. admin bypass and ruleset bypass actors) |
+| `Test-SecretScanning` | Secret exfiltration, Missing scanning (incl. push protection posture) |
+| `Test-ContainerPinning` | Action/tool poisoning (mutable container image tags in CI) |
+| `Test-UntrustedDownload` | Build system compromise (pipe-to-shell remote script execution) |
+| `Test-LifecycleScript` | Dependency confusion (install-time lifecycle script execution in CI and package.json) |
 | `Test-DependabotAlert` | Dependency confusion, Missing scanning |
 | `Test-CodeScanning` | Build system compromise, Missing scanning |
 | `Test-CodeOwner` | Insufficient branch protection (single-maintainer compromise) |
@@ -181,12 +184,15 @@ Each `Test-*.ps1` check should:
 ### Gaps for future checks
 
 When designing new checks, prioritize these still-open areas:
-- **Workflow injection** — detect `${{ github.event.* }}` in `run:` steps (covered by `Test-ScriptInjection`)
+- **Workflow injection** — detect `${{ github.event.* }}` in `run:` steps, including `workflow_dispatch`/`workflow_call` inputs (covered by `Test-ScriptInjection`)
 - **OIDC hardening** — verify workflows scope OIDC trust correctly (covered by `Test-OidcTrust`)
-- **Artifact integrity** — detect unsigned releases, missing attestations, unpinned container images (covered by `Test-ArtifactAttestation`, `Test-ArtifactPoisoning`)
+- **Artifact integrity** — detect unsigned releases, missing attestations, unpinned container images (covered by `Test-ArtifactAttestation`, `Test-ArtifactPoisoning`, `Test-ContainerPinning`)
 - **Cache poisoning** — detect cache keys derived from attacker-controlled refs (covered by `Test-CacheIntegrity`)
+- **Remote script execution** — pipe-to-shell downloads in run steps (covered by `Test-UntrustedDownload`)
+- **Install-time code execution** — npm/yarn/pnpm lifecycle scripts in CI and package.json (covered by `Test-LifecycleScript`)
 - **Reusable workflow trust** — detect calls to reusable workflows from untrusted external repos (unplanned)
 - **Org-level policy gaps** — MFA, default permissions, PAT policy, outside collaborators, action restrictions
+- **Composite-action depth** — recursively resolve and audit transitively referenced actions (unplanned)
 
 ## Release process
 

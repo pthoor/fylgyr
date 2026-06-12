@@ -473,7 +473,7 @@ The workflow uses the built-in `GITHUB_TOKEN` with minimal permissions:
 | `contents: read` | Read workflow files and repository content |
 | `security-events: write` | Upload SARIF results to Code Scanning |
 
-These two permissions are the only `GITHUB_TOKEN` scopes needed for CI execution and SARIF upload. They cover workflow-file analysis checks such as ActionPinning, ScriptInjection, ArtifactPoisoning, OidcTrust, CacheIntegrity, TriggerFilter, DependencyReview, ArtifactAttestation, ReusableWorkflowTrust, WorkflowPermission, PublishIntegrity, and EgressControl.
+These two permissions are the only `GITHUB_TOKEN` scopes needed for CI execution and SARIF upload. They cover workflow-file analysis checks such as ActionPinning, ScriptInjection, ContainerPinning, UntrustedDownload, ArtifactPoisoning, OidcTrust, CacheIntegrity, TriggerFilter, DependencyReview, ArtifactAttestation, ReusableWorkflowTrust, WorkflowPermission, PublishIntegrity, and EgressControl.
 
 To read GitHub security alert APIs (Secret Scanning, Dependabot alerts, Code Scanning alerts), use a fine-grained PAT with the corresponding read permissions.
 
@@ -586,7 +586,10 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 |---|---|---|---|
 | `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA — in workflows and in composite action definitions (`action.yml`/`action.yaml`) | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise` |
 | `DangerousTrigger` | `pull_request_target` / `workflow_run` with untrusted code checkout, missing actor restrictions, secret exposure in PRT context | Critical | `nx-pwn-request`, `prt-scan-ai-automated`, `trivy-supply-chain-2026`, `azure-karpenter-pwn-request`, `hackerbot-claw` |
-| `ScriptInjection` | Untrusted GitHub event expressions interpolated into `run:` and `github-script` blocks — including bracket notation and indirection through `env:` variables | Critical | `github-actions-script-injection` |
+| `ScriptInjection` | Untrusted GitHub event expressions interpolated into `run:` and `github-script` blocks — including bracket notation, indirection through `env:` variables, and `workflow_dispatch`/`workflow_call` inputs | Critical | `github-actions-script-injection` |
+| `ContainerPinning` | Container images pulled by mutable tag or `:latest` instead of immutable digest — `docker://` uses, job `container:` blocks, and `services:` images | High | `docker-hub-credential-breach`, `trivy-tag-poisoning` |
+| `UntrustedDownload` | Remote scripts downloaded and executed in one step (`curl \| bash`, `irm \| iex`) in run steps | High | `codecov-bash-uploader` |
+| `LifecycleScript` | CI dependency installs without `--ignore-scripts`, and suspicious install-time lifecycle scripts in the repo's own `package.json` | High | `shai-hulud-npm-worm`, `event-stream-hijack`, `ua-parser-js-npm-compromise` |
 | `ArtifactPoisoning` | Downloaded artifacts executed without integrity verification, especially across `workflow_run` boundaries | High | `artifact-poisoning-workflow-run` |
 | `OidcTrust` | `id-token: write` without environment scoping (elevated when publish-adjacent) | High | `oidc-trust-abuse`, `bitwarden-cli-2026-04` |
 | `CacheIntegrity` | Cache keys derived from attacker-controlled refs (for example `github.head_ref`) | Medium | `cache-poisoning-pr-branch` |
@@ -599,8 +602,8 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `EgressControl` | Missing or audit-only network egress filtering in workflows | Medium | `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise`, `trivy-supply-chain-2026`, `codecov-bash-uploader` |
 | `ForkSecretExposure` | Secrets referenced in `pull_request_target`/`workflow_run` workflows, unprotected environments reachable from fork PRs | Critical | `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request` |
 | `GitHubAppSecurity` | Overly permissive organization GitHub App installations (including org-admin, all-repos write, and dangerous permission combinations) | Critical | `github-app-token-theft` |
-| `BranchProtection` | Weak or missing default branch protection rules | High | `codecov-bash-uploader` |
-| `SecretScanning` | Secret Scanning disabled, high/critical open alerts, or alert telemetry unavailable to token scope | High | `committed-credentials-exposure`, `uber-credential-leak`, `axios-npm-token-leak` |
+| `BranchProtection` | Weak or missing default branch protection rules, admin-bypass (`enforce_admins` disabled), and ruleset bypass actors with always-on bypass | High | `codecov-bash-uploader`, `trivy-force-push-main`, `dropbox-github-breach` |
+| `SecretScanning` | Secret Scanning disabled, push protection disabled, high/critical open alerts, or alert telemetry unavailable to token scope | High | `committed-credentials-exposure`, `uber-credential-leak`, `axios-npm-token-leak`, `toyota-source-exposure` |
 | `DependabotAlert` | Open critical/high Dependabot vulnerability alerts | High | `event-stream-hijack`, `solarwinds-orion` |
 | `CodeScanning` | Code Scanning not configured or stale analyses | Medium | `solarwinds-orion` |
 | `RunnerHygiene` | Risky self-hosted runner configurations, dangerous triggers, missing trigger filters, org-wide runner groups, non-ephemeral runners, public repo runners | High | `github-actions-cryptomining`, `praetorian-runner-pivot`, `shai-hulud-runner-backdoor` |
@@ -767,6 +770,9 @@ src/Fylgyr/
 │   ├── Test-CacheIntegrity.ps1
 │   ├── Test-BranchProtection.ps1
 │   ├── Test-CodeOwner.ps1
+│   ├── Test-ContainerPinning.ps1
+│   ├── Test-LifecycleScript.ps1
+│   ├── Test-UntrustedDownload.ps1
 │   ├── Test-CodeScanning.ps1
 │   ├── Test-DangerousTrigger.ps1
 │   ├── Test-DefaultTokenPermission.ps1

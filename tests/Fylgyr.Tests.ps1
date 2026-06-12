@@ -534,6 +534,7 @@ Describe 'Invoke-Fylgyr' {
         Mock -ModuleName Fylgyr Test-TagProtection        { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-AccountSecurity      { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-AccountKey           { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-LifecycleScript      { return @($stubResult) }
         # Isolate composite action.yml fetching from the network for orchestration tests.
         Mock -ModuleName Fylgyr Get-ActionDefinitionFile  { return @() }
     }

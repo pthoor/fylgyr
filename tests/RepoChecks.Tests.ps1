@@ -14,6 +14,7 @@ Describe 'Test-BranchProtection' {
             return [PSCustomObject]@{
                 allow_force_pushes            = [PSCustomObject]@{ enabled = $false }
                 allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                enforce_admins                = [PSCustomObject]@{ enabled = $true }
                 required_pull_request_reviews = [PSCustomObject]@{
                     required_approving_review_count = 1
                     dismiss_stale_reviews           = $true
@@ -195,6 +196,7 @@ Describe 'Test-BranchProtection' {
             return [PSCustomObject]@{
                 allow_force_pushes            = [PSCustomObject]@{ enabled = $true }
                 allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                enforce_admins                = [PSCustomObject]@{ enabled = $true }
                 required_pull_request_reviews = [PSCustomObject]@{
                     required_approving_review_count = 1
                     dismiss_stale_reviews           = $true
@@ -219,6 +221,7 @@ Describe 'Test-BranchProtection' {
             # allow_force_pushes deliberately absent
             return [PSCustomObject]@{
                 allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                enforce_admins                = [PSCustomObject]@{ enabled = $true }
                 required_pull_request_reviews = [PSCustomObject]@{
                     required_approving_review_count = 1
                     dismiss_stale_reviews           = $true
@@ -241,6 +244,7 @@ Describe 'Test-BranchProtection' {
             return [PSCustomObject]@{
                 allow_force_pushes            = [PSCustomObject]@{ enabled = $false }
                 allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                enforce_admins                = [PSCustomObject]@{ enabled = $true }
                 required_pull_request_reviews = $null
                 required_status_checks        = [PSCustomObject]@{ strict = $true }
             }
@@ -262,6 +266,7 @@ Describe 'Test-BranchProtection' {
             return [PSCustomObject]@{
                 allow_force_pushes            = [PSCustomObject]@{ enabled = $false }
                 allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                enforce_admins                = [PSCustomObject]@{ enabled = $true }
                 required_pull_request_reviews = [PSCustomObject]@{
                     required_approving_review_count = 1
                     dismiss_stale_reviews           = $true

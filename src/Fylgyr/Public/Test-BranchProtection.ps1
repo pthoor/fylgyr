@@ -331,6 +331,43 @@
             }
         }
 
+        # Bypass actors that can skip the ruleset outside pull requests
+        $alwaysBypassActorCount = 0
+        foreach ($ruleset in $resolvedBranchRulesets) {
+            if (-not $ruleset.PSObject.Properties['bypass_actors'] -or -not $ruleset.bypass_actors) {
+                continue
+            }
+
+            foreach ($bypassActor in @($ruleset.bypass_actors)) {
+                if (-not $bypassActor) {
+                    continue
+                }
+
+                $bypassMode = if ($bypassActor.PSObject.Properties['bypass_mode'] -and $bypassActor.bypass_mode) {
+                    [string]$bypassActor.bypass_mode
+                }
+                else {
+                    'always'
+                }
+
+                if ($bypassMode -ne 'pull_request') {
+                    $alwaysBypassActorCount++
+                }
+            }
+        }
+
+        if ($alwaysBypassActorCount -gt 0) {
+            $findings.Add((Format-FylgyrResult `
+                -CheckName 'BranchProtection' `
+                -Status 'Warning' `
+                -Severity 'Medium' `
+                -Resource $resource `
+                -Detail "Active branch ruleset for '$defaultBranch' grants $alwaysBypassActorCount bypass actor(s) the ability to bypass protections entirely (bypass_mode 'always'). Each bypass actor is an account, team, or app whose compromise defeats the whole ruleset with a direct push." `
+                -Remediation "Remove bypass actors from the ruleset, or restrict them to bypass_mode 'pull_request' so a reviewed pull request is still required." `
+                -AttackMapping @('trivy-force-push-main', 'dropbox-github-breach') `
+                -Target $target))
+        }
+
         $hasStatusChecksRule = $ruleTypes -contains 'required_status_checks'
         if (-not $hasStatusChecksRule) {
             $findings.Add((Format-FylgyrResult `
@@ -383,6 +420,21 @@
             -Detail "Branch '$defaultBranch' allows force pushes." `
             -Remediation "Disable force pushes in Settings → Branches → Branch protection rules." `
             -AttackMapping @('trivy-force-push-main', 'codecov-bash-uploader') `
+            -Target $target))
+    }
+
+    # Admins exempt from protection
+    if (-not $protection.PSObject.Properties['enforce_admins'] -or
+        $null -eq $protection.enforce_admins -or
+        $protection.enforce_admins.enabled -ne $true) {
+        $findings.Add((Format-FylgyrResult `
+            -CheckName 'BranchProtection' `
+            -Status 'Fail' `
+            -Severity 'Medium' `
+            -Resource $resource `
+            -Detail "Branch '$defaultBranch' does not apply protection rules to administrators (enforce_admins is disabled). A single compromised admin account can push directly to the default branch, bypassing every review and status-check requirement - the path attackers take after phishing or stealing maintainer credentials." `
+            -Remediation "Enable 'Do not allow bypassing the above settings' in Settings → Branches so administrators are subject to the same protection rules." `
+            -AttackMapping @('trivy-force-push-main', 'dropbox-github-breach') `
             -Target $target))
     }
 

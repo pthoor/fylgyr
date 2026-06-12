@@ -57,15 +57,30 @@ function Test-ScriptInjection {
         return $false
     }
 
+    # workflow_dispatch/workflow_call inputs are attacker-influenced whenever
+    # dispatch rights are broad or the workflow is callable from a less-trusted
+    # caller, so interpolating them into executable steps is flagged separately.
+    $inputContextPattern = '^(github\.event\.inputs|inputs)\.'
+
     foreach ($wf in $WorkflowFiles) {
         $sanitizedContent = (($wf.Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
         $lines = $sanitizedContent -split "`n"
+
+        $hasInputTrigger = $false
+        foreach ($line in $lines) {
+            if ($line -match '^\s*(-\s*)?(workflow_dispatch|workflow_call)\s*:?\s*$' -or
+                $line -match '^\s*on\s*:.*\b(workflow_dispatch|workflow_call)\b') {
+                $hasInputTrigger = $true
+                break
+            }
+        }
 
         # Pass 1: find env vars (at workflow/job/step level) whose value embeds an
         # untrusted expression. Using such a var later in a run/script step is the
         # indirection form of the injection - the dangerous case the previous
         # version explicitly did not cover.
         $taintedEnvVars = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $inputTaintedEnvVars = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         for ($li = 0; $li -lt $lines.Count; $li++) {
             if ($lines[$li] -notmatch '^(?<indent>\s*)(?<dash>-\s*)?env\s*:\s*$') { continue }
             # Indent of the env key itself - for a list-item form ("- env:") that is
@@ -82,9 +97,12 @@ function Test-ScriptInjection {
                     $envName = $Matches.name
                     $envValue = $Matches.value
                     foreach ($m in [regex]::Matches($envValue, '\$\{\{\s*(?<expr>[^}]+?)\s*\}\}')) {
-                        if (Test-UnsafeExpr -Expr (Get-NormalizedExpr -Raw $m.Groups['expr'].Value)) {
+                        $normalizedEnvExpr = Get-NormalizedExpr -Raw $m.Groups['expr'].Value
+                        if (Test-UnsafeExpr -Expr $normalizedEnvExpr) {
                             [void]$taintedEnvVars.Add($envName)
-                            break
+                        }
+                        elseif ($hasInputTrigger -and $normalizedEnvExpr -match $inputContextPattern) {
+                            [void]$inputTaintedEnvVars.Add($envName)
                         }
                     }
                 }
@@ -95,6 +113,7 @@ function Test-ScriptInjection {
         # script: inputs - for direct untrusted interpolation or use of a tainted env var.
         $scanBlocks = @(Get-RunBlock -Content $sanitizedContent) + @(Get-RunBlock -Content $sanitizedContent -Key 'script')
         $riskyExpressions = [System.Collections.Generic.List[string]]::new()
+        $inputExpressions = [System.Collections.Generic.List[string]]::new()
 
         foreach ($block in $scanBlocks) {
             $expressionMatches = [regex]::Matches($block.Content, '\$\{\{\s*(?<expr>[^}]+?)\s*\}\}')
@@ -109,13 +128,25 @@ function Test-ScriptInjection {
                     continue
                 }
 
-                if ($expr -match '^env\.(?<name>[a-z0-9_-]+)$' -and $taintedEnvVars.Contains($Matches.name)) {
-                    $riskyExpressions.Add("$expr (assigned from untrusted event data)")
+                if ($hasInputTrigger -and $expr -match $inputContextPattern) {
+                    $inputExpressions.Add($expr)
+                    continue
+                }
+
+                if ($expr -match '^env\.(?<name>[a-z0-9_-]+)$') {
+                    if ($taintedEnvVars.Contains($Matches.name)) {
+                        $riskyExpressions.Add("$expr (assigned from untrusted event data)")
+                    }
+                    elseif ($inputTaintedEnvVars.Contains($Matches.name)) {
+                        $inputExpressions.Add("$expr (assigned from workflow input)")
+                    }
                 }
             }
         }
 
+        $hasFinding = $false
         if ($riskyExpressions.Count -gt 0) {
+            $hasFinding = $true
             $uniqueExpr = @($riskyExpressions | Sort-Object -Unique)
             $results.Add((Format-FylgyrResult `
                 -CheckName 'ScriptInjection' `
@@ -125,16 +156,30 @@ function Test-ScriptInjection {
                 -Detail "Workflow '$($wf.Name)' interpolates untrusted GitHub event data inside an executable step (run/script): $($uniqueExpr -join ', '). This creates command-injection risk in shell execution context and matches real-world GitHub Actions script-injection campaigns." `
                 -Remediation 'Never interpolate untrusted event data directly in run/script steps, and do not route it through an env var that is later interpolated. Bind it to an intermediate environment variable and reference it as a shell variable ("$FOO"), or validate it before use.' `
                 -AttackMapping @('github-actions-script-injection')))
-            continue
         }
 
-        $results.Add((Format-FylgyrResult `
-            -CheckName 'ScriptInjection' `
-            -Status 'Pass' `
-            -Severity 'Info' `
-            -Resource $wf.Path `
-            -Detail "Workflow '$($wf.Name)' has no detected untrusted event expression interpolation inside run/script blocks." `
-            -Remediation 'No action needed.'))
+        if ($inputExpressions.Count -gt 0) {
+            $hasFinding = $true
+            $uniqueInputExpr = @($inputExpressions | Sort-Object -Unique)
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'ScriptInjection' `
+                -Status 'Warning' `
+                -Severity 'High' `
+                -Resource $wf.Path `
+                -Detail "Workflow '$($wf.Name)' interpolates workflow input values inside an executable step (run/script): $($uniqueInputExpr -join ', '). workflow_dispatch inputs can be set by anyone allowed to trigger the workflow, and workflow_call inputs inherit whatever the calling workflow interpolates into them - either way the value lands unescaped in shell execution context." `
+                -Remediation 'Bind inputs to an intermediate environment variable and reference them as a shell variable ("$FOO") instead of interpolating ${{ inputs.* }} or ${{ github.event.inputs.* }} directly in run/script steps.' `
+                -AttackMapping @('github-actions-script-injection')))
+        }
+
+        if (-not $hasFinding) {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'ScriptInjection' `
+                -Status 'Pass' `
+                -Severity 'Info' `
+                -Resource $wf.Path `
+                -Detail "Workflow '$($wf.Name)' has no detected untrusted event expression interpolation inside run/script blocks." `
+                -Remediation 'No action needed.'))
+        }
     }
 
     return $results.ToArray()

@@ -532,6 +532,8 @@ function Invoke-FylgyrScan {
             @{ Name = 'Test-ActionPinning';      Params = @{ WorkflowFiles = $workflowFiles; ActionFiles = $actionFiles } }
             @{ Name = 'Test-DangerousTrigger';   Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-ScriptInjection';    Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-ContainerPinning';   Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-UntrustedDownload';  Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-ArtifactPoisoning';  Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-OidcTrust';          Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-CacheIntegrity';     Params = @{ WorkflowFiles = $workflowFiles } }
@@ -640,6 +642,28 @@ function Invoke-FylgyrScan {
                     -Remediation 'Review the error and re-run.' `
                     -Target $target))
             }
+        }
+
+        # Lifecycle-script check combines workflow content with a package.json
+        # fetch, so it takes both workflow files and API parameters.
+        Write-Progress -Activity $target -Status 'Running Test-LifecycleScript' -Id 2 -ParentId 1
+        try {
+            $lifecycleWorkflowFiles = if (-not $fetchFailed -and $workflowFiles) { @($workflowFiles) } else { @() }
+            $checkResults = Test-LifecycleScript -Owner $Owner -Repo $Repo -Token $Token -WorkflowFiles $lifecycleWorkflowFiles
+            foreach ($r in $checkResults) {
+                $r.Target = $target
+                $results.Add($r)
+            }
+        }
+        catch {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'Test-LifecycleScript' `
+                -Status 'Error' `
+                -Severity 'Critical' `
+                -Resource $target `
+                -Detail "Check failed with error: $($_.Exception.Message)" `
+                -Remediation 'Review the error and re-run.' `
+                -Target $target))
         }
     }
 
