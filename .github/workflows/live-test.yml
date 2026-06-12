@@ -1,14 +1,12 @@
 name: Live API Test
 
-# Temporary live-verification workflow: runs the full Fylgyr scan (including
-# API-backed checks) against this repository using the FYLGYR_TOKEN repo
-# secret, so check behavior can be validated against real GitHub API
-# responses without sharing the token outside GitHub Actions.
+# Live-verification workflow: runs the full Fylgyr scan (including API-backed
+# checks) against this repository using the FYLGYR_TOKEN repo secret, so check
+# behavior is continuously validated against real GitHub API responses without
+# the token leaving GitHub Actions.
 
 on:
   push:
-    branches:
-      - claude/tool-security-supply-chain-vrzh6s
   workflow_dispatch:
 
 permissions:
@@ -16,6 +14,8 @@ permissions:
 
 jobs:
   live-scan:
+    # Forks do not have FYLGYR_TOKEN; only run in the canonical repository.
+    if: github.repository == 'pthoor/fylgyr'
     runs-on: ubuntu-latest
 
     steps:
