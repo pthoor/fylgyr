@@ -1909,6 +1909,166 @@ Describe 'Test-SignedCommit' {
         $results = Test-SignedCommit -Owner 'org' -Repo 'repo' -Token 'fake'
         $results[0].Status | Should -Be 'Pass'
     }
+
+    It 'passes when signing is enforced via a branch ruleset (classic protection absent)' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'repos/org/repo') {
+                return [PSCustomObject]@{ default_branch = 'main' }
+            }
+            if ($Endpoint -match 'required_signatures$') {
+                throw '404 Not Found'
+            }
+            if ($Endpoint -eq 'repos/org/repo/rulesets') {
+                return @(
+                    [PSCustomObject]@{
+                        target = 'branch'
+                        enforcement = 'active'
+                        conditions = [PSCustomObject]@{
+                            ref_name = [PSCustomObject]@{ include = @('refs/heads/main') }
+                        }
+                        rules = @(
+                            [PSCustomObject]@{ type = 'required_signatures' }
+                        )
+                    }
+                )
+            }
+            throw '404 Not Found'
+        }
+
+        $results = Test-SignedCommit -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+        $results[0].Detail | Should -Match 'ruleset'
+    }
+
+    It 'resolves the ruleset detail endpoint when the list response omits rules' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'repos/org/repo') {
+                return [PSCustomObject]@{ default_branch = 'main' }
+            }
+            if ($Endpoint -match 'required_signatures$') {
+                throw '404 Not Found'
+            }
+            if ($Endpoint -eq 'repos/org/repo/rulesets') {
+                return @(
+                    [PSCustomObject]@{
+                        id = 42
+                        target = 'branch'
+                        enforcement = 'active'
+                        conditions = [PSCustomObject]@{
+                            ref_name = [PSCustomObject]@{ include = @('~DEFAULT_BRANCH') }
+                        }
+                    }
+                )
+            }
+            if ($Endpoint -eq 'repos/org/repo/rulesets/42') {
+                return [PSCustomObject]@{
+                    rules = @(
+                        [PSCustomObject]@{ type = 'pull_request' }
+                        [PSCustomObject]@{ type = 'required_signatures' }
+                    )
+                }
+            }
+            throw '404 Not Found'
+        }
+
+        $results = Test-SignedCommit -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'warns when neither classic protection nor a ruleset enforces signing' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'repos/org/repo') {
+                return [PSCustomObject]@{ default_branch = 'main' }
+            }
+            if ($Endpoint -match 'required_signatures$') {
+                throw '404 Not Found'
+            }
+            if ($Endpoint -eq 'repos/org/repo/rulesets') {
+                return @(
+                    [PSCustomObject]@{
+                        target = 'branch'
+                        enforcement = 'active'
+                        conditions = [PSCustomObject]@{
+                            ref_name = [PSCustomObject]@{ include = @('refs/heads/main') }
+                        }
+                        rules = @(
+                            [PSCustomObject]@{ type = 'pull_request' }
+                            [PSCustomObject]@{ type = 'non_fast_forward' }
+                        )
+                    }
+                )
+            }
+            throw '404 Not Found'
+        }
+
+        $results = Test-SignedCommit -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Warning'
+        $results[0].AttackMapping | Should -Contain 'xz-utils-backdoor'
+    }
+
+    It 'does not credit signing from an inactive (disabled) ruleset' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'repos/org/repo') {
+                return [PSCustomObject]@{ default_branch = 'main' }
+            }
+            if ($Endpoint -match 'required_signatures$') {
+                throw '404 Not Found'
+            }
+            if ($Endpoint -eq 'repos/org/repo/rulesets') {
+                return @(
+                    [PSCustomObject]@{
+                        target = 'branch'
+                        enforcement = 'disabled'
+                        conditions = [PSCustomObject]@{
+                            ref_name = [PSCustomObject]@{ include = @('refs/heads/main') }
+                        }
+                        rules = @(
+                            [PSCustomObject]@{ type = 'required_signatures' }
+                        )
+                    }
+                )
+            }
+            throw '404 Not Found'
+        }
+
+        $results = Test-SignedCommit -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Warning'
+    }
+
+    It 'passes when classic protection is off but a ruleset enforces signing' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'repos/org/repo') {
+                return [PSCustomObject]@{ default_branch = 'main' }
+            }
+            if ($Endpoint -match 'required_signatures$') {
+                return [PSCustomObject]@{ enabled = $false }
+            }
+            if ($Endpoint -eq 'repos/org/repo/rulesets') {
+                return @(
+                    [PSCustomObject]@{
+                        target = 'branch'
+                        enforcement = 'active'
+                        conditions = [PSCustomObject]@{
+                            ref_name = [PSCustomObject]@{ include = @('refs/heads/main') }
+                        }
+                        rules = @(
+                            [PSCustomObject]@{ type = 'required_signatures' }
+                        )
+                    }
+                )
+            }
+            throw '404 Not Found'
+        }
+
+        $results = Test-SignedCommit -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Pass'
+    }
 }
 
 Describe 'Test-ForkPullPolicy' {

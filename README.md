@@ -608,7 +608,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `CodeScanning` | Code Scanning not configured or stale analyses | Medium | `solarwinds-orion` |
 | `RunnerHygiene` | Risky self-hosted runner configurations, dangerous triggers, missing trigger filters, org-wide runner groups, non-ephemeral runners, public repo runners | High | `github-actions-cryptomining`, `praetorian-runner-pivot`, `shai-hulud-runner-backdoor` |
 | `CodeOwner` | Missing `CodeOwner` file, single-owner catch-all rules, too few distinct reviewers | Medium | `xz-utils-backdoor` |
-| `SignedCommit` | Default branch does not require signed commits | Medium | `xz-utils-backdoor` |
+| `SignedCommit` | Default branch does not require signed commits — recognizes enforcement via classic branch protection *or* a modern branch ruleset (`required_signatures` rule) | Medium | `xz-utils-backdoor` |
 | `ForkPullPolicy` | `pull_request_target` combined with checkout of fork-controlled `head.sha`/`head.ref`/`github.head_ref` | High | `nx-pwn-request`, `tj-actions-shai-hulud`, `prt-scan-ai-automated` |
 | `EnvironmentProtection` | Deployment environments without required reviewers or branch policies | High | `unauthorized-env-deployment`, `prt-scan-ai-automated` |
 | `RepoVisibility` | Public repositories with internal/private naming patterns | Medium | `toyota-source-exposure` |
