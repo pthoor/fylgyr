@@ -155,6 +155,8 @@ This workflow intentionally does not fail PRs on findings. It uploads findings t
 
 Read the full maintainer guide for tool users: [docs/MAINTAINER-GUIDE.md](docs/MAINTAINER-GUIDE.md).
 
+If you're a **solo maintainer**, also read the [Solo-Maintainer Security Baseline](docs/SOLO-MAINTAINER.md) — a one-person hardening playbook (tiered by impact and friction) plus the `-SoloMaintainer` scan profile, which re-ranks the findings that structurally require a second person (require-approval, multi-owner CODEOWNERS) to non-blocking Info with compensating-control guidance, so your report is an achievable punch-list rather than unfixable noise.
+
 ## Recommended Protection Baseline
 
 Use this baseline as the default hardening profile for repositories scanned by Fylgyr.
@@ -171,7 +173,7 @@ Use this baseline as the default hardening profile for repositories scanned by F
 Recommended approval policy:
 
 - Team-maintained repo: require at least 1 approving review.
-- Solo-maintainer repo: allowing 0 approvals can be an acceptable tradeoff when the controls above are enforced and documented.
+- Solo-maintainer repo: allowing 0 approvals can be an acceptable tradeoff when the controls above are enforced and documented. See the dedicated [Solo-Maintainer Security Baseline](docs/SOLO-MAINTAINER.md) for the full one-person hardening playbook and the `-SoloMaintainer` scan profile.
 
 ### Tag protection (release tags)
 
@@ -553,6 +555,17 @@ Use `-ReusableWorkflowAllowlist` to permit external reusable workflow sources be
 ```powershell
 Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -ReusableWorkflowAllowlist @('my-trusted-org/*', 'security-team/reusable-workflows')
 ```
+
+### Solo-maintainer profile
+
+Use `-SoloMaintainer` to re-rank findings that structurally require a second person — the "0 approving reviews" branch finding and single-owner `CODEOWNERS` findings — to non-blocking `Info`, with a compensating-control note appended. Every solo-achievable guardrail (pinning, signing, egress, token scope, secret scanning, …) keeps its full severity. The recalibration runs before `-FailOn`, so the impossible-solo items don't break your CI gate:
+
+```powershell
+Invoke-Fylgyr -Owner 'your-user' -Repo 'your-repo' -SoloMaintainer -OutputFormat Console
+Invoke-Fylgyr -Owner 'your-user' -Repo 'your-repo' -SoloMaintainer -FailOn High
+```
+
+See the [Solo-Maintainer Security Baseline](docs/SOLO-MAINTAINER.md) for the full playbook.
 
 ### Pipeline input
 

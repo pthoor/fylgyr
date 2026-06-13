@@ -35,6 +35,8 @@ function Invoke-Fylgyr {
 
         [switch]$IncludeEvidence,
 
+        [switch]$SoloMaintainer,
+
         [switch]$IgnoreConfig,
 
         [ValidateSet('Info', 'Low', 'Medium', 'High', 'Critical')]
@@ -333,6 +335,12 @@ function Invoke-Fylgyr {
                     -Target $displayTarget))
                 $resultsArray = $allResults.ToArray()
             }
+        }
+
+        if ($SoloMaintainer) {
+            # Recalibrate before FailOn so structurally-impossible-solo findings
+            # do not block the gate, and so every output format reflects the profile.
+            $resultsArray = Resolve-FylgyrProfile -Results $resultsArray -ProfileName 'SoloMaintainer'
         }
 
         if ($FailOn) {
