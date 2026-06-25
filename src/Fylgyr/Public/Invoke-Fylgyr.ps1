@@ -549,11 +549,14 @@ function Invoke-FylgyrScan {
             @{ Name = 'Test-DependencyReview';   Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-ArtifactAttestation'; Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-ReusableWorkflowTrust'; Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; ReusableWorkflowAllowlist = $ReusableWorkflowAllowlist } }
-            @{ Name = 'Test-WorkflowPermission'; Params = @{ WorkflowFiles = $workflowFiles } }
-            @{ Name = 'Test-RunnerHygiene';      Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; Repo = $Repo; Token = $Token } }
-            @{ Name = 'Test-EgressControl';      Params = @{ WorkflowFiles = $workflowFiles } }
-            @{ Name = 'Test-PublishIntegrity';   Params = @{ WorkflowFiles = $workflowFiles } }
-            @{ Name = 'Test-ForkPullPolicy';     Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-WorkflowPermission';   Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-RunnerHygiene';        Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-EgressControl';        Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-PublishIntegrity';     Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-ForkPullPolicy';       Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-WorkflowConcurrency';  Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-ContinueOnError';      Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-RunnerPinning';        Params = @{ WorkflowFiles = $workflowFiles } }
         )
 
         for ($c = 0; $c -lt $workflowChecks.Count; $c++) {

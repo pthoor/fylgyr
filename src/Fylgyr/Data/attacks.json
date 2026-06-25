@@ -25,21 +25,25 @@
     "id": "tj-actions-shai-hulud",
     "name": "tj-actions/changed-files (Shai-Hulud) token exfiltration",
     "date": "2025-03-01",
-    "description": "A compromised GitHub Action release exfiltrated CI secrets through workflow logs, enabling unauthorized reuse of tokens and secrets in downstream environments.",
+    "description": "The tj-actions/changed-files GitHub Action was backdoored after an attacker compromised the upstream reviewdog/action-setup action (CVE-2025-30154) used in the tj-actions release workflow. The compromised action extracted the tj-actions maintainer token from CI logs, which was then used to publish a malicious release of tj-actions/changed-files (CVE-2025-30066). The backdoored release exfiltrated CI secrets — including cloud provider tokens and repository write credentials — through workflow run logs across thousands of downstream repositories.",
     "affectedPackages": [
-      "tj-actions/changed-files"
+      "tj-actions/changed-files",
+      "reviewdog/action-setup"
     ],
-    "cves": [],
+    "cves": ["CVE-2025-30066", "CVE-2025-30154"],
     "references": [
       "https://github.com/tj-actions/changed-files",
-      "https://github.com/advisories"
+      "https://github.com/advisories/GHSA-mrrh-fwg8-r2c3",
+      "https://www.stepsecurity.io/blog/harden-runner-detection-tj-actions-changed-files-action-is-compromised"
     ],
     "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-5"],
     "mitre": ["T1195.002", "T1552.001"],
     "detectionSignals": [
-      "Use of affected action versions",
-      "Workflows expose secrets to untrusted execution contexts",
-      "CI logs include sensitive values or token-like patterns"
+      "GitHub Actions referenced by mutable tag instead of full commit SHA",
+      "Release workflows depend on third-party actions without SHA pinning",
+      "Workflows grant write-all permissions or default to repository write permission",
+      "CI logs include sensitive values or token-like patterns",
+      "No egress controls to detect credential exfiltration from runners"
     ]
   },
   {
@@ -693,6 +697,178 @@
       "Workflow jobs, services, or docker:// uses reference container images by mutable tag instead of sha256 digest",
       "Use of :latest or untagged base images in CI",
       "No digest-update automation (dependabot/renovate) for container references"
+    ]
+  },
+  {
+    "id": "reviewdog-action-setup-2025",
+    "name": "reviewdog/action-setup supply chain compromise (CVE-2025-30154)",
+    "date": "2025-03-01",
+    "description": "The reviewdog/action-setup GitHub Action was compromised, with malicious code injected to exfiltrate CI secrets via workflow logs. This attack was the upstream root cause of the tj-actions/changed-files (Shai-Hulud) incident: the tj-actions release workflow consumed reviewdog/action-setup, allowing the compromised action to extract the tj-actions maintainer token. That token was then used to backdoor tj-actions/changed-files. The chain demonstrates how transitive trust in unpinned Actions creates multi-hop supply chain attack paths.",
+    "affectedPackages": [
+      "reviewdog/action-setup"
+    ],
+    "cves": ["CVE-2025-30154"],
+    "references": [
+      "https://github.com/reviewdog/action-setup/security/advisories/GHSA-xjxr-x4h8-946x",
+      "https://www.stepsecurity.io/blog/harden-runner-detection-tj-actions-changed-files-action-is-compromised"
+    ],
+    "owaspCiCd": ["CICD-SEC-3"],
+    "mitre": ["T1195.002", "T1552.001"],
+    "detectionSignals": [
+      "GitHub Actions referenced by mutable tag instead of full commit SHA",
+      "Release workflows depend on third-party actions without SHA pinning",
+      "No egress controls to detect secret exfiltration from runners",
+      "Single-step release workflows without separation of build and publish stages"
+    ]
+  },
+  {
+    "id": "artipacked-token-artifact-leak-2024",
+    "name": "ArtiPACKED: credential leak via GitHub Actions artifacts",
+    "date": "2024-08-01",
+    "description": "The ArtiPACKED technique (Palo Alto Unit 42) shows how GitHub Actions artifacts can inadvertently contain credential files. When actions/checkout runs with persist-credentials: true (the default), authentication tokens are written to .git/config. If an upload-artifact step archives the workspace, these tokens are included in the artifact and available to anyone with Actions read permission — including fork PR contributors. The attack requires no code execution: an attacker downloads the artifact and reads the credential from .git/config.",
+    "affectedPackages": [
+      "actions/checkout",
+      "actions/upload-artifact"
+    ],
+    "cves": [],
+    "references": [
+      "https://unit42.paloaltonetworks.com/github-actions-supply-chain-attack/"
+    ],
+    "owaspCiCd": ["CICD-SEC-5", "CICD-SEC-3"],
+    "mitre": ["T1552.001", "T1213"],
+    "detectionSignals": [
+      "actions/checkout used without persist-credentials: false in jobs that also run upload-artifact",
+      "Workflow artifacts uploaded from jobs that performed a git checkout",
+      "No token masking or credential cleanup before artifact packaging",
+      "Fork PR contributors have download access to workflow artifacts"
+    ]
+  },
+  {
+    "id": "ultralytics-cache-pivot-2024",
+    "name": "Ultralytics cache pivot supply chain attack",
+    "date": "2024-12-04",
+    "description": "The Ultralytics ML framework PyPI package was compromised when an attacker exploited mutable GitHub Actions cache namespaces. A malicious pull request from a fork poisoned the cache shared with main branch builds. The poisoned cache was restored in a subsequent trusted run, injecting malicious code into the package that was then published to PyPI with cryptomining capabilities affecting downstream users.",
+    "affectedPackages": [
+      "ultralytics"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.stepsecurity.io/blog/ultralytics-supply-chain-attack"
+    ],
+    "owaspCiCd": ["CICD-SEC-4", "CICD-SEC-3"],
+    "mitre": ["T1195.002"],
+    "detectionSignals": [
+      "Cache keys include github.head_ref or other PR-controllable values",
+      "Shared cache namespaces between trusted branch and fork PR workflows",
+      "No cache integrity verification before restoring cached build artifacts",
+      "PyPI or npm publish step in workflow that consumes build cache without explicit clean rebuild"
+    ]
+  },
+  {
+    "id": "miasma-worm-redhat-npm-2026",
+    "name": "Miasma self-propagating worm: @redhat-cloud-services npm packages",
+    "date": "2026-06-01",
+    "description": "The Miasma worm campaign (attributed to TeamPCP) targeted npm packages in the @redhat-cloud-services scope using the Phantom Gyp technique. A malicious binding.gyp file was injected into affected packages, executing arbitrary code during npm install via node-pre-gyp. The code harvested CI environment variables and GitHub tokens from consumer build pipelines, then used the stolen tokens to propagate the worm to additional packages the compromised account had publish access to.",
+    "affectedPackages": [
+      "@redhat-cloud-services (multiple packages)"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.stepsecurity.io/blog"
+    ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-5"],
+    "mitre": ["T1195.001", "T1552.001"],
+    "detectionSignals": [
+      "Dependency alerts for packages with unexpected binding.gyp additions",
+      "Outbound network egress from CI runners during npm install steps",
+      "No egress controls on runners during package installation",
+      "Long-lived npm tokens (NODE_AUTH_TOKEN, NPM_TOKEN) without least-privilege scope"
+    ]
+  },
+  {
+    "id": "miasma-worm-leo-platform-2026",
+    "name": "Miasma self-propagating worm: Leo Platform npm packages",
+    "date": "2026-06-24",
+    "description": "A second wave of the Miasma worm campaign (TeamPCP) compromised approximately 20 npm packages in the Leo Platform ecosystem using the Phantom Gyp technique. A binding.gyp install hook harvested tokens and publish credentials from CI pipelines consuming the affected packages. Compromised credentials were used to propagate the worm to sibling packages, demonstrating the campaign's ability to sustain multi-week activity across different package namespaces.",
+    "affectedPackages": [
+      "Leo Platform npm packages (approximately 20 packages)"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.stepsecurity.io/blog"
+    ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-5"],
+    "mitre": ["T1195.001", "T1552.001"],
+    "detectionSignals": [
+      "Unexpected binding.gyp or preinstall scripts in dependency packages",
+      "Outbound network connections during npm install on CI runners",
+      "No Dependabot or dependency review checks for install-hook scripts",
+      "Publish tokens stored as long-lived CI secrets rather than short-lived OIDC credentials"
+    ]
+  },
+  {
+    "id": "mastra-sapphire-sleet-2026",
+    "name": "Sapphire Sleet npm typosquat campaign: Mastra and AI tooling packages",
+    "date": "2026-06-17",
+    "description": "The North Korean threat actor Sapphire Sleet (BlueNoroff / APT38) published over 140 malicious npm packages typosquatting or name-spoofing popular AI and developer tooling packages including Mastra and easy-day-js. The packages used postinstall scripts to deploy staged backdoors targeting developer secrets, cloud credentials, and cryptocurrency wallets, with a specific focus on AI ecosystem supply chains as a lateral movement entry point.",
+    "affectedPackages": [
+      "mastra (typosquats)",
+      "easy-day-js (typosquats)",
+      "140+ npm packages"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.stepsecurity.io/blog"
+    ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-5"],
+    "mitre": ["T1195.001", "T1552.001", "T1078.004"],
+    "detectionSignals": [
+      "Dependabot alerts for packages with unexpected postinstall or preinstall scripts",
+      "Package names closely resembling popular AI framework packages",
+      "No egress controls to detect credential exfiltration during npm install",
+      "CI pipelines installing packages without hash or provenance verification"
+    ]
+  },
+  {
+    "id": "simonecorsi-mawesome-2026",
+    "name": "simonecorsi/mawesome GitHub Action tag repoint attack",
+    "date": "2026-06-24",
+    "description": "The simonecorsi/mawesome GitHub Action was compromised when an attacker gained unauthorized access and repointed the action's release tags to a malicious commit outside the legitimate branch history. Consumers pinned to the affected mutable tag — rather than an immutable commit SHA — would execute the malicious payload in their CI pipelines. The incident followed the same pattern as the actions-cool/issues-helper and Trivy tag poisoning attacks, reinforcing that mutable tag references are a persistent and recurring supply chain attack vector.",
+    "affectedPackages": [
+      "simonecorsi/mawesome"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.stepsecurity.io/blog"
+    ],
+    "owaspCiCd": ["CICD-SEC-3"],
+    "mitre": ["T1195.002"],
+    "detectionSignals": [
+      "GitHub Action referenced by mutable tag instead of full 40-character commit SHA",
+      "Action tag resolves to a commit not reachable from any named branch",
+      "No CI policy requiring SHA-pinned third-party actions",
+      "No egress block policy to limit blast radius from a compromised action"
+    ]
+  },
+  {
+    "id": "microsoft-durabletask-teampcp-2026",
+    "name": "microsoft-durabletask PyPI compromise (TeamPCP)",
+    "date": "2026-05-19",
+    "description": "The TeamPCP threat actor compromised the microsoft-durabletask Python package on PyPI, publishing a malicious version that harvested developer secrets and CI environment credentials from consumer environments. The attack targeted the package's publish workflow or maintainer credentials, allowing the attacker to push a backdoored release under the legitimate package name. This incident followed TeamPCP's Miasma worm campaign and demonstrated the group's expansion from npm to the PyPI ecosystem.",
+    "affectedPackages": [
+      "microsoft-durabletask (PyPI)"
+    ],
+    "cves": [],
+    "references": [
+      "https://www.stepsecurity.io/blog"
+    ],
+    "owaspCiCd": ["CICD-SEC-3", "CICD-SEC-5"],
+    "mitre": ["T1195.002", "T1552.001"],
+    "detectionSignals": [
+      "PyPI packages installed without hash verification (pip install without --require-hashes)",
+      "Dependabot alerts for compromised Python dependency versions",
+      "Publish workflows using long-lived PyPI tokens instead of OIDC trusted publishing",
+      "No egress controls on CI runners during package installation steps"
     ]
   }
 ]

@@ -1,4 +1,4 @@
-function Test-CodeOwner {
+﻿function Test-CodeOwner {
     [CmdletBinding()]
     [OutputType([PSCustomObject[]])]
     param(
@@ -162,6 +162,88 @@ function Test-CodeOwner {
             -Detail "CODEOWNERS found with $($rules.Count) rule(s) and $($distinctOwners.Count) distinct owner(s). No single-owner catch-all detected." `
             -Remediation 'No action needed.' `
             -Target $target))
+
+        # CODEOWNERS without ruleset enforcement is advisory only. Check if at least
+        # one active branch ruleset requires code-owner review on the default branch.
+        $codeOwnerEnforced = $false
+        try {
+            $defaultBranch = 'main'
+            try {
+                $repoInfo = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo" -Token $Token
+                if ($repoInfo -and $repoInfo.PSObject.Properties['default_branch'] -and $repoInfo.default_branch) {
+                    $defaultBranch = [string]$repoInfo.default_branch
+                }
+            }
+            catch {
+                Write-Debug "CodeOwner enforcement check: could not read default branch for '${target}': $($_.Exception.Message)"
+            }
+
+            $rulesetsResp = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/rulesets" -Token $Token
+            $rulesetList = if ($rulesetsResp -is [System.Array]) {
+                @($rulesetsResp)
+            }
+            elseif ($rulesetsResp -and $rulesetsResp.PSObject.Properties['rulesets']) {
+                @($rulesetsResp.rulesets)
+            }
+            elseif ($rulesetsResp) {
+                @($rulesetsResp)
+            }
+            else {
+                @()
+            }
+
+            foreach ($rs in $rulesetList) {
+                $isActive = $rs.PSObject.Properties['enforcement'] -and $rs.enforcement -in @('active', 'evaluate')
+                $targetsDefault = (-not $rs.PSObject.Properties['conditions'] -or -not $rs.conditions) -or
+                    ($rs.conditions | ConvertTo-Json -Depth 4) -match ('DEFAULT_BRANCH|' + [regex]::Escape($defaultBranch))
+
+                if (-not $isActive -or -not $targetsDefault -or $rs.target -ne 'branch') {
+                    continue
+                }
+
+                $rsDetail = $null
+                if ($rs.PSObject.Properties['id'] -and $rs.id) {
+                    try {
+                        $rsDetail = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/rulesets/$($rs.id)" -Token $Token
+                    }
+                    catch {
+                        Write-Debug "CodeOwner enforcement: could not fetch ruleset $($rs.id): $($_.Exception.Message)"
+                    }
+                }
+
+                $ruleSource = if ($rsDetail) { $rsDetail } else { $rs }
+                if (-not $ruleSource.PSObject.Properties['rules'] -or -not $ruleSource.rules) {
+                    continue
+                }
+
+                foreach ($rule in @($ruleSource.rules)) {
+                    if ($rule.type -ne 'pull_request') { continue }
+                    if ($rule.PSObject.Properties['parameters'] -and $rule.parameters -and
+                        $rule.parameters.PSObject.Properties['require_code_owner_review'] -and
+                        $rule.parameters.require_code_owner_review -eq $true) {
+                        $codeOwnerEnforced = $true
+                        break
+                    }
+                }
+
+                if ($codeOwnerEnforced) { break }
+            }
+        }
+        catch {
+            Write-Debug "CodeOwner enforcement check failed for '${target}': $($_.Exception.Message)"
+        }
+
+        if (-not $codeOwnerEnforced) {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'CodeOwner' `
+                -Status 'Warning' `
+                -Severity 'Medium' `
+                -Resource "$target ($foundPath)" `
+                -Detail "CODEOWNERS file exists but no active branch ruleset enforces 'require_code_owner_review' on the default branch ('$defaultBranch'). Without ruleset enforcement, CODEOWNERS is advisory — maintainers can approve and merge their own changes to paths they own." `
+                -Remediation "Add a 'pull_request' rule with 'require_code_owner_review: true' to an active branch ruleset targeting '$defaultBranch' in Settings → Rules → Rulesets." `
+                -AttackMapping @('xz-utils-backdoor') `
+                -Target $target))
+        }
     }
     else {
         foreach ($f in $findings) { $results.Add($f) }
