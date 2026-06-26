@@ -6,20 +6,42 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-26
+
 ### Added
 
-- Six new checks:
+- Ten new checks:
 	- `Test-DefaultTokenPermission` — flags platform default `GITHUB_TOKEN` workflow permission set to `write` and workflows allowed to approve pull requests, at both repo and org scope.
 	- `Test-DeployKey` — flags deploy keys with write access (MFA-less, unattributed push path) and stale read-only keys.
 	- `Test-TagProtection` — evaluates tag-ruleset rule depth: active tag rulesets missing `deletion`/`non_fast_forward` rules (the release retagging primitive). Absence of tag rulesets remains `Test-Rulesets` territory.
 	- `Test-OrgSecretVisibility` — flags organization Actions secrets with `visibility: all` (org scope, runs with `-IncludeOrgChecks`).
 	- `Test-AccountSecurity` — verifies two-factor authentication on personal accounts (Fail/Critical when disabled); degrades to an Info advisory when the token does not belong to the scanned account.
 	- `Test-AccountKey` — flags stale account SSH keys (>730 days) and expired GPG signing keys on personal accounts; never echoes key material.
+	- `Test-WorkflowConcurrency` — detects deployment jobs targeting an environment without a concurrency group, preventing race-condition bypass of approval gates. Maps to `unauthorized-env-deployment`.
+	- `Test-ContinueOnError` — flags security-gate jobs/steps with `continue-on-error: true`, which silences scan failures and lets compromised pipelines proceed undetected. Maps to `solarwinds-orion`, `codecov-bash-uploader`.
+	- `Test-RunnerPinning` — detects mutable `-latest` runner labels, including labels supplied via `strategy.matrix`, causing silent environment drift. Maps to `trivy-supply-chain-2026`, `solarwinds-orion`.
+	- `Test-DefaultWorkflowPermission` — flags repo-level `GITHUB_TOKEN` default set to `write` and Actions allowed to approve pull requests (repo scope; `Test-DefaultTokenPermission` covers both repo and org scope). Maps to `tj-actions-shai-hulud`, `nx-pwn-request`, `prt-scan-ai-automated`.
+- Eight new attack catalog entries:
+	- `reviewdog-action-setup-2025` (CVE-2025-30154) — root cause of the tj-actions/changed-files Shai-Hulud supply chain incident.
+	- `artipacked-token-artifact-leak-2024` — GitHub Actions artifact-based GITHUB_TOKEN exfiltration.
+	- `ultralytics-cache-pivot-2024` — Actions cache poisoning used to compromise downstream builds.
+	- `miasma-worm-redhat-npm-2026` — self-propagating npm worm targeting Red Hat packages.
+	- `miasma-worm-leo-platform-2026` — npm worm variant targeting the Leo AI platform.
+	- `mastra-sapphire-sleet-2026` — SAPPHIRE SLEET campaign compromise of Mastra AI packages.
+	- `simonecorsi-mawesome-2026` — popular GitHub Actions repository compromised via stale token.
+	- `microsoft-durabletask-teampcp-2026` — TEAM PCP group compromise of microsoft/durabletask package.
 - `Test-ActionPinning` now also scans composite action definitions (`action.yml`/`action.yaml`) for unpinned `uses:` references via the new `Get-ActionDefinitionFile` helper — closes the tj-actions-style composite-action propagation path.
 - `Test-ScriptInjection` now detects bracket-notation event expressions, `actions/github-script` `script:` inputs, additional unsafe contexts (`workflow_run.pull_requests`, `pull_request_review_comment.body`), and untrusted input routed indirectly through `env:` variables.
+- Solo-maintainer profile (`-SoloMaintainer` switch) re-ranks structurally impossible findings (multi-reviewer requirements) to Info with a compensating context note. See `docs/SOLO-MAINTAINER.md`.
 
 ### Changed
 
+- `Test-WorkflowPermission` now detects job-level `permissions: write-all` even when no top-level permissions block is present (previously the medium "missing top-level" finding eclipsed the higher-severity job-level signal).
+- `Test-BranchProtection` raises `enforce_admins` finding to High severity and expands attack mapping to `trivy-force-push-main`, `dropbox-github-breach`, `xz-utils-backdoor`.
+- `Test-SecretScanning` adds push-protection posture as a secondary finding when secret scanning is enabled but push protection is not.
+- `Test-EnvironmentProtection` adds `prevent_self_review` enforcement check; a deployment environment that allows self-review is flagged.
+- `Test-Rulesets` detects `bypass_actors` configured on default-branch rulesets, which can silently nullify all ruleset protections.
+- `Test-CodeOwner` detects CODEOWNERS enforcement via branch rulesets in addition to classic branch protection; rulesets API call is now paginated (`?per_page=100` + `-AllPages`) to prevent false negatives on repos with many rulesets.
 - Org-level Actions secret visibility moved from `Test-ForkSecretExposure` into the new org-scoped `Test-OrgSecretVisibility` — it previously re-emitted once per repo and silently no-oped without org permissions. Single-repo scans no longer surface this signal; run an org scan with `-IncludeOrgChecks`.
 - `Test-ForkSecretExposure` now also covers `workflow_run`-triggered workflows referencing non-`GITHUB_TOKEN` secrets, and detects bracket-notation secret references.
 - `Test-DangerousTrigger` now distinguishes "approval gate verification forbidden by token scope" (single Info per repo) from "no approval gate configured" instead of silently suppressing on 403.
@@ -31,6 +53,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Baseline JSON parsing is now depth-bounded (`-Depth 25`) in `Compare-FylgyrBaseline` and `Get-FylgyrBaselineFingerprintSet`.
 - `Send-FylgyrToLogAnalytics` now clears the plaintext client secret immediately after the token request (try/finally).
 - Documented baseline-tampering risk: baseline JSON drives finding suppression, so baselines must be write-protected from contributors (README Drift Mode + docs/SENTINEL.md).
+- `Test-DefaultWorkflowPermission` uses pre-captured `$msg` in error Detail strings instead of `$($_.Exception.Message)` to prevent accidental stack trace leakage.
 
 ## [0.7.5] - 2026-05-21
 
