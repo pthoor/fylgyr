@@ -1215,6 +1215,7 @@ jobs:
     }
 
     It 'normalizes org-check names when Invoke-FylgyrOrgScan records check errors' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { return [PSCustomObject]@{ Type = 'Organization'; Login = 'acme'; PlanName = 'unknown'; TokenOwner = 'unknown'; TokenMatchesOwner = $false } }
         Mock -ModuleName Fylgyr Test-OrgMfaPolicy { throw 'boom' }
         Mock -ModuleName Fylgyr Test-OrgDefaultPermissions { return @() }
         Mock -ModuleName Fylgyr Test-IpAllowlist { return @() }

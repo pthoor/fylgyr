@@ -430,11 +430,11 @@
         $findings.Add((Format-FylgyrResult `
             -CheckName 'BranchProtection' `
             -Status 'Fail' `
-            -Severity 'Medium' `
+            -Severity 'High' `
             -Resource $resource `
-            -Detail "Branch '$defaultBranch' does not apply protection rules to administrators (enforce_admins is disabled). A single compromised admin account can push directly to the default branch, bypassing every review and status-check requirement - the path attackers take after phishing or stealing maintainer credentials." `
-            -Remediation "Enable 'Do not allow bypassing the above settings' in Settings → Branches so administrators are subject to the same protection rules." `
-            -AttackMapping @('trivy-force-push-main', 'dropbox-github-breach') `
+            -Detail "Branch '$defaultBranch' does not enforce protection rules for administrators (enforce_admins is disabled). A single compromised admin account can bypass all branch protection rules and push directly to the default branch without review — the exact escalation path in the xz-utils social-engineering attack and broad maintainer-account compromise patterns." `
+            -Remediation "Enable 'Include administrators' (enforce_admins) in Settings → Branches → Branch protection rules. Alternatively, migrate to branch rulesets, which enforce protection consistently for all users including owners." `
+            -AttackMapping @('trivy-force-push-main', 'dropbox-github-breach', 'xz-utils-backdoor') `
             -Target $target))
     }
 
@@ -505,22 +505,7 @@
             -Target $target))
     }
 
-    # Enforce admins: if admins can bypass branch protection, a single compromised
-    # admin account can push directly to the default branch without review.
-    if ($protection.PSObject.Properties['enforce_admins'] -and
-        $protection.enforce_admins -and
-        $protection.enforce_admins.PSObject.Properties['enabled'] -and
-        $protection.enforce_admins.enabled -ne $true) {
-        $findings.Add((Format-FylgyrResult `
-            -CheckName 'BranchProtection' `
-            -Status 'Fail' `
-            -Severity 'High' `
-            -Resource $resource `
-            -Detail "Branch '$defaultBranch' does not enforce protection rules for administrators. A single compromised admin account can bypass all branch protection rules and push directly to the default branch without review — the exact escalation path in the xz-utils social-engineering attack and broad maintainer-account compromise patterns." `
-            -Remediation "Enable 'Include administrators' (enforce_admins) in Settings → Branches → Branch protection rules. Alternatively, migrate to branch rulesets, which enforce protection consistently for all users including owners." `
-            -AttackMapping @('xz-utils-backdoor', 'codecov-bash-uploader') `
-            -Target $target))
-    }
+
 
     if ($findings.Count -eq 0) {
         $results.Add((Format-FylgyrResult `
