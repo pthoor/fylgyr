@@ -103,17 +103,17 @@ function Test-ForkSecretExposure {
     # risk unless a pull_request_target or workflow_run trigger is present; general
     # environment protection is handled by Test-EnvironmentProtection.
     $hasDangerousTrigger = $false
+    $allTriggerPatterns = @(
+        '(?m)^\s*pull_request_target\s*:'
+        '(?m)^\s*on\s*:\s*pull_request_target\s*(?:#.*)?$'
+        '(?m)^\s*on\s*:\s*\[[^\]]*\bpull_request_target\b[^\]]*\]'
+        '(?m)^\s*workflow_run\s*:'
+        '(?m)^\s*on\s*:\s*workflow_run\s*(?:#.*)?$'
+        '(?m)^\s*on\s*:\s*\[[^\]]*\bworkflow_run\b[^\]]*\]'
+    )
     foreach ($wf in $WorkflowFiles) {
         $strippedLines = ($wf.Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' }
         $wfStripped = $strippedLines -join "`n"
-        $allTriggerPatterns = @(
-            '(?m)^\s*pull_request_target\s*:'
-            '(?m)^\s*on\s*:\s*pull_request_target\s*(?:#.*)?$'
-            '(?m)^\s*on\s*:\s*\[[^\]]*\bpull_request_target\b[^\]]*\]'
-            '(?m)^\s*workflow_run\s*:'
-            '(?m)^\s*on\s*:\s*workflow_run\s*(?:#.*)?$'
-            '(?m)^\s*on\s*:\s*\[[^\]]*\bworkflow_run\b[^\]]*\]'
-        )
         foreach ($p in $allTriggerPatterns) {
             if ($wfStripped -match $p) {
                 $hasDangerousTrigger = $true
