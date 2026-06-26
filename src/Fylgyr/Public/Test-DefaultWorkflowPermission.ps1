@@ -25,7 +25,7 @@
 
         if ($msg -match '403') {
             $results.Add((Format-FylgyrResult `
-                -CheckName 'DefaultWorkflowPermissions' `
+                -CheckName 'DefaultWorkflowPermission' `
                 -Status 'Error' `
                 -Severity 'Medium' `
                 -Resource $target `
@@ -37,7 +37,7 @@
 
         if ($msg -match '404') {
             $results.Add((Format-FylgyrResult `
-                -CheckName 'DefaultWorkflowPermissions' `
+                -CheckName 'DefaultWorkflowPermission' `
                 -Status 'Pass' `
                 -Severity 'Info' `
                 -Resource $target `
@@ -48,11 +48,11 @@
         }
 
         $results.Add((Format-FylgyrResult `
-            -CheckName 'DefaultWorkflowPermissions' `
+            -CheckName 'DefaultWorkflowPermission' `
             -Status 'Error' `
             -Severity 'Medium' `
             -Resource $target `
-            -Detail "Unexpected error reading default workflow permissions: $($_.Exception.Message)" `
+            -Detail "Unexpected error reading default workflow permissions: $msg" `
             -Remediation 'Re-run with a valid token and verify network access to api.github.com.' `
             -Target $target))
         return $results.ToArray()
@@ -60,7 +60,7 @@
 
     if (-not $response) {
         $results.Add((Format-FylgyrResult `
-            -CheckName 'DefaultWorkflowPermissions' `
+            -CheckName 'DefaultWorkflowPermission' `
             -Status 'Error' `
             -Severity 'Medium' `
             -Resource $target `
@@ -81,7 +81,7 @@
 
     if ($defaultPermissions -eq 'write') {
         $findings.Add((Format-FylgyrResult `
-            -CheckName 'DefaultWorkflowPermissions' `
+            -CheckName 'DefaultWorkflowPermission' `
             -Status 'Fail' `
             -Severity 'High' `
             -Resource $target `
@@ -100,7 +100,7 @@
 
     if ($canApprovePrs) {
         $findings.Add((Format-FylgyrResult `
-            -CheckName 'DefaultWorkflowPermissions' `
+            -CheckName 'DefaultWorkflowPermission' `
             -Status 'Fail' `
             -Severity 'Medium' `
             -Resource $target `
@@ -112,7 +112,7 @@
 
     if ($findings.Count -eq 0) {
         $results.Add((Format-FylgyrResult `
-            -CheckName 'DefaultWorkflowPermissions' `
+            -CheckName 'DefaultWorkflowPermission' `
             -Status 'Pass' `
             -Severity 'Info' `
             -Resource $target `

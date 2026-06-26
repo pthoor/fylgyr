@@ -178,7 +178,7 @@
                 Write-Debug "CodeOwner enforcement check: could not read default branch for '${target}': $($_.Exception.Message)"
             }
 
-            $rulesetsResp = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/rulesets" -Token $Token
+            $rulesetsResp = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/rulesets?per_page=100" -Token $Token -AllPages
             $rulesetList = if ($rulesetsResp -is [System.Array]) {
                 @($rulesetsResp)
             }

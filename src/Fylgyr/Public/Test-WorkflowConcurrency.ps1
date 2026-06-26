@@ -31,7 +31,13 @@ function Test-WorkflowConcurrency {
             continue
         }
 
-        $hasWorkflowConcurrency = $stripped -match '(?m)^\s*concurrency\s*:'
+        $strippedLines = $stripped -split "`n"
+        $jobsLineIdx = -1
+        for ($li = 0; $li -lt $strippedLines.Count; $li++) {
+            if ($strippedLines[$li] -match '^\s*jobs\s*:') { $jobsLineIdx = $li; break }
+        }
+        $preJobsContent = if ($jobsLineIdx -gt 0) { ($strippedLines[0..($jobsLineIdx - 1)]) -join "`n" } else { '' }
+        $hasWorkflowConcurrency = $preJobsContent -match '(?m)^\s*concurrency\s*:'
 
         $jobsMissingConcurrency = [System.Collections.Generic.List[string]]::new()
         foreach ($job in $jobBlocks) {

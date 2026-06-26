@@ -48,6 +48,16 @@
                 -Remediation "Replace 'permissions: write-all' with the minimal set of scopes required. Use 'permissions: read-all' as a baseline and explicitly add write scopes only where needed (for example, 'contents: write' for release jobs)." `
                 -AttackMapping @('tj-actions-shai-hulud', 'nx-pwn-request')))
         }
+        elseif ($hasJobLevelWriteAll -and -not $hasTopLevelPermissions) {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'WorkflowPermission' `
+                -Status 'Fail' `
+                -Severity 'High' `
+                -Resource $wf.Path `
+                -Detail "Workflow '$($wf.Name)' sets 'permissions: write-all' at the job level and has no top-level permissions block. The GITHUB_TOKEN inherits the repository default (potentially write) for jobs that do not set write-all, and the job with write-all has maximum permissions — the exact ambient authority harvested in the tj-actions/changed-files Shai-Hulud incident." `
+                -Remediation "Add 'permissions: read-all' at the top level to restrict the token default, and replace job-level 'permissions: write-all' with the minimal required scopes for that job (for example, 'contents: write' for a release job)." `
+                -AttackMapping @('tj-actions-shai-hulud', 'nx-pwn-request')))
+        }
         elseif (-not $hasTopLevelPermissions) {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'WorkflowPermission' `

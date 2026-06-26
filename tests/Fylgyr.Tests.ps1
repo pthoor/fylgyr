@@ -3256,7 +3256,7 @@ jobs:
         $results[0].Detail | Should -Match 'windows-latest'
     }
 
-    It 'skips matrix variable expressions' {
+    It 'detects -latest labels supplied via strategy.matrix' {
         $wf = @([PSCustomObject]@{
             Name    = 'ci.yml'
             Path    = '.github/workflows/ci.yml'
@@ -3278,8 +3278,9 @@ jobs:
 
         $results = Test-RunnerPinning -WorkflowFiles $wf
         $results | Should -HaveCount 1
-        $results[0].Status | Should -Be 'Pass'
-        $results[0].Detail | Should -Match "does not use any '-latest'"
+        $results[0].Status | Should -Be 'Warning'
+        $results[0].Detail | Should -Match 'ubuntu-latest'
+        $results[0].Detail | Should -Match 'windows-latest'
     }
 
     It 'ignores comment lines containing -latest' {

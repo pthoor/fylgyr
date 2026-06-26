@@ -11,24 +11,32 @@
     foreach ($wf in $WorkflowFiles) {
         $stripped = (($wf.Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
 
-        # Match runs-on values that end in -latest, excluding matrix variable expressions.
-        # Handles: scalar (runs-on: ubuntu-latest), array items, and quoted values.
+        # Match runs-on values that end in -latest, including matrix-supplied labels.
         $latestMatches = [System.Collections.Generic.List[string]]::new()
         $lines = $stripped -split "`n"
+        $hasMatrixRunsOn = $false
 
         foreach ($line in $lines) {
-            if ($line -notmatch '^\s*runs-on\s*:') {
-                continue
-            }
-
-            # Skip matrix variable expressions - these are dynamic and not pinnable here
+            if ($line -notmatch '^\s*runs-on\s*:') { continue }
             if ($line -match '\$\{\{') {
-                continue
+                $hasMatrixRunsOn = $true
             }
+            else {
+                foreach ($m in [regex]::Matches($line, '[\w.-]+-latest\b')) {
+                    $latestMatches.Add([string]$m.Value)
+                }
+            }
+        }
 
-            $runsOnMatches = [regex]::Matches($line, "[\w.-]+-latest\b")
-            foreach ($m in $runsOnMatches) {
-                $latestMatches.Add([string]$m.Value)
+        # When runs-on uses a matrix variable, scan the matrix definition for -latest labels.
+        # Exclude uses: lines (action refs) to avoid false positives on action version strings.
+        if ($hasMatrixRunsOn) {
+            foreach ($line in $lines) {
+                if ($line -match '^\s*runs-on\s*:') { continue }
+                if ($line -match '^\s*uses\s*:') { continue }
+                foreach ($m in [regex]::Matches($line, '[\w.-]+-latest\b')) {
+                    $latestMatches.Add([string]$m.Value)
+                }
             }
         }
 
