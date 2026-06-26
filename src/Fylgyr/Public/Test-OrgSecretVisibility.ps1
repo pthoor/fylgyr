@@ -27,7 +27,18 @@ function Test-OrgSecretVisibility {
     }
 
     try {
-        $secrets = @(Invoke-GitHubApi -Endpoint "orgs/$Owner/actions/secrets?per_page=100" -Token $Token -AllPages)
+        $secretsRaw = @(Invoke-GitHubApi -Endpoint "orgs/$Owner/actions/secrets?per_page=100" -Token $Token -AllPages)
+        $secretsList = [System.Collections.Generic.List[PSCustomObject]]::new()
+        foreach ($item in $secretsRaw) {
+            if ($item -and $item.PSObject.Properties['secrets'] -and $item.secrets) {
+                foreach ($s in @($item.secrets)) { $secretsList.Add($s) }
+            }
+            elseif ($item) {
+                # Backward compatibility: allow mocks/wrappers that return the secret objects directly.
+                $secretsList.Add($item)
+            }
+        }
+        $secrets = $secretsList.ToArray()
     }
     catch {
         $msg = $_.Exception.Message
