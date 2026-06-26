@@ -2,14 +2,25 @@ function Test-ActionPinning {
     [CmdletBinding()]
     [OutputType([PSCustomObject[]])]
     param(
-        [Parameter(Mandatory)]
-        [PSCustomObject[]]$WorkflowFiles
+        [AllowEmptyCollection()]
+        [PSCustomObject[]]$WorkflowFiles = @(),
+
+        # Composite/JS action definition files (action.yml). Their `uses:` steps are
+        # scanned with the same rules so an unpinned dependency inside a local action
+        # is not missed.
+        [AllowEmptyCollection()]
+        [PSCustomObject[]]$ActionFiles = @()
     )
 
     $results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-    foreach ($wf in $WorkflowFiles) {
-        $lines = $wf.Content -split "`n"
+    function Add-PinningResultsForFile {
+        param(
+            [PSCustomObject]$File,
+            [bool]$IsComposite
+        )
+
+        $lines = $File.Content -split "`n"
         $unpinnedFound = $false
 
         for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -39,12 +50,18 @@ function Test-ActionPinning {
 
             $unpinnedFound = $true
             $lineNum = $i + 1
+            $detail = if ($IsComposite) {
+                "Unpinned action reference in composite action file: $target"
+            }
+            else {
+                "Unpinned action reference: $target"
+            }
             $results.Add((Format-FylgyrResult `
                 -CheckName 'ActionPinning' `
                 -Status 'Fail' `
                 -Severity 'High' `
-                -Resource "$($wf.Path):$lineNum" `
-                -Detail "Unpinned action reference: $target" `
+                -Resource "$($File.Path):$lineNum" `
+                -Detail $detail `
                 -Remediation 'Pin this action to a full 40-character commit SHA instead of a tag or branch.' `
                 -AttackMapping @('trivy-tag-poisoning', 'tj-actions-shai-hulud', 'actions-cool-issues-helper-compromise')))
         }
@@ -54,10 +71,18 @@ function Test-ActionPinning {
                 -CheckName 'ActionPinning' `
                 -Status 'Pass' `
                 -Severity 'Info' `
-                -Resource $wf.Path `
+                -Resource $File.Path `
                 -Detail 'All action references are SHA-pinned.' `
                 -Remediation 'None.'))
         }
+    }
+
+    foreach ($wf in @($WorkflowFiles)) {
+        Add-PinningResultsForFile -File $wf -IsComposite $false
+    }
+
+    foreach ($af in @($ActionFiles)) {
+        Add-PinningResultsForFile -File $af -IsComposite $true
     }
 
     return $results.ToArray()

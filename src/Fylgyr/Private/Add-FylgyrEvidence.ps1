@@ -25,7 +25,8 @@ function Add-FylgyrEvidence {
     try {
         $repoInfo = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo" -Token $Token
         $defaultBranch = if ($repoInfo -and $repoInfo.default_branch) { [string]$repoInfo.default_branch } else { 'main' }
-        $headCommit = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/commits/$defaultBranch" -Token $Token
+        $escapedBranch = ConvertTo-FylgyrEscapedPathSegment -Value $defaultBranch
+        $headCommit = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/commits/$escapedBranch" -Token $Token
         if ($headCommit -and $headCommit.sha) {
             $commitSha = [string]$headCommit.sha
         }

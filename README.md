@@ -155,6 +155,8 @@ This workflow intentionally does not fail PRs on findings. It uploads findings t
 
 Read the full maintainer guide for tool users: [docs/MAINTAINER-GUIDE.md](docs/MAINTAINER-GUIDE.md).
 
+If you're a **solo maintainer**, also read the [Solo-Maintainer Security Baseline](docs/SOLO-MAINTAINER.md) — a one-person hardening playbook (tiered by impact and friction) plus the `-SoloMaintainer` scan profile, which re-ranks the findings that structurally require a second person (require-approval, multi-owner CODEOWNERS) to non-blocking Info with compensating-control guidance, so your report is an achievable punch-list rather than unfixable noise.
+
 ## Recommended Protection Baseline
 
 Use this baseline as the default hardening profile for repositories scanned by Fylgyr.
@@ -171,7 +173,7 @@ Use this baseline as the default hardening profile for repositories scanned by F
 Recommended approval policy:
 
 - Team-maintained repo: require at least 1 approving review.
-- Solo-maintainer repo: allowing 0 approvals can be an acceptable tradeoff when the controls above are enforced and documented.
+- Solo-maintainer repo: allowing 0 approvals can be an acceptable tradeoff when the controls above are enforced and documented. See the dedicated [Solo-Maintainer Security Baseline](docs/SOLO-MAINTAINER.md) for the full one-person hardening playbook and the `-SoloMaintainer` scan profile.
 
 ### Tag protection (release tags)
 
@@ -290,6 +292,9 @@ Drift mode requires at least one of:
 - Organization audit-log API access (`admin:org`, GitHub Enterprise Cloud).
 
 If neither is available, drift mode fails with an explicit prerequisite error.
+
+> [!IMPORTANT]
+> **Baseline integrity.** The baseline JSON drives finding *suppression* — anyone who can modify the baseline file can silently hide drift findings from the next scan. Store baselines where the scan identity has read access but ordinary contributors do not, never commit them to the repository being scanned, and prefer immutable storage (see [docs/SENTINEL.md](docs/SENTINEL.md) for an Azure Blob immutability-policy pattern).
 
 ## Microsoft Sentinel Quick Start
 
@@ -470,7 +475,7 @@ The workflow uses the built-in `GITHUB_TOKEN` with minimal permissions:
 | `contents: read` | Read workflow files and repository content |
 | `security-events: write` | Upload SARIF results to Code Scanning |
 
-These two permissions are the only `GITHUB_TOKEN` scopes needed for CI execution and SARIF upload. They cover workflow-file analysis checks such as ActionPinning, ScriptInjection, ArtifactPoisoning, OidcTrust, CacheIntegrity, TriggerFilter, DependencyReview, ArtifactAttestation, ReusableWorkflowTrust, WorkflowPermission, PublishIntegrity, and EgressControl.
+These two permissions are the only `GITHUB_TOKEN` scopes needed for CI execution and SARIF upload. They cover workflow-file analysis checks such as ActionPinning, ScriptInjection, ContainerPinning, UntrustedDownload, ArtifactPoisoning, OidcTrust, CacheIntegrity, TriggerFilter, DependencyReview, ArtifactAttestation, ReusableWorkflowTrust, WorkflowPermission, PublishIntegrity, and EgressControl.
 
 To read GitHub security alert APIs (Secret Scanning, Dependabot alerts, Code Scanning alerts), use a fine-grained PAT with the corresponding read permissions.
 
@@ -539,7 +544,9 @@ Use `-IncludeOrgChecks` to run organization-level policy checks once per owner b
 Invoke-Fylgyr -Owner 'myorg' -IncludeOrgChecks
 ```
 
-Org-level checks are intentionally skipped for single-repository scans (`-Repo`) to keep repo audits focused and deterministic.
+Org-level checks are intentionally skipped for single-repository scans (`-Repo`) to keep repo audits focused and deterministic. Note that org-level Actions secret visibility (`OrgSecretVisibility`) is part of the org check set, so that signal requires an org-wide scan with `-IncludeOrgChecks`.
+
+When the owner is a **personal account**, `-IncludeOrgChecks` emits a single consolidated notice listing the organization-policy checks that do not apply, and runs the personal-account equivalents (`AccountSecurity`, `AccountKey`) instead — so a solo-maintainer scan produces signal rather than a dozen "not applicable" rows.
 
 ### Reusable workflow trust allowlist
 
@@ -548,6 +555,17 @@ Use `-ReusableWorkflowAllowlist` to permit external reusable workflow sources be
 ```powershell
 Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -ReusableWorkflowAllowlist @('my-trusted-org/*', 'security-team/reusable-workflows')
 ```
+
+### Solo-maintainer profile
+
+Use `-SoloMaintainer` to re-rank findings that structurally require a second person — the "0 approving reviews" branch finding and single-owner `CODEOWNERS` findings — to non-blocking `Info`, with a compensating-control note appended. Every solo-achievable guardrail (pinning, signing, egress, token scope, secret scanning, …) keeps its full severity. The recalibration runs before `-FailOn`, so the impossible-solo items don't break your CI gate:
+
+```powershell
+Invoke-Fylgyr -Owner 'your-user' -Repo 'your-repo' -SoloMaintainer -OutputFormat Console
+Invoke-Fylgyr -Owner 'your-user' -Repo 'your-repo' -SoloMaintainer -FailOn High
+```
+
+See the [Solo-Maintainer Security Baseline](docs/SOLO-MAINTAINER.md) for the full playbook.
 
 ### Pipeline input
 
@@ -579,9 +597,12 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 
 | Check | Detects | Severity | Attack Mapping |
 |---|---|---|---|
-| `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise` |
+| `ActionPinning` | Third-party actions referenced by tag/branch instead of SHA — in workflows and in composite action definitions (`action.yml`/`action.yaml`) | High | `trivy-tag-poisoning`, `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise` |
 | `DangerousTrigger` | `pull_request_target` / `workflow_run` with untrusted code checkout, missing actor restrictions, secret exposure in PRT context | Critical | `nx-pwn-request`, `prt-scan-ai-automated`, `trivy-supply-chain-2026`, `azure-karpenter-pwn-request`, `hackerbot-claw` |
-| `ScriptInjection` | Untrusted GitHub event expressions interpolated into `run:` blocks | Critical | `github-actions-script-injection` |
+| `ScriptInjection` | Untrusted GitHub event expressions interpolated into `run:` and `github-script` blocks — including bracket notation, indirection through `env:` variables, and `workflow_dispatch`/`workflow_call` inputs | Critical | `github-actions-script-injection` |
+| `ContainerPinning` | Container images pulled by mutable tag or `:latest` instead of immutable digest — `docker://` uses, job `container:` blocks, and `services:` images | High | `docker-hub-credential-breach`, `trivy-tag-poisoning` |
+| `UntrustedDownload` | Remote scripts downloaded and executed in one step (`curl \| bash`, `irm \| iex`) in run steps | High | `codecov-bash-uploader` |
+| `LifecycleScript` | CI dependency installs without `--ignore-scripts`, and suspicious install-time lifecycle scripts in the repo's own `package.json` | High | `shai-hulud-npm-worm`, `event-stream-hijack`, `ua-parser-js-npm-compromise` |
 | `ArtifactPoisoning` | Downloaded artifacts executed without integrity verification, especially across `workflow_run` boundaries | High | `artifact-poisoning-workflow-run` |
 | `OidcTrust` | `id-token: write` without environment scoping (elevated when publish-adjacent) | High | `oidc-trust-abuse`, `bitwarden-cli-2026-04` |
 | `CacheIntegrity` | Cache keys derived from attacker-controlled refs (for example `github.head_ref`) | Medium | `cache-poisoning-pr-branch` |
@@ -592,21 +613,26 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `WorkflowPermission` | Missing top-level `permissions:` block in workflow files | Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
 | `PublishIntegrity` | Publish workflows missing provenance, trusted publishing, or artifact signing signals | High | `shai-hulud-npm-worm`, `lottie-player-npm-compromise`, `ua-parser-js-npm-compromise`, `bitwarden-cli-2026-04`, `event-stream-hijack` |
 | `EgressControl` | Missing or audit-only network egress filtering in workflows | Medium | `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise`, `trivy-supply-chain-2026`, `codecov-bash-uploader` |
-| `ForkSecretExposure` | Secrets accessible to fork PRs, unprotected environments, unrestricted org secrets | Critical | `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request` |
+| `ForkSecretExposure` | Secrets referenced in `pull_request_target`/`workflow_run` workflows, unprotected environments reachable from fork PRs | Critical | `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request` |
 | `GitHubAppSecurity` | Overly permissive organization GitHub App installations (including org-admin, all-repos write, and dangerous permission combinations) | Critical | `github-app-token-theft` |
-| `BranchProtection` | Weak or missing default branch protection rules | High | `codecov-bash-uploader` |
-| `SecretScanning` | Secret Scanning disabled, high/critical open alerts, or alert telemetry unavailable to token scope | High | `committed-credentials-exposure`, `uber-credential-leak`, `axios-npm-token-leak` |
+| `BranchProtection` | Weak or missing default branch protection rules, admin-bypass (`enforce_admins` disabled), and ruleset bypass actors with always-on bypass | High | `codecov-bash-uploader`, `trivy-force-push-main`, `dropbox-github-breach` |
+| `SecretScanning` | Secret Scanning disabled, push protection disabled, high/critical open alerts, or alert telemetry unavailable to token scope | High | `committed-credentials-exposure`, `uber-credential-leak`, `axios-npm-token-leak`, `toyota-source-exposure` |
 | `DependabotAlert` | Open critical/high Dependabot vulnerability alerts | High | `event-stream-hijack`, `solarwinds-orion` |
 | `CodeScanning` | Code Scanning not configured or stale analyses | Medium | `solarwinds-orion` |
 | `RunnerHygiene` | Risky self-hosted runner configurations, dangerous triggers, missing trigger filters, org-wide runner groups, non-ephemeral runners, public repo runners | High | `github-actions-cryptomining`, `praetorian-runner-pivot`, `shai-hulud-runner-backdoor` |
 | `CodeOwner` | Missing `CodeOwner` file, single-owner catch-all rules, too few distinct reviewers | Medium | `xz-utils-backdoor` |
-| `SignedCommit` | Default branch does not require signed commits | Medium | `xz-utils-backdoor` |
+| `SignedCommit` | Default branch does not require signed commits — recognizes enforcement via classic branch protection *or* a modern branch ruleset (`required_signatures` rule) | Medium | `xz-utils-backdoor` |
 | `ForkPullPolicy` | `pull_request_target` combined with checkout of fork-controlled `head.sha`/`head.ref`/`github.head_ref` | High | `nx-pwn-request`, `tj-actions-shai-hulud`, `prt-scan-ai-automated` |
 | `EnvironmentProtection` | Deployment environments without required reviewers or branch policies | High | `unauthorized-env-deployment`, `prt-scan-ai-automated` |
 | `RepoVisibility` | Public repositories with internal/private naming patterns | Medium | `toyota-source-exposure` |
 | `WebhookSecurity` | Repository webhooks configured without a secret for payload authentication | Low | `codecov-bash-uploader` |
 | `BinaryArtifact` | Binary files (`.exe`, `.dll`, `.so`, `.jar`, etc.) committed in the repository tree | Low | `solarwinds-orion` |
 | `Rulesets` | Missing modern branch/tag rulesets or missing tag protection (warns if repo has no tags yet; fails when tags exist) | High | `trivy-tag-poisoning`, `actions-cool-issues-helper-compromise`, `trivy-force-push-main` |
+| `DefaultTokenPermission` | Platform default `GITHUB_TOKEN` permission set to write, or workflows allowed to approve pull requests (repo and org scope) | High | `tj-actions-shai-hulud`, `nx-pwn-request`, `prt-scan-ai-automated` |
+| `DeployKey` | Deploy keys with write access (MFA-less, unattributed push path) or stale read-only keys | High | `committed-credentials-exposure`, `codecov-bash-uploader` |
+| `TagProtection` | Active tag rulesets missing `deletion`/`non_fast_forward` rules (release retagging primitive) | High | `trivy-tag-poisoning`, `actions-cool-issues-helper-compromise` |
+| `AccountSecurity` | Personal account without two-factor authentication (verifiable only with a token owned by the scanned account) | Critical | `dropbox-github-breach`, `github-device-code-phishing`, `ua-parser-js-npm-compromise` |
+| `AccountKey` | Stale account SSH keys (>2 years) and expired GPG signing keys on personal accounts | Low | `gentoo-github-compromise`, `xz-utils-backdoor` |
 | `OrgMfaPolicy` | Organization does not require MFA for members | Critical | `dropbox-github-breach` |
 | `OrgDefaultPermissions` | Default org repository permission is broader than read/none | High | `gentoo-github-compromise` |
 | `IpAllowlist` | Organization has no IP allowlist entries (enterprise recommendation) | Medium | `github-device-code-phishing`, `uber-credential-leak` |
@@ -615,6 +641,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `OrgActionRestrictions` | Organization allows unrestricted third-party GitHub Actions | High | `tj-actions-shai-hulud` |
 | `OutsideCollaborators` | Outside collaborators retain write/admin repository access | High | `uber-credential-leak` |
 | `PatPolicy` | Organization PAT governance cannot be verified or appears weak | High | `uber-credential-leak`, `github-device-code-phishing` |
+| `OrgSecretVisibility` | Organization Actions secrets visible to all repositories (`visibility: all`) | High | `prt-scan-ai-automated`, `hackerbot-claw`, `axios-npm-token-leak` |
 | `PrivateVulnReporting` | Repository private vulnerability reporting (PVR) disabled or unsupported | Low | `xz-utils-backdoor` |
 
 ## Private Vulnerability Reporting Baseline
@@ -748,22 +775,30 @@ src/Fylgyr/
 ├── Fylgyr.psm1              # Entry point (dot-sources Public/ and Private/)
 ├── Public/
 │   ├── Invoke-Fylgyr.ps1    # Orchestrator + output formatting
+│   ├── Test-AccountKey.ps1
+│   ├── Test-AccountSecurity.ps1
 │   ├── Test-ActionPinning.ps1
 │   ├── Test-ArtifactAttestation.ps1
 │   ├── Test-ArtifactPoisoning.ps1
 │   ├── Test-CacheIntegrity.ps1
 │   ├── Test-BranchProtection.ps1
 │   ├── Test-CodeOwner.ps1
+│   ├── Test-ContainerPinning.ps1
+│   ├── Test-LifecycleScript.ps1
+│   ├── Test-UntrustedDownload.ps1
 │   ├── Test-CodeScanning.ps1
 │   ├── Test-DangerousTrigger.ps1
+│   ├── Test-DefaultTokenPermission.ps1
 │   ├── Test-DependabotAlert.ps1
 │   ├── Test-DependencyReview.ps1
+│   ├── Test-DeployKey.ps1
 │   ├── Test-EgressControl.ps1
 │   ├── Test-EnvironmentProtection.ps1
 │   ├── Test-ForkPullPolicy.ps1
 │   ├── Test-ForkSecretExposure.ps1
 │   ├── Test-GitHubAppSecurity.ps1
 │   ├── Test-OidcTrust.ps1
+│   ├── Test-OrgSecretVisibility.ps1
 │   ├── Test-PrivateVulnReporting.ps1
 │   ├── Test-RepoVisibility.ps1
 │   ├── Test-ReusableWorkflowTrust.ps1
@@ -772,6 +807,7 @@ src/Fylgyr/
 │   ├── Test-ScriptInjection.ps1
 │   ├── Test-SecretScanning.ps1
 │   ├── Test-SignedCommit.ps1
+│   ├── Test-TagProtection.ps1
 │   ├── Test-TriggerFilter.ps1
 │   ├── Test-WebhookSecurity.ps1
 │   ├── Test-BinaryArtifact.ps1
@@ -779,6 +815,8 @@ src/Fylgyr/
 ├── Private/
 │   ├── Invoke-GitHubApi.ps1       # REST/GraphQL wrapper with pagination
 │   ├── Get-WorkflowFile.ps1       # Fetches workflows via Git Trees API
+│   ├── Get-ActionDefinitionFile.ps1 # Fetches composite action.yml files via Git Trees API
+│   ├── ConvertTo-FylgyrEscapedPathSegment.ps1 # URL-encodes API-derived path segments
 │   ├── Get-RunBlock.ps1           # Extracts run: blocks (including block scalars)
 │   ├── Get-WorkflowJobBlock.ps1   # Extracts per-job YAML blocks for job-scoped checks
 │   ├── Get-FylgyrOwnerContext.ps1 # Owner/persona context helper (type, plan, token owner)

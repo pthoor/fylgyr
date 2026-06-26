@@ -91,10 +91,11 @@ function Test-RecentProtectionChange {
         }
     }
 
+    $escapedBranch = ConvertTo-FylgyrEscapedPathSegment -Value $defaultBranch
     $protection = $null
     $rulesets = @()
     try {
-        $protection = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/branches/$defaultBranch/protection" -Token $Token
+        $protection = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/branches/$escapedBranch/protection" -Token $Token
     }
     catch {
         if ($_.Exception.Message -match '404') {

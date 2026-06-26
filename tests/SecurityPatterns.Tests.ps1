@@ -148,6 +148,53 @@ Describe 'Security anti-pattern guardrails' {
         }
     }
 
+    Context 'Endpoint path encoding' {
+        BeforeAll {
+            $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+            $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+            Import-Module -Name $modulePath -Force
+        }
+
+        It 'encodes a slash inside a path segment so it is not read as a separator' {
+            $encoded = InModuleScope Fylgyr { ConvertTo-FylgyrEscapedPathSegment -Value 'release/v1' }
+            $encoded | Should -Be 'release%2Fv1'
+        }
+
+        It 'encodes characters that are significant in a URL' {
+            $encoded = InModuleScope Fylgyr { ConvertTo-FylgyrEscapedPathSegment -Value 'a b?c#d' }
+            $encoded | Should -Be 'a%20b%3Fc%23d'
+        }
+
+        It 'leaves an ordinary segment unchanged' {
+            $encoded = InModuleScope Fylgyr { ConvertTo-FylgyrEscapedPathSegment -Value 'main' }
+            $encoded | Should -Be 'main'
+        }
+
+        It 'accepts an empty string' {
+            $encoded = InModuleScope Fylgyr { ConvertTo-FylgyrEscapedPathSegment -Value '' }
+            $encoded | Should -Be ''
+        }
+
+        It 'does not interpolate a raw API-derived branch variable straight into an -Endpoint' {
+            # Regression guard: API-sourced branch names must be passed through
+            # ConvertTo-FylgyrEscapedPathSegment, never interpolated raw, or a
+            # slash-containing branch breaks the request and becomes an injection point.
+            $violations = foreach ($file in $sourceFiles) {
+                $lines = Get-Content -Path $file.FullName
+                for ($i = 0; $i -lt $lines.Count; $i++) {
+                    if ($lines[$i] -match '-Endpoint\s+"[^"]*branches/\$defaultBranch') {
+                        [PSCustomObject]@{ File = $file.Name; Line = $i + 1; Content = $lines[$i].Trim() }
+                    }
+                }
+            }
+
+            if ($violations) {
+                $details = ($violations | ForEach-Object { "$($_.File):$($_.Line) -> $($_.Content)" }) -join "`n"
+                $violations | Should -BeNullOrEmpty -Because "use `$escapedBranch via ConvertTo-FylgyrEscapedPathSegment.`n$details"
+            }
+        }
+    }
+
     Context 'Error message quality' {
 
         It 'permission error messages mention both fine-grained and classic token types' {
