@@ -361,6 +361,7 @@ Describe 'Invoke-Fylgyr OutputFormat' {
         Mock -ModuleName Fylgyr Test-DependabotAlert  { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-CodeScanning     { return @($stubResult) }
         Mock -ModuleName Fylgyr Test-Rulesets         { return @($stubResult) }
+        Mock -ModuleName Fylgyr Test-LifecycleScript  { return @($stubResult) }
     }
 
     It 'returns JSON string when OutputFormat is JSON' {

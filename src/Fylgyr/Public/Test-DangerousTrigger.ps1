@@ -39,35 +39,42 @@ function Test-DangerousTrigger {
     #   first_time_contributors_new_to_github
     #   first_time_contributors
     #   all_external_contributors
-    $hasApprovalGate = $null
+    # State: 'present' | 'absent' | 'forbidden' | 'unknown'. Distinguishing 403
+    # (token lacks permission to read the policy) from 404 (no policy => gate absent)
+    # lets us flag "could not verify" instead of silently swallowing a 403.
+    $approvalGateState = 'unknown'
     if ($Owner -and $Repo -and $Token) {
         try {
             $forkApproval = Invoke-GitHubApi `
                 -Endpoint "repos/$Owner/$Repo/actions/permissions/fork-pr-contributor-approval" `
                 -Token $Token
             if ($forkApproval -and $forkApproval.PSObject.Properties['approval_policy']) {
-                $hasApprovalGate = $forkApproval.approval_policy -in @(
+                $gateConfigured = $forkApproval.approval_policy -in @(
                     'first_time_contributors_new_to_github',
                     'first_time_contributors',
                     'all_external_contributors'
                 )
+                $approvalGateState = if ($gateConfigured) { 'present' } else { 'absent' }
             }
             else {
-                $hasApprovalGate = $false
+                $approvalGateState = 'absent'
             }
         }
         catch {
             $msg = $_.Exception.Message
             if ($msg -match '404') {
                 # Repo has no explicit policy - GitHub default applies; treat as absent gate.
-                $hasApprovalGate = $false
+                $approvalGateState = 'absent'
+            }
+            elseif ($msg -match '403') {
+                $approvalGateState = 'forbidden'
             }
             else {
-                # 403 or other error: leave as $null so we do not emit a misleading advisory.
-                $hasApprovalGate = $null
+                $approvalGateState = 'unknown'
             }
         }
     }
+    $sawPullRequestTarget = $false
 
     foreach ($wf in $WorkflowFiles) {
         # Strip YAML comment lines to avoid false positives
@@ -123,6 +130,7 @@ function Test-DangerousTrigger {
 
         $triggerList = $foundTriggers -join ', '
         $hasPRT = $foundTriggers -contains 'pull_request_target'
+        if ($hasPRT) { $sawPullRequestTarget = $true }
 
         if ($checksOutUntrusted) {
             $attackMappings = @('nx-pwn-request', 'prt-scan-ai-automated', 'trivy-supply-chain-2026', 'azure-karpenter-pwn-request')
@@ -171,7 +179,7 @@ function Test-DangerousTrigger {
         }
 
         # Advisory: check if first-time contributor approval is missing
-        if ($hasPRT -and $hasApprovalGate -eq $false) {
+        if ($hasPRT -and $approvalGateState -eq 'absent') {
             $results.Add((Format-FylgyrResult `
                 -CheckName 'DangerousTrigger' `
                 -Status 'Info' `
@@ -181,6 +189,20 @@ function Test-DangerousTrigger {
                 -Remediation 'In Settings > Actions > General, set "Fork pull request workflows from outside collaborators" to "Require approval for first-time contributors" or stricter.' `
                 -AttackMapping @('prt-scan-ai-automated')))
         }
+    }
+
+    # Once per repo: if pull_request_target workflows exist but the approval policy
+    # could not be read (HTTP 403), say so rather than silently omitting the advisory.
+    if ($sawPullRequestTarget -and $approvalGateState -eq 'forbidden' -and $Owner -and $Repo) {
+        $results.Add((Format-FylgyrResult `
+            -CheckName 'DangerousTrigger' `
+            -Status 'Info' `
+            -Severity 'Low' `
+            -Resource "$Owner/$Repo" `
+            -Detail 'Could not verify the fork pull request contributor approval policy (insufficient permission, HTTP 403). pull_request_target workflows were found, so the approval gate that blocked the prt-scan campaign should be verified manually.' `
+            -Remediation 'Grant the token repository Administration:read, or confirm "Require approval for fork pull request workflows" in Settings > Actions > General.' `
+            -AttackMapping @('prt-scan-ai-automated') `
+            -Target "$Owner/$Repo"))
     }
 
     $results.ToArray()

@@ -16,7 +16,7 @@ function Get-FylgyrBaselineFingerprintSet {
     }
 
     try {
-        $parsed = $raw | ConvertFrom-Json
+        $parsed = $raw | ConvertFrom-Json -Depth 25
     }
     catch {
         throw "Failed to parse baseline JSON: $($_.Exception.Message)"

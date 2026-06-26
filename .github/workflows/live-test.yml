@@ -1,0 +1,79 @@
+name: Live API Test
+
+# Live-verification workflow: runs the full Fylgyr scan (including API-backed
+# checks) against this repository using the FYLGYR_TOKEN repo secret, so check
+# behavior is continuously validated against real GitHub API responses without
+# the token leaving GitHub Actions.
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-scan:
+    # Forks do not have FYLGYR_TOKEN; only run in the canonical repository.
+    if: github.repository == 'pthoor/fylgyr'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Harden runner egress
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            www.powershellgallery.com:443
+            cdn.powershellgallery.com:443
+            psg-prod-eastus.azureedge.net:443
+
+      - name: Install module dependencies
+        shell: pwsh
+        run: |
+          Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
+
+      - name: Run full Fylgyr scan with FYLGYR_TOKEN
+        shell: pwsh
+        run: |
+          Import-Module ./src/Fylgyr/Fylgyr.psm1 -Force
+
+          if (-not $env:FYLGYR_TOKEN) {
+            Write-Error 'FYLGYR_TOKEN secret is not available to this run.'
+            exit 1
+          }
+
+          $results = Invoke-Fylgyr -Owner '${{ github.repository_owner }}' -Repo '${{ github.event.repository.name }}' -Token $env:FYLGYR_TOKEN
+
+          Write-Host ''
+          Write-Host 'Live scan results: ${{ github.repository_owner }}/${{ github.event.repository.name }}'
+          Write-Host ('-' * 60)
+          $results | Format-Table CheckName, Status, Severity, Resource -AutoSize | Out-String -Width 200 | Write-Host
+          $counts = $results | Group-Object Status | ForEach-Object { "$($_.Name): $($_.Count)" }
+          Write-Host ($counts -join ' | ')
+          Write-Host ('-' * 60)
+
+          Write-Host '===FYLGYR-NDJSON-BEGIN==='
+          foreach ($r in $results) {
+            Write-Host (([PSCustomObject]@{
+              CheckName   = $r.CheckName
+              Status      = $r.Status
+              Severity    = $r.Severity
+              Resource    = $r.Resource
+              Detail      = $r.Detail
+              Remediation = $r.Remediation
+            } | ConvertTo-Json -Compress -Depth 5))
+          }
+          Write-Host '===FYLGYR-NDJSON-END==='
+
+          # Observational run: report findings, never fail the job.
+          exit 0
+        env:
+          FYLGYR_TOKEN: ${{ secrets.FYLGYR_TOKEN }}

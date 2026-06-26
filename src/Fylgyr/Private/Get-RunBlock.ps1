@@ -3,7 +3,11 @@ function Get-RunBlock {
     [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory)]
-        [string]$Content
+        [string]$Content,
+
+        # YAML key whose scalar value is the executable body. Defaults to 'run';
+        # pass 'script' to capture actions/github-script inline scripts.
+        [string]$Key = 'run'
     )
 
     $blocks = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -12,6 +16,7 @@ function Get-RunBlock {
     }
 
     $lines = $Content -split "`n"
+    $keyPattern = '^(?<indent>\s*)(?:-\s*)?' + [regex]::Escape($Key) + '\s*:\s*(?<value>.*)$'
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
@@ -19,7 +24,7 @@ function Get-RunBlock {
             continue
         }
 
-        if ($line -notmatch '^(?<indent>\s*)(?:-\s*)?run\s*:\s*(?<value>.*)$') {
+        if ($line -notmatch $keyPattern) {
             continue
         }
 

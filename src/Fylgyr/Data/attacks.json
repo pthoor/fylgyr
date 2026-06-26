@@ -673,5 +673,26 @@
       "Trigger events without types filters in runner-executed workflows",
       "Untrusted event payload interpolation in run steps on persistent runners"
     ]
+  },
+  {
+    "id": "docker-hub-credential-breach",
+    "name": "Docker Hub credential database breach",
+    "date": "2019-04-25",
+    "description": "Unauthorized access to a Docker Hub database exposed usernames, hashed passwords, and GitHub/Bitbucket access tokens for roughly 190,000 accounts, and linked autobuild tokens were revoked. A compromised registry account can silently retag or replace images behind mutable tags, so any CI pipeline that pulls images by tag instead of immutable digest can receive attacker-controlled code.",
+    "affectedPackages": [
+      "Docker Hub hosted images"
+    ],
+    "cves": [],
+    "references": [
+      "https://news.docker.com/2019/04/docker-hub-database-update/",
+      "https://www.zdnet.com/article/docker-hub-hacked-190k-accounts-github-tokens-exposed/"
+    ],
+    "owaspCiCd": ["CICD-SEC-3"],
+    "mitre": ["T1195.002", "T1078"],
+    "detectionSignals": [
+      "Workflow jobs, services, or docker:// uses reference container images by mutable tag instead of sha256 digest",
+      "Use of :latest or untagged base images in CI",
+      "No digest-update automation (dependabot/renovate) for container references"
+    ]
   }
 ]
