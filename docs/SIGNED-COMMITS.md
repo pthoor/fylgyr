@@ -171,7 +171,7 @@ For other automation (scripts, CI jobs, release bots):
 | Status | What it means |
 |---|---|
 | `Pass` | The default branch requires signed commits. No action needed. |
-| `Warning` | Required signatures are disabled. This is a recommendation, not a hard failure — adoption is still low across the ecosystem — but it is a meaningful defence. |
+| `Warning` | Required signatures are disabled. This is a recommendation, not a hard failure — adoption is still low across the ecosystem — but it is a meaningful defense. |
 | `Error` | The check could not run, usually due to insufficient token permissions. Use a fine-grained token with `Administration: read` or a classic `repo`-scoped token. |
 
 To remediate a `Warning`:
