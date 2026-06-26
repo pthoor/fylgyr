@@ -1560,7 +1560,7 @@ jobs:
             Path    = '.github/workflows/ci.yml'
             Content = @'
 name: CI
-on: push
+on: workflow_run
 jobs:
   build:
     runs-on: ubuntu-latest

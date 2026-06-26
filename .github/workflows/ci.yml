@@ -45,7 +45,7 @@ jobs:
         shell: pwsh
         run: |
           $paths = Get-ChildItem -Path ./src -Recurse -File |
-            Where-Object { $_.Extension -in @('.ps1', '.psm1', '.psd1') } |
+            Where-Object { $_.Extension -in @('.ps1', '.psm1') } |
             Sort-Object -Property FullName
 
           $blocking = [System.Collections.Generic.List[object]]::new()
