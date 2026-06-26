@@ -136,7 +136,7 @@ Rulesets support bypass lists — you can exempt service accounts or automated b
 
 ## Handling bots and automated commits
 
-Dependabot and GitHub Actions commits are signed by GitHub's own key and carry the **Verified** badge automatically. You do not need to exempt them.
+Dependabot commits (and other commits created via GitHub's web UI or API, including many GitHub App commits) are signed by GitHub's own key and carry the **Verified** badge automatically. Commits created by a workflow using `git commit` are not automatically signed unless you configure signing in the job.
 
 For other automation (scripts, CI jobs, release bots):
 
