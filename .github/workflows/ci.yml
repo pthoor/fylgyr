@@ -44,8 +44,25 @@ jobs:
       - name: Run PSScriptAnalyzer
         shell: pwsh
         run: |
-          $issues = Invoke-ScriptAnalyzer -Path ./src -Recurse
-          $blocking = @($issues | Where-Object { $_.Severity -in @('Error', 'Warning') })
+          $paths = Get-ChildItem -Path ./src -Recurse -File |
+            Where-Object { $_.Extension -in @('.ps1', '.psm1', '.psd1') } |
+            Sort-Object -Property FullName
+
+          $blocking = [System.Collections.Generic.List[object]]::new()
+
+          foreach ($path in $paths) {
+            try {
+              $issues = @(Invoke-ScriptAnalyzer -Path $path.FullName -Severity Error,Warning)
+              foreach ($issue in $issues) {
+                $blocking.Add($issue)
+              }
+            }
+            catch {
+              Write-Host "PSScriptAnalyzer failed for $($path.FullName): $($_.Exception.Message)"
+              exit 1
+            }
+          }
+
           if ($blocking.Count -gt 0) {
             $blocking | Format-Table RuleName, Severity, ScriptName, Line, Message -AutoSize | Out-String | Write-Host
             exit 1
