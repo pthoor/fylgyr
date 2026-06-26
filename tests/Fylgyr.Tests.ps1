@@ -493,6 +493,78 @@ jobs:
         $results | Should -HaveCount 1
         $results[0].Status | Should -Be 'Fail'
     }
+
+    It 'fails Critical when top-level permissions is write-all' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions: write-all
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+'@
+        })
+
+        $results = Test-WorkflowPermission -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status   | Should -Be 'Fail'
+        $results[0].Severity | Should -Be 'Critical'
+        $results[0].AttackMapping | Should -Contain 'tj-actions-shai-hulud'
+        $results[0].Detail | Should -Match 'write-all'
+    }
+
+    It 'fails High when a job declares permissions: write-all but top-level is restricted' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'deploy.yml'
+            Path    = '.github/workflows/deploy.yml'
+            Content = @'
+name: Deploy
+on: push
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+'@
+        })
+
+        $results = Test-WorkflowPermission -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status   | Should -Be 'Fail'
+        $results[0].Severity | Should -Be 'High'
+        $results[0].Detail | Should -Match 'job level'
+    }
+
+    It 'ignores comment lines when scanning for write-all' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+# permissions: write-all (this is a comment, not real)
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+'@
+        })
+
+        $results = Test-WorkflowPermission -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
 }
 
 Describe 'Invoke-Fylgyr' {
@@ -1143,6 +1215,7 @@ jobs:
     }
 
     It 'normalizes org-check names when Invoke-FylgyrOrgScan records check errors' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { return [PSCustomObject]@{ Type = 'Organization'; Login = 'acme'; PlanName = 'unknown'; TokenOwner = 'unknown'; TokenMatchesOwner = $false } }
         Mock -ModuleName Fylgyr Test-OrgMfaPolicy { throw 'boom' }
         Mock -ModuleName Fylgyr Test-OrgDefaultPermissions { return @() }
         Mock -ModuleName Fylgyr Test-IpAllowlist { return @() }
@@ -2192,13 +2265,14 @@ Describe 'Test-EnvironmentProtection' {
         $fail[0].AttackMapping | Should -Contain 'unauthorized-env-deployment'
     }
 
-    It 'passes when all environments have required reviewers and branch policies' {
+    It 'passes when all environments have required reviewers, prevent-self-review, and branch policies' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             return [PSCustomObject]@{
                 environments = @(
                     [PSCustomObject]@{
-                        name             = 'production'
-                        protection_rules = @(
+                        name                = 'production'
+                        prevent_self_review = $true
+                        protection_rules    = @(
                             [PSCustomObject]@{
                                 type      = 'required_reviewers'
                                 reviewers = @([PSCustomObject]@{ type = 'User' })
@@ -2805,4 +2879,462 @@ jobs:
                 $results = Test-PublishIntegrity -WorkflowFiles $wf
                 $results[0].Status | Should -Be 'Fail'
         }
+}
+
+Describe 'Test-DefaultWorkflowPermission' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'passes when default permissions are read and self-approve is disabled' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return [PSCustomObject]@{
+                default_workflow_permissions       = 'read'
+                can_approve_pull_request_reviews   = $false
+            }
+        }
+
+        $results = Test-DefaultWorkflowPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'fails High when default permissions are write' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return [PSCustomObject]@{
+                default_workflow_permissions       = 'write'
+                can_approve_pull_request_reviews   = $false
+            }
+        }
+
+        $results = Test-DefaultWorkflowPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        $fail = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Severity -eq 'High' }
+        $fail | Should -Not -BeNullOrEmpty
+        $fail[0].AttackMapping | Should -Contain 'tj-actions-shai-hulud'
+        $fail[0].Detail | Should -Match 'write'
+    }
+
+    It 'fails Medium when self-approve is enabled' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return [PSCustomObject]@{
+                default_workflow_permissions       = 'read'
+                can_approve_pull_request_reviews   = $true
+            }
+        }
+
+        $results = Test-DefaultWorkflowPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        $fail = $results | Where-Object { $_.Status -eq 'Fail' -and $_.Severity -eq 'Medium' }
+        $fail | Should -Not -BeNullOrEmpty
+        $fail[0].AttackMapping | Should -Contain 'nx-pwn-request'
+        $fail[0].Detail | Should -Match 'approve'
+    }
+
+    It 'returns two findings when both write permissions and self-approve are set' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return [PSCustomObject]@{
+                default_workflow_permissions       = 'write'
+                can_approve_pull_request_reviews   = $true
+            }
+        }
+
+        $results = Test-DefaultWorkflowPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        ($results | Where-Object { $_.Status -eq 'Fail' }) | Should -HaveCount 2
+    }
+
+    It 'returns Error on 403' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '403 Forbidden' }
+
+        $results = Test-DefaultWorkflowPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Error'
+        $results[0].Detail | Should -Match 'Insufficient permissions'
+    }
+
+    It 'returns Pass on 404' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '404 Not Found' }
+
+        $results = Test-DefaultWorkflowPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+        $results[0].Detail | Should -Match '404'
+    }
+}
+
+Describe 'Test-WorkflowConcurrency' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'passes when workflow has no deployment environment jobs' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo build
+'@
+        })
+
+        $results = Test-WorkflowConcurrency -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+        $results[0].Detail | Should -Match 'no jobs targeting a deployment environment'
+    }
+
+    It 'passes when a deployment job has a workflow-level concurrency block' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'deploy.yml'
+            Path    = '.github/workflows/deploy.yml'
+            Content = @'
+name: Deploy
+on: push
+permissions:
+  contents: read
+concurrency:
+  group: deploy-production-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - run: echo deploy
+'@
+        })
+
+        $results = Test-WorkflowConcurrency -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'passes when a deployment job has a job-level concurrency block' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'deploy.yml'
+            Path    = '.github/workflows/deploy.yml'
+            Content = @'
+name: Deploy
+on: push
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - run: echo deploy
+'@
+        })
+
+        $results = Test-WorkflowConcurrency -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'warns Medium when a deployment job has no concurrency control' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'deploy.yml'
+            Path    = '.github/workflows/deploy.yml'
+            Content = @'
+name: Deploy
+on: push
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - run: echo deploy
+'@
+        })
+
+        $results = Test-WorkflowConcurrency -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status   | Should -Be 'Warning'
+        $results[0].Severity | Should -Be 'Medium'
+        $results[0].AttackMapping | Should -Contain 'unauthorized-env-deployment'
+        $results[0].Detail | Should -Match 'deploy'
+    }
+}
+
+Describe 'Test-ContinueOnError' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'passes when no security gate jobs use continue-on-error' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo build
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: github/codeql-action/analyze@v3
+'@
+        })
+
+        $results = Test-ContinueOnError -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'warns when a security gate job has continue-on-error: true' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: github/codeql-action/analyze@v3
+'@
+        })
+
+        $results = Test-ContinueOnError -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status   | Should -Be 'Warning'
+        $results[0].Severity | Should -Be 'Medium'
+        $results[0].AttackMapping | Should -Contain 'solarwinds-orion'
+        $results[0].Detail | Should -Match 'sast'
+    }
+
+    It 'passes when a non-security job uses continue-on-error' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - run: curl https://example.com/notify
+'@
+        })
+
+        $results = Test-ContinueOnError -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'detects security jobs by known action reference' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  vuln-check:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: aquasecurity/trivy-action@v1
+'@
+        })
+
+        $results = Test-ContinueOnError -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Warning'
+        $results[0].Detail | Should -Match 'vuln-check'
+    }
+}
+
+Describe 'Test-RunnerPinning' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'passes when no -latest runner labels are used' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo pinned
+'@
+        })
+
+        $results = Test-RunnerPinning -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+        $results[0].Detail | Should -Match "does not use any '-latest'"
+    }
+
+    It 'warns Medium when ubuntu-latest is used' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo unpinned
+'@
+        })
+
+        $results = Test-RunnerPinning -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status   | Should -Be 'Warning'
+        $results[0].Severity | Should -Be 'Medium'
+        $results[0].AttackMapping | Should -Contain 'solarwinds-orion'
+        $results[0].Detail | Should -Match 'ubuntu-latest'
+    }
+
+    It 'warns when windows-latest is used' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - run: echo unpinned
+'@
+        })
+
+        $results = Test-RunnerPinning -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Warning'
+        $results[0].Detail | Should -Match 'windows-latest'
+    }
+
+    It 'detects -latest labels supplied via strategy.matrix' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  matrix-build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - run: echo matrix
+'@
+        })
+
+        $results = Test-RunnerPinning -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Warning'
+        $results[0].Detail | Should -Match 'ubuntu-latest'
+        $results[0].Detail | Should -Match 'windows-latest'
+    }
+
+    It 'ignores comment lines containing -latest' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'ci.yml'
+            Path    = '.github/workflows/ci.yml'
+            Content = @'
+name: CI
+on: push
+permissions:
+  contents: read
+jobs:
+  build:
+    # runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo pinned
+'@
+        })
+
+        $results = Test-RunnerPinning -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'lists all unique -latest labels in the detail message' {
+        $wf = @([PSCustomObject]@{
+            Name    = 'multi.yml'
+            Path    = '.github/workflows/multi.yml'
+            Content = @'
+name: Multi
+on: push
+permissions:
+  contents: read
+jobs:
+  job1:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo a
+  job2:
+    runs-on: windows-latest
+    steps:
+      - run: echo b
+  job3:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo c
+'@
+        })
+
+        $results = Test-RunnerPinning -WorkflowFiles $wf
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Warning'
+        $results[0].Detail | Should -Match 'ubuntu-latest'
+        $results[0].Detail | Should -Match 'windows-latest'
+    }
 }

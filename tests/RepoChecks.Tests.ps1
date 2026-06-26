@@ -291,7 +291,15 @@ Describe 'Test-SecretScanning' {
     }
 
     It 'passes when secret scanning is enabled and no open alerts' {
-        Mock -ModuleName Fylgyr Invoke-GitHubApi { return @() }
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -like '*/secret-scanning/alerts*') { return @() }
+            return [PSCustomObject]@{
+                security_and_analysis = [PSCustomObject]@{
+                    secret_scanning_push_protection = [PSCustomObject]@{ status = 'enabled' }
+                }
+            }
+        }
 
         $results = Test-SecretScanning -Owner 'org' -Repo 'repo' -Token 'fake-token'
         $results | Should -HaveCount 1

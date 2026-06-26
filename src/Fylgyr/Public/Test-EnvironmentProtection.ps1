@@ -100,6 +100,11 @@ function Test-EnvironmentProtection {
             $hasBranchPolicy = $true
         }
 
+        $preventSelfReview = $false
+        if ($env.PSObject.Properties['prevent_self_review'] -and $env.prevent_self_review -eq $true) {
+            $preventSelfReview = $true
+        }
+
         if (-not $hasRequiredReviewers) {
             $severity = 'High'
             $detail = "Environment '$envName' has no required reviewers. Deployments can proceed without human approval, turning a compromised PR or workflow into a direct path to this environment."
@@ -120,16 +125,31 @@ function Test-EnvironmentProtection {
                 -AttackMapping @('unauthorized-env-deployment', 'prt-scan-ai-automated') `
                 -Target $target))
         }
-        elseif (-not $hasBranchPolicy) {
-            $findings.Add((Format-FylgyrResult `
-                -CheckName 'EnvironmentProtection' `
-                -Status 'Warning' `
-                -Severity 'Medium' `
-                -Resource $envResource `
-                -Detail "Environment '$envName' has required reviewers but no deployment branch policy. Any branch can trigger a deployment that (if approved) reaches this environment." `
-                -Remediation "Add a deployment branch policy in Settings > Environments to restrict deployments to protected or specific branches." `
-                -AttackMapping @('unauthorized-env-deployment') `
-                -Target $target))
+        else {
+            # Reviewer(s) are required. Now check self-review prevention.
+            if (-not $preventSelfReview) {
+                $findings.Add((Format-FylgyrResult `
+                    -CheckName 'EnvironmentProtection' `
+                    -Status 'Fail' `
+                    -Severity 'High' `
+                    -Resource $envResource `
+                    -Detail "Environment '$envName' has required reviewers but does not prevent self-review. The workflow author can approve their own deployment, which means a single compromised or socially-engineered maintainer account can bypass the reviewer gate entirely." `
+                    -Remediation "Enable 'Prevent self-review' in Settings > Environments > '$envName' so that the person who triggered the deployment cannot also approve it." `
+                    -AttackMapping @('unauthorized-env-deployment', 'xz-utils-backdoor') `
+                    -Target $target))
+            }
+
+            if (-not $hasBranchPolicy) {
+                $findings.Add((Format-FylgyrResult `
+                    -CheckName 'EnvironmentProtection' `
+                    -Status 'Warning' `
+                    -Severity 'Medium' `
+                    -Resource $envResource `
+                    -Detail "Environment '$envName' has required reviewers but no deployment branch policy. Any branch can trigger a deployment that (if approved) reaches this environment." `
+                    -Remediation "Add a deployment branch policy in Settings > Environments to restrict deployments to protected or specific branches." `
+                    -AttackMapping @('unauthorized-env-deployment') `
+                    -Target $target))
+            }
         }
     }
 

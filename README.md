@@ -610,7 +610,7 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `DependencyReview` | PR workflows missing `actions/dependency-review-action` pre-merge dependency gate | Medium | `event-stream-hijack` |
 | `ArtifactAttestation` | Release-producing jobs missing build provenance attestation controls | Medium | `solarwinds-orion`, `codecov-bash-uploader` |
 | `ReusableWorkflowTrust` | Reusable workflow calls not SHA-pinned or sourced from untrusted repos | High | `tj-actions-shai-hulud` |
-| `WorkflowPermission` | Missing top-level `permissions:` block in workflow files | Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
+| `WorkflowPermission` | Missing top-level `permissions:` block; top-level or job-level `permissions: write-all` | Critical/Medium | `tj-actions-shai-hulud`, `nx-pwn-request` |
 | `PublishIntegrity` | Publish workflows missing provenance, trusted publishing, or artifact signing signals | High | `shai-hulud-npm-worm`, `lottie-player-npm-compromise`, `ua-parser-js-npm-compromise`, `bitwarden-cli-2026-04`, `event-stream-hijack` |
 | `EgressControl` | Missing or audit-only network egress filtering in workflows | Medium | `tj-actions-shai-hulud`, `actions-cool-issues-helper-compromise`, `trivy-supply-chain-2026`, `codecov-bash-uploader` |
 | `ForkSecretExposure` | Secrets referenced in `pull_request_target`/`workflow_run` workflows, unprotected environments reachable from fork PRs | Critical | `prt-scan-ai-automated`, `hackerbot-claw`, `nx-pwn-request`, `azure-karpenter-pwn-request` |
@@ -620,14 +620,14 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `DependabotAlert` | Open critical/high Dependabot vulnerability alerts | High | `event-stream-hijack`, `solarwinds-orion` |
 | `CodeScanning` | Code Scanning not configured or stale analyses | Medium | `solarwinds-orion` |
 | `RunnerHygiene` | Risky self-hosted runner configurations, dangerous triggers, missing trigger filters, org-wide runner groups, non-ephemeral runners, public repo runners | High | `github-actions-cryptomining`, `praetorian-runner-pivot`, `shai-hulud-runner-backdoor` |
-| `CodeOwner` | Missing `CodeOwner` file, single-owner catch-all rules, too few distinct reviewers | Medium | `xz-utils-backdoor` |
+| `CodeOwner` | Missing `CODEOWNERS` file, single-owner catch-all, too few distinct reviewers, or CODEOWNERS not enforced via branch ruleset | Medium | `xz-utils-backdoor` |
 | `SignedCommit` | Default branch does not require signed commits — recognizes enforcement via classic branch protection *or* a modern branch ruleset (`required_signatures` rule) | Medium | `xz-utils-backdoor` |
 | `ForkPullPolicy` | `pull_request_target` combined with checkout of fork-controlled `head.sha`/`head.ref`/`github.head_ref` | High | `nx-pwn-request`, `tj-actions-shai-hulud`, `prt-scan-ai-automated` |
-| `EnvironmentProtection` | Deployment environments without required reviewers or branch policies | High | `unauthorized-env-deployment`, `prt-scan-ai-automated` |
+| `EnvironmentProtection` | Deployment environments without required reviewers, self-review not prevented, or missing branch policies | High | `unauthorized-env-deployment`, `prt-scan-ai-automated`, `xz-utils-backdoor` |
 | `RepoVisibility` | Public repositories with internal/private naming patterns | Medium | `toyota-source-exposure` |
 | `WebhookSecurity` | Repository webhooks configured without a secret for payload authentication | Low | `codecov-bash-uploader` |
 | `BinaryArtifact` | Binary files (`.exe`, `.dll`, `.so`, `.jar`, etc.) committed in the repository tree | Low | `solarwinds-orion` |
-| `Rulesets` | Missing modern branch/tag rulesets or missing tag protection (warns if repo has no tags yet; fails when tags exist) | High | `trivy-tag-poisoning`, `actions-cool-issues-helper-compromise`, `trivy-force-push-main` |
+| `Rulesets` | Missing modern branch/tag rulesets, missing tag protection, or bypass actors configured on default-branch rulesets (warns if no tags yet; fails when tags exist) | High | `trivy-tag-poisoning`, `actions-cool-issues-helper-compromise`, `trivy-force-push-main`, `xz-utils-backdoor` |
 | `DefaultTokenPermission` | Platform default `GITHUB_TOKEN` permission set to write, or workflows allowed to approve pull requests (repo and org scope) | High | `tj-actions-shai-hulud`, `nx-pwn-request`, `prt-scan-ai-automated` |
 | `DeployKey` | Deploy keys with write access (MFA-less, unattributed push path) or stale read-only keys | High | `committed-credentials-exposure`, `codecov-bash-uploader` |
 | `TagProtection` | Active tag rulesets missing `deletion`/`non_fast_forward` rules (release retagging primitive) | High | `trivy-tag-poisoning`, `actions-cool-issues-helper-compromise` |
@@ -643,6 +643,10 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' | Where-Object Status -eq 'Fail'
 | `PatPolicy` | Organization PAT governance cannot be verified or appears weak | High | `uber-credential-leak`, `github-device-code-phishing` |
 | `OrgSecretVisibility` | Organization Actions secrets visible to all repositories (`visibility: all`) | High | `prt-scan-ai-automated`, `hackerbot-claw`, `axios-npm-token-leak` |
 | `PrivateVulnReporting` | Repository private vulnerability reporting (PVR) disabled or unsupported | Low | `xz-utils-backdoor` |
+| `DefaultWorkflowPermission` | Repository default GITHUB_TOKEN set to write, or Actions allowed to self-approve pull requests | High | `tj-actions-shai-hulud`, `nx-pwn-request`, `prt-scan-ai-automated` |
+| `WorkflowConcurrency` | Deployment jobs targeting a GitHub environment with no concurrency group configured | Medium | `unauthorized-env-deployment` |
+| `ContinueOnError` | Security gate jobs (scan, CodeQL, Trivy, Snyk, etc.) with `continue-on-error: true` that would silence tool failures | Medium | `solarwinds-orion`, `codecov-bash-uploader` |
+| `RunnerPinning` | Workflows using mutable `-latest` runner labels instead of a pinned OS version | Medium | `trivy-supply-chain-2026`, `solarwinds-orion` |
 
 ## Private Vulnerability Reporting Baseline
 
@@ -743,6 +747,14 @@ Every finding maps to a real-world supply chain incident. The full catalog lives
 | `oidc-trust-abuse` | OIDC trust abuse from unscoped token requests | 2024-01 |
 | `cache-poisoning-pr-branch` | PR branch cache poisoning | 2023-01 |
 | `shai-hulud-runner-backdoor` | Shai-Hulud runner backdoor pattern | 2025-01 |
+| `reviewdog-action-setup-2025` | reviewdog/action-setup supply chain attack (root cause of tj-actions/changed-files) | 2025-03 |
+| `artipacked-token-artifact-leak-2024` | ArtiPacked artifact token leak via GitHub Actions artifacts | 2024-08 |
+| `ultralytics-cache-pivot-2024` | Ultralytics cache poisoning via PR branch | 2024-12 |
+| `miasma-worm-redhat-npm-2026` | Miasma worm — Red Hat npm namespace (Phantom Gyp) | 2026-06 |
+| `miasma-worm-leo-platform-2026` | Miasma worm — Leo Platform 20-package sweep | 2026-06 |
+| `mastra-sapphire-sleet-2026` | Mastra Sapphire Sleet — DPRK-attributed 140+ package dependency confusion | 2026-06 |
+| `simonecorsi-mawesome-2026` | simonecorsi/mawesome tag repoint supply chain | 2026-06 |
+| `microsoft-durabletask-teampcp-2026` | microsoft/durabletask TeamPCP PyPI dependency confusion | 2026-05 |
 
 ## Security Posture
 
@@ -811,6 +823,10 @@ src/Fylgyr/
 │   ├── Test-TriggerFilter.ps1
 │   ├── Test-WebhookSecurity.ps1
 │   ├── Test-BinaryArtifact.ps1
+│   ├── Test-ContinueOnError.ps1
+│   ├── Test-DefaultWorkflowPermission.ps1
+│   ├── Test-RunnerPinning.ps1
+│   ├── Test-WorkflowConcurrency.ps1
 │   └── Test-WorkflowPermission.ps1
 ├── Private/
 │   ├── Invoke-GitHubApi.ps1       # REST/GraphQL wrapper with pagination

@@ -1,4 +1,4 @@
-function Test-Rulesets {
+﻿function Test-Rulesets {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Public check name follows project check contract.')]
     [CmdletBinding()]
     [OutputType([PSCustomObject[]])]
@@ -148,11 +148,37 @@ function Test-Rulesets {
     $activeRulesets = @($rulesets | Where-Object { & $isActiveRuleset $_ })
 
     $hasBranchRuleset = $false
+    $bypassFindings = [System.Collections.Generic.List[PSCustomObject]]::new()
+
     foreach ($ruleset in $activeRulesets) {
         if ($ruleset.target -eq 'branch' -and (& $targetsDefaultBranch $ruleset $defaultBranch)) {
             $hasBranchRuleset = $true
-            break
+
+            # bypass_actors on an active ruleset lets specific actors skip all rules.
+            # Any non-empty bypass list means at least one principal can push directly
+            # to the default branch without going through the required controls.
+            if ($ruleset.PSObject.Properties['bypass_actors'] -and
+                $ruleset.bypass_actors -and
+                @($ruleset.bypass_actors).Count -gt 0) {
+
+                $bypassCount = @($ruleset.bypass_actors).Count
+                $rulesetName = if ($ruleset.PSObject.Properties['name'] -and $ruleset.name) { [string]$ruleset.name } else { 'unnamed' }
+
+                $bypassFindings.Add((Format-FylgyrResult `
+                    -CheckName 'Rulesets' `
+                    -Status 'Fail' `
+                    -Severity 'High' `
+                    -Resource $resource `
+                    -Detail "Active branch ruleset '$rulesetName' has $bypassCount bypass actor(s) configured. Bypass actors can push directly to the default branch without satisfying the ruleset's required reviews, status checks, or other controls. A compromised account that holds bypass privilege can merge malicious code without the usual gatekeeping — the same escalation exploited in the xz-utils backdoor and Trivy force-push incidents." `
+                    -Remediation "Remove all bypass actors from the '$rulesetName' ruleset in Settings → Rules → Rulesets unless there is a documented and time-limited operational need. Use environment protection rules with required reviewers instead of ruleset bypass for emergency deployments." `
+                    -AttackMapping @('xz-utils-backdoor', 'trivy-force-push-main') `
+                    -Target $resource))
+            }
         }
+    }
+
+    if ($bypassFindings.Count -gt 0) {
+        foreach ($bf in $bypassFindings) { $results.Add($bf) }
     }
 
     $hasTagRuleset = @($activeRulesets | Where-Object { $_.target -eq 'tag' }).Count -gt 0
@@ -176,14 +202,16 @@ function Test-Rulesets {
     $hasTagProtection = $hasTagRuleset -or $hasLegacyTagProtection
 
     if ($hasBranchRuleset -and $hasTagProtection) {
-        $results.Add((Format-FylgyrResult `
-            -CheckName 'Rulesets' `
-            -Status 'Pass' `
-            -Severity 'Info' `
-            -Resource $resource `
-            -Detail 'Active rulesets cover branch governance and tag protection.' `
-            -Remediation 'No action needed. Keep branch protection and rulesets aligned.' `
-            -Target $resource))
+        if ($bypassFindings.Count -eq 0) {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'Rulesets' `
+                -Status 'Pass' `
+                -Severity 'Info' `
+                -Resource $resource `
+                -Detail 'Active rulesets cover branch governance and tag protection.' `
+                -Remediation 'No action needed. Keep branch protection and rulesets aligned.' `
+                -Target $resource))
+        }
         return $results.ToArray()
     }
 
