@@ -142,7 +142,7 @@ For other automation (scripts, CI jobs, release bots):
 
 - **Recommended:** Use a GitHub App instead of a PAT. App-generated commits are signed by GitHub.
 - **Alternative:** Generate a dedicated GPG or SSH key for the bot, add it to GitHub as a signing key under a machine account, and configure the automation to use it.
-- **Bypass via ruleset:** If the automation cannot sign, add it to the ruleset bypass list scoped to `Repository role: Write`. Scope bypasses as narrowly as possible.
+- **Bypass via ruleset (last resort):** If the automation cannot sign, add the specific bot actor (GitHub App or machine user) to the ruleset bypass list; avoid broad role-based bypasses. Scope bypasses as narrowly as possible.
 
 ## Rollout checklist for organizations
 
