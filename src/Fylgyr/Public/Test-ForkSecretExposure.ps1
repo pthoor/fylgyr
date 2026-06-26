@@ -160,13 +160,24 @@ function Test-ForkSecretExposure {
         }
         catch {
             $msg = $_.Exception.Message
-            if ($msg -notmatch '404' -and $msg -notmatch '403') {
+
+            if ($msg -match '403') {
                 $results.Add((Format-FylgyrResult `
                     -CheckName 'ForkSecretExposure' `
                     -Status 'Error' `
                     -Severity 'Medium' `
                     -Resource $target `
-                    -Detail "Failed to check environment protection rules: $($_.Exception.Message)" `
+                    -Detail 'Insufficient permissions to list deployment environments; cannot evaluate environment protection rules.' `
+                    -Remediation 'Use a token with permission to read environment settings (Actions:read for fine-grained tokens, or repo scope for classic tokens).' `
+                    -Target $target))
+            }
+            elseif ($msg -notmatch '404') {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName 'ForkSecretExposure' `
+                    -Status 'Error' `
+                    -Severity 'Medium' `
+                    -Resource $target `
+                    -Detail "Failed to check environment protection rules: $msg" `
                     -Remediation 'Verify the token has access to read environment settings.' `
                     -Target $target))
             }
