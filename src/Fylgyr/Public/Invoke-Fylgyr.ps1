@@ -35,6 +35,8 @@ function Invoke-Fylgyr {
 
         [switch]$IncludeEvidence,
 
+        [switch]$SoloMaintainer,
+
         [switch]$IgnoreConfig,
 
         [ValidateSet('Info', 'Low', 'Medium', 'High', 'Critical')]
@@ -66,9 +68,12 @@ function Invoke-Fylgyr {
         #   `orgs/{Owner}/...` block on second and later repos in an org-wide scan.
         # - FylgyrOwnerContextCache: owner type/token-owner/plan cache used by
         #   Get-FylgyrOwnerContext to avoid repeated users/{owner} and user calls.
+        # - FylgyrOwnerAccountChecked: Test-AccountSecurity/Test-AccountKey consult this
+        #   so account-level checks run once per owner across an org-wide repo scan.
         $script:FylgyrOwnerRunnerGroupsChecked = @{}
         $script:FylgyrOwnerContextCache = @{}
         $script:FylgyrOrgAuditLogCache = @{}
+        $script:FylgyrOwnerAccountChecked = @{}
     }
 
     process {
@@ -332,6 +337,12 @@ function Invoke-Fylgyr {
             }
         }
 
+        if ($SoloMaintainer) {
+            # Recalibrate before FailOn so structurally-impossible-solo findings
+            # do not block the gate, and so every output format reflects the profile.
+            $resultsArray = Resolve-FylgyrProfile -Results $resultsArray -ProfileName 'SoloMaintainer'
+        }
+
         if ($FailOn) {
             $severityOrder = @{
                 Info = 0
@@ -435,6 +446,26 @@ function Invoke-FylgyrScan {
             -Target $target))
     }
 
+    # Composite/JS action definition files (action.yml) are outside the changed-workflow
+    # model, so only fetch them for full scans.
+    $actionFiles = @()
+    if (-not $fetchFailed -and -not $ChangedOnly) {
+        try {
+            $actionFiles = @(Get-ActionDefinitionFile -Owner $Owner -Repo $Repo -Token $Token)
+        }
+        catch {
+            $actionFiles = @()
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'ActionPinning' `
+                -Status 'Warning' `
+                -Severity 'Low' `
+                -Resource $target `
+                -Detail "Could not fetch composite action definition files: $($_.Exception.Message)" `
+                -Remediation 'Verify the token has contents:read access; composite action.yml files were not scanned for pinning.' `
+                -Target $target))
+        }
+    }
+
     if ($fetchFailed) {
         # Error already recorded above
     }
@@ -481,12 +512,36 @@ function Invoke-FylgyrScan {
             -Detail 'No workflow files found in .github/workflows.' `
             -Remediation 'No action needed if this repository does not use GitHub Actions.' `
             -Target $target))
+
+        # A repo can ship composite actions without any workflow of its own; still
+        # scan their pinning.
+        if ($actionFiles.Count -gt 0) {
+            try {
+                $checkResults = Test-ActionPinning -ActionFiles $actionFiles
+                foreach ($r in $checkResults) {
+                    $r.Target = $target
+                    $results.Add($r)
+                }
+            }
+            catch {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName 'Test-ActionPinning' `
+                    -Status 'Error' `
+                    -Severity 'Critical' `
+                    -Resource $target `
+                    -Detail "Check failed with error: $($_.Exception.Message)" `
+                    -Remediation 'Review the error and re-run.' `
+                    -Target $target))
+            }
+        }
     }
     else {
         $workflowChecks = @(
-            @{ Name = 'Test-ActionPinning';      Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-ActionPinning';      Params = @{ WorkflowFiles = $workflowFiles; ActionFiles = $actionFiles } }
             @{ Name = 'Test-DangerousTrigger';   Params = @{ WorkflowFiles = $workflowFiles; Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-ScriptInjection';    Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-ContainerPinning';   Params = @{ WorkflowFiles = $workflowFiles } }
+            @{ Name = 'Test-UntrustedDownload';  Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-ArtifactPoisoning';  Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-OidcTrust';          Params = @{ WorkflowFiles = $workflowFiles } }
             @{ Name = 'Test-CacheIntegrity';     Params = @{ WorkflowFiles = $workflowFiles } }
@@ -567,6 +622,11 @@ function Invoke-FylgyrScan {
             @{ Name = 'Test-Rulesets';             Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-BinaryArtifact';       Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
             @{ Name = 'Test-PrivateVulnReporting'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-DefaultTokenPermission'; Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-DeployKey';            Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-TagProtection';        Params = @{ Owner = $Owner; Repo = $Repo; Token = $Token } }
+            @{ Name = 'Test-AccountSecurity';      Params = @{ Owner = $Owner; Token = $Token } }
+            @{ Name = 'Test-AccountKey';           Params = @{ Owner = $Owner; Token = $Token } }
         )
 
         foreach ($entry in $repoChecks) {
@@ -590,6 +650,28 @@ function Invoke-FylgyrScan {
                     -Remediation 'Review the error and re-run.' `
                     -Target $target))
             }
+        }
+
+        # Lifecycle-script check combines workflow content with a package.json
+        # fetch, so it takes both workflow files and API parameters.
+        Write-Progress -Activity $target -Status 'Running Test-LifecycleScript' -Id 2 -ParentId 1
+        try {
+            $lifecycleWorkflowFiles = if (-not $fetchFailed -and $workflowFiles) { @($workflowFiles) } else { @() }
+            $checkResults = Test-LifecycleScript -Owner $Owner -Repo $Repo -Token $Token -WorkflowFiles $lifecycleWorkflowFiles
+            foreach ($r in $checkResults) {
+                $r.Target = $target
+                $results.Add($r)
+            }
+        }
+        catch {
+            $results.Add((Format-FylgyrResult `
+                -CheckName 'Test-LifecycleScript' `
+                -Status 'Error' `
+                -Severity 'Critical' `
+                -Resource $target `
+                -Detail "Check failed with error: $($_.Exception.Message)" `
+                -Remediation 'Review the error and re-run.' `
+                -Target $target))
         }
     }
 
@@ -618,6 +700,53 @@ function Invoke-FylgyrOrgScan {
     $target = "org/$Owner"
     $results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
+    # Personal accounts: every org check would individually emit a "personal account"
+    # Info result (10+ near-identical lines). Emit one consolidated note, run the
+    # personal-account equivalents, and skip the org loop. 'Unknown' owners fall
+    # through so each check can report its own error.
+    $ownerContext = Get-FylgyrOwnerContext -Owner $Owner -Token $Token
+    if ($ownerContext.Type -eq 'User') {
+        $skippedChecks = @(
+            'OrgMfaPolicy', 'OrgDefaultPermissions', 'IpAllowlist', 'AuditLogStreaming',
+            'OAuthAppPolicy', 'OrgActionRestrictions', 'OutsideCollaborators', 'PatPolicy',
+            'GitHubAppSecurity', 'Rulesets', 'DefaultTokenPermission', 'OrgSecretVisibility'
+        )
+        $results.Add((Format-FylgyrResult `
+            -CheckName 'OrgChecks' `
+            -Status 'Info' `
+            -Severity 'Info' `
+            -Resource "user/$Owner" `
+            -Detail "Owner '$Owner' is a personal account; $($skippedChecks.Count) organization-policy checks do not apply: $($skippedChecks -join ', '). Personal-account equivalents (AccountSecurity, AccountKey) run instead." `
+            -Remediation 'No action needed.' `
+            -Target "user/$Owner"))
+
+        foreach ($entry in @(
+            @{ Name = 'Test-AccountSecurity'; Params = @{ Owner = $Owner; Token = $Token } }
+            @{ Name = 'Test-AccountKey';      Params = @{ Owner = $Owner; Token = $Token } }
+        )) {
+            try {
+                $checkParams = $entry.Params
+                $checkResults = & $entry.Name @checkParams
+                foreach ($r in $checkResults) {
+                    $r.Target = "user/$Owner"
+                    $results.Add($r)
+                }
+            }
+            catch {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName ($entry.Name -replace '^Test-', '') `
+                    -Status 'Error' `
+                    -Severity 'Medium' `
+                    -Resource "user/$Owner" `
+                    -Detail "Check failed with error: $($_.Exception.Message)" `
+                    -Remediation 'Review the error and re-run.' `
+                    -Target "user/$Owner"))
+            }
+        }
+
+        return $results.ToArray()
+    }
+
     $orgChecks = @(
         @{ Name = 'Test-OrgMfaPolicy';          Params = @{ Owner = $Owner; Token = $Token } }
         @{ Name = 'Test-OrgDefaultPermissions'; Params = @{ Owner = $Owner; Token = $Token } }
@@ -629,6 +758,8 @@ function Invoke-FylgyrOrgScan {
         @{ Name = 'Test-PatPolicy';             Params = @{ Owner = $Owner; Token = $Token } }
         @{ Name = 'Test-GitHubAppSecurity';     Params = @{ Owner = $Owner; Token = $Token } }
         @{ Name = 'Test-Rulesets';              Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-DefaultTokenPermission'; Params = @{ Owner = $Owner; Token = $Token } }
+        @{ Name = 'Test-OrgSecretVisibility';   Params = @{ Owner = $Owner; Token = $Token } }
     )
 
     foreach ($entry in $orgChecks) {

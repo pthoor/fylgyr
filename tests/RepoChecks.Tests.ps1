@@ -14,6 +14,7 @@ Describe 'Test-BranchProtection' {
             return [PSCustomObject]@{
                 allow_force_pushes            = [PSCustomObject]@{ enabled = $false }
                 allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                enforce_admins                = [PSCustomObject]@{ enabled = $true }
                 required_pull_request_reviews = [PSCustomObject]@{
                     required_approving_review_count = 1
                     dismiss_stale_reviews           = $true
@@ -195,6 +196,7 @@ Describe 'Test-BranchProtection' {
             return [PSCustomObject]@{
                 allow_force_pushes            = [PSCustomObject]@{ enabled = $true }
                 allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                enforce_admins                = [PSCustomObject]@{ enabled = $true }
                 required_pull_request_reviews = [PSCustomObject]@{
                     required_approving_review_count = 1
                     dismiss_stale_reviews           = $true
@@ -219,6 +221,7 @@ Describe 'Test-BranchProtection' {
             # allow_force_pushes deliberately absent
             return [PSCustomObject]@{
                 allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                enforce_admins                = [PSCustomObject]@{ enabled = $true }
                 required_pull_request_reviews = [PSCustomObject]@{
                     required_approving_review_count = 1
                     dismiss_stale_reviews           = $true
@@ -241,6 +244,7 @@ Describe 'Test-BranchProtection' {
             return [PSCustomObject]@{
                 allow_force_pushes            = [PSCustomObject]@{ enabled = $false }
                 allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                enforce_admins                = [PSCustomObject]@{ enabled = $true }
                 required_pull_request_reviews = $null
                 required_status_checks        = [PSCustomObject]@{ strict = $true }
             }
@@ -249,6 +253,33 @@ Describe 'Test-BranchProtection' {
         $results = Test-BranchProtection -Owner 'org' -Repo 'repo' -Token 'fake-token'
         $fail = $results | Where-Object Status -EQ 'Fail'
         ($fail | Where-Object { $_.Detail -like '*pull request reviews*' }) | Should -HaveCount 1
+    }
+
+    It 'percent-encodes a slash-containing default branch in the protection endpoint' {
+        $script:protectionEndpoint = $null
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'repos/[^/]+/[^/]+$') {
+                return [PSCustomObject]@{ default_branch = 'release/v1' }
+            }
+            $script:protectionEndpoint = $Endpoint
+            return [PSCustomObject]@{
+                allow_force_pushes            = [PSCustomObject]@{ enabled = $false }
+                allow_deletions               = [PSCustomObject]@{ enabled = $false }
+                enforce_admins                = [PSCustomObject]@{ enabled = $true }
+                required_pull_request_reviews = [PSCustomObject]@{
+                    required_approving_review_count = 1
+                    dismiss_stale_reviews           = $true
+                }
+                required_status_checks        = [PSCustomObject]@{ strict = $true; contexts = @('ci') }
+            }
+        }
+
+        $null = Test-BranchProtection -Owner 'org' -Repo 'repo' -Token 'fake-token'
+        # The slash inside the branch name must be encoded so it is not read as a
+        # path separator (which would 404) or steer the request to another path.
+        $script:protectionEndpoint | Should -Match 'branches/release%2Fv1/protection'
+        $script:protectionEndpoint | Should -Not -Match 'branches/release/v1/protection'
     }
 }
 
@@ -576,5 +607,217 @@ jobs:
         $results | Should -HaveCount 1
         $results[0].Status | Should -Be 'Warning'
         $results[0].Detail | Should -BeLike '*dynamic runner*'
+    }
+}
+
+Describe 'Test-DefaultTokenPermission (repo scope)' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'fails when the default token permission is write' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            [PSCustomObject]@{ default_workflow_permissions = 'write'; can_approve_pull_request_reviews = $false }
+        }
+
+        $results = Test-DefaultTokenPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Fail'
+        $results[0].Severity | Should -Be 'High'
+        $results[0].AttackMapping | Should -Contain 'tj-actions-shai-hulud'
+    }
+
+    It 'warns when workflows can approve pull requests' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            [PSCustomObject]@{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $true }
+        }
+
+        $results = Test-DefaultTokenPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Warning'
+        $results[0].Severity | Should -Be 'Medium'
+        $results[0].AttackMapping | Should -Contain 'prt-scan-ai-automated'
+    }
+
+    It 'passes when read-only and approval is disabled' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            [PSCustomObject]@{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false }
+        }
+
+        $results = Test-DefaultTokenPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'returns Error with permission guidance on 403' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '403 Forbidden' }
+
+        $results = Test-DefaultTokenPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Error'
+        $results[0].Remediation | Should -BeLike '*Administration:read*'
+    }
+
+    It 'returns Info on 404' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '404 Not Found' }
+
+        $results = Test-DefaultTokenPermission -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Info'
+    }
+}
+
+Describe 'Test-DeployKey' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'fails for a write-access deploy key' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            @(
+                [PSCustomObject]@{ id = 1; title = 'ci-push-key'; read_only = $false; created_at = [datetime]::UtcNow.AddDays(-10).ToString('o') }
+            )
+        }
+
+        $results = Test-DeployKey -Owner 'org' -Repo 'repo' -Token 'fake'
+        $fail = $results | Where-Object Status -EQ 'Fail'
+        $fail | Should -HaveCount 1
+        $fail[0].Severity | Should -Be 'High'
+        $fail[0].Resource | Should -BeLike '*ci-push-key*'
+        $fail[0].AttackMapping | Should -Contain 'committed-credentials-exposure'
+    }
+
+    It 'warns for a stale read-only deploy key' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            @(
+                [PSCustomObject]@{ id = 2; title = 'old-readonly'; read_only = $true; created_at = [datetime]::UtcNow.AddDays(-500).ToString('o') }
+            )
+        }
+
+        $results = Test-DeployKey -Owner 'org' -Repo 'repo' -Token 'fake'
+        $warn = $results | Where-Object Status -EQ 'Warning'
+        $warn | Should -HaveCount 1
+        $warn[0].Severity | Should -Be 'Low'
+    }
+
+    It 'passes when there are no deploy keys' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { @() }
+
+        $results = Test-DeployKey -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'passes for fresh read-only keys' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            @(
+                [PSCustomObject]@{ id = 3; title = 'mirror-key'; read_only = $true; created_at = [datetime]::UtcNow.AddDays(-30).ToString('o') }
+            )
+        }
+
+        $results = Test-DeployKey -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'returns Error on 403' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '403 Forbidden' }
+
+        $results = Test-DeployKey -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Error'
+    }
+}
+
+Describe 'Test-TagProtection' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'passes when a tag ruleset blocks deletion and non-fast-forward updates' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'rulesets\?') {
+                return @(
+                    [PSCustomObject]@{
+                        id = 11; target = 'tag'; enforcement = 'active'
+                        rules = @(
+                            [PSCustomObject]@{ type = 'deletion' }
+                            [PSCustomObject]@{ type = 'non_fast_forward' }
+                        )
+                    }
+                )
+            }
+            return $null
+        }
+
+        $results = Test-TagProtection -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'fails when the tag ruleset is missing non_fast_forward' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'rulesets\?') {
+                return @(
+                    [PSCustomObject]@{
+                        id = 12; target = 'tag'; enforcement = 'active'
+                        rules = @([PSCustomObject]@{ type = 'deletion' })
+                    }
+                )
+            }
+            return $null
+        }
+
+        $results = Test-TagProtection -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Fail'
+        $results[0].Severity | Should -Be 'High'
+        $results[0].Detail | Should -BeLike '*non_fast_forward*'
+        $results[0].AttackMapping | Should -Contain 'trivy-tag-poisoning'
+    }
+
+    It 'resolves rules via the ruleset detail endpoint when the list omits them' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'rulesets\?') {
+                return @([PSCustomObject]@{ id = 13; target = 'tag'; enforcement = 'active' })
+            }
+            if ($Endpoint -match 'rulesets/13$') {
+                return [PSCustomObject]@{
+                    id = 13; target = 'tag'; enforcement = 'active'
+                    rules = @(
+                        [PSCustomObject]@{ type = 'deletion' }
+                        [PSCustomObject]@{ type = 'non_fast_forward' }
+                    )
+                }
+            }
+            return $null
+        }
+
+        $results = Test-TagProtection -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'returns Info deferring to Rulesets when no tag ruleset exists' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -match 'rulesets\?') {
+                return @([PSCustomObject]@{ id = 14; target = 'branch'; enforcement = 'active'; rules = @() })
+            }
+            return $null
+        }
+
+        $results = Test-TagProtection -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Info'
+        $results[0].AttackMapping | Should -Contain 'trivy-tag-poisoning'
+    }
+
+    It 'returns Error on 403' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '403 Forbidden' }
+
+        $results = Test-TagProtection -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results[0].Status | Should -Be 'Error'
     }
 }

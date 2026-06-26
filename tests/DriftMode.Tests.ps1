@@ -273,6 +273,31 @@ Describe 'Drift checks' {
     }
 }
 
+Describe 'Baseline parsing depth bound' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'surfaces a parse error instead of recursing without bound on deeply nested baseline JSON' {
+        # Build JSON nested well beyond the configured -Depth 25 so the parser
+        # rejects it rather than consuming unbounded resources on a crafted file.
+        $deep = '1'
+        foreach ($i in 1..60) { $deep = "{`"n`":$deep}" }
+        $baselineFile = Join-Path -Path $TestDrive -ChildPath 'deep-baseline.json'
+        Set-Content -Path $baselineFile -Value $deep
+
+        InModuleScope Fylgyr -Parameters @{ Path = $baselineFile } {
+            param($Path)
+            { Get-FylgyrBaselineFingerprintSet -BaselinePath $Path } |
+                Should -Throw -ExpectedMessage 'Failed to parse baseline JSON*'
+            { Compare-FylgyrBaseline -BaselinePath $Path -CheckName 'X' -Resource 'r' -CurrentSnapshot @{} } |
+                Should -Throw -ExpectedMessage 'Failed to parse baseline JSON*'
+        }
+    }
+}
+
 Describe 'Log Analytics output' {
     BeforeAll {
         $repoRoot = Split-Path -Path $PSScriptRoot -Parent

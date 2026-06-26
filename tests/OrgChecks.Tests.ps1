@@ -502,3 +502,81 @@ Describe 'Phase 7 org-level checks' {
         }
     }
 }
+
+Describe 'Test-DefaultTokenPermission (org scope)' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'returns Info when owner is a personal account' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'User' } }
+
+        $results = Test-DefaultTokenPermission -Owner 'alice' -Token 'fake'
+        $results[0].Status | Should -Be 'Info'
+    }
+
+    It 'fails when the org default token permission is write' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            [PSCustomObject]@{ default_workflow_permissions = 'write'; can_approve_pull_request_reviews = $true }
+        }
+
+        $results = Test-DefaultTokenPermission -Owner 'acme' -Token 'fake'
+        $results[0].Status | Should -Be 'Fail'
+        $results[0].Severity | Should -Be 'High'
+        $results[0].Resource | Should -Be 'org/acme'
+    }
+}
+
+Describe 'Test-OrgSecretVisibility' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'returns Info when owner is a personal account' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'User' } }
+
+        $results = Test-OrgSecretVisibility -Owner 'alice' -Token 'fake'
+        $results[0].Status | Should -Be 'Info'
+    }
+
+    It 'fails for a secret visible to all repositories' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            @(
+                [PSCustomObject]@{ name = 'NPM_TOKEN'; visibility = 'all' }
+                [PSCustomObject]@{ name = 'SCOPED'; visibility = 'selected' }
+            )
+        }
+
+        $results = Test-OrgSecretVisibility -Owner 'acme' -Token 'fake'
+        $fail = $results | Where-Object Status -EQ 'Fail'
+        $fail | Should -HaveCount 1
+        $fail[0].Severity | Should -Be 'High'
+        $fail[0].Resource | Should -BeLike '*NPM_TOKEN*'
+        $fail[0].AttackMapping | Should -Contain 'prt-scan-ai-automated'
+    }
+
+    It 'passes when no secret is visible to all repositories' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            @([PSCustomObject]@{ name = 'SCOPED'; visibility = 'selected' })
+        }
+
+        $results = Test-OrgSecretVisibility -Owner 'acme' -Token 'fake'
+        $results | Should -HaveCount 1
+        $results[0].Status | Should -Be 'Pass'
+    }
+
+    It 'returns Error on 403' {
+        Mock -ModuleName Fylgyr Get-FylgyrOwnerContext { [PSCustomObject]@{ Type = 'Organization' } }
+        Mock -ModuleName Fylgyr Invoke-GitHubApi { throw '403 Forbidden' }
+
+        $results = Test-OrgSecretVisibility -Owner 'acme' -Token 'fake'
+        $results[0].Status | Should -Be 'Error'
+    }
+}

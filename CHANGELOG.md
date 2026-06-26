@@ -6,6 +6,32 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Added
+
+- Six new checks:
+	- `Test-DefaultTokenPermission` — flags platform default `GITHUB_TOKEN` workflow permission set to `write` and workflows allowed to approve pull requests, at both repo and org scope.
+	- `Test-DeployKey` — flags deploy keys with write access (MFA-less, unattributed push path) and stale read-only keys.
+	- `Test-TagProtection` — evaluates tag-ruleset rule depth: active tag rulesets missing `deletion`/`non_fast_forward` rules (the release retagging primitive). Absence of tag rulesets remains `Test-Rulesets` territory.
+	- `Test-OrgSecretVisibility` — flags organization Actions secrets with `visibility: all` (org scope, runs with `-IncludeOrgChecks`).
+	- `Test-AccountSecurity` — verifies two-factor authentication on personal accounts (Fail/Critical when disabled); degrades to an Info advisory when the token does not belong to the scanned account.
+	- `Test-AccountKey` — flags stale account SSH keys (>730 days) and expired GPG signing keys on personal accounts; never echoes key material.
+- `Test-ActionPinning` now also scans composite action definitions (`action.yml`/`action.yaml`) for unpinned `uses:` references via the new `Get-ActionDefinitionFile` helper — closes the tj-actions-style composite-action propagation path.
+- `Test-ScriptInjection` now detects bracket-notation event expressions, `actions/github-script` `script:` inputs, additional unsafe contexts (`workflow_run.pull_requests`, `pull_request_review_comment.body`), and untrusted input routed indirectly through `env:` variables.
+
+### Changed
+
+- Org-level Actions secret visibility moved from `Test-ForkSecretExposure` into the new org-scoped `Test-OrgSecretVisibility` — it previously re-emitted once per repo and silently no-oped without org permissions. Single-repo scans no longer surface this signal; run an org scan with `-IncludeOrgChecks`.
+- `Test-ForkSecretExposure` now also covers `workflow_run`-triggered workflows referencing non-`GITHUB_TOKEN` secrets, and detects bracket-notation secret references.
+- `Test-DangerousTrigger` now distinguishes "approval gate verification forbidden by token scope" (single Info per repo) from "no approval gate configured" instead of silently suppressing on 403.
+- `-IncludeOrgChecks` against a personal account now emits one consolidated skip notice and runs `Test-AccountSecurity`/`Test-AccountKey` instead of ~12 separate "personal account" Info results.
+
+### Security
+
+- API-derived values (default branch names, ruleset IDs, blob SHAs, collaborator logins) are now URL-encoded before interpolation into API paths via the new `ConvertTo-FylgyrEscapedPathSegment` helper. Also fixes silent 404s for repos whose default branch contains `/`.
+- Baseline JSON parsing is now depth-bounded (`-Depth 25`) in `Compare-FylgyrBaseline` and `Get-FylgyrBaselineFingerprintSet`.
+- `Send-FylgyrToLogAnalytics` now clears the plaintext client secret immediately after the token request (try/finally).
+- Documented baseline-tampering risk: baseline JSON drives finding suppression, so baselines must be write-protected from contributors (README Drift Mode + docs/SENTINEL.md).
+
 ## [0.7.5] - 2026-05-21
 
 ### Added

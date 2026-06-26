@@ -91,6 +91,33 @@
         return $results.ToArray()
     }
 
+    # Push protection state (best effort - the field is only visible with
+    # sufficient repository access; skip silently when it cannot be read).
+    $pushProtectionResult = $null
+    try {
+        $repoInfo = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo" -Token $Token
+        if ($repoInfo -and
+            $repoInfo.PSObject.Properties['security_and_analysis'] -and
+            $repoInfo.security_and_analysis -and
+            $repoInfo.security_and_analysis.PSObject.Properties['secret_scanning_push_protection'] -and
+            $repoInfo.security_and_analysis.secret_scanning_push_protection -and
+            $repoInfo.security_and_analysis.secret_scanning_push_protection.PSObject.Properties['status'] -and
+            $repoInfo.security_and_analysis.secret_scanning_push_protection.status -ne 'enabled') {
+            $pushProtectionResult = Format-FylgyrResult `
+                -CheckName 'SecretScanning' `
+                -Status 'Warning' `
+                -Severity 'Medium' `
+                -Resource $resource `
+                -Detail 'Secret Scanning push protection is disabled. Alert-only scanning is reactive: by the time an alert fires, the credential is already in git history and must be treated as compromised, as in the Uber and Toyota credential exposures.' `
+                -Remediation 'Enable push protection in Settings → Security → Code security and analysis so credential pushes are blocked before they reach history.' `
+                -AttackMapping @('uber-credential-leak', 'toyota-source-exposure', 'committed-credentials-exposure') `
+                -Target $target
+        }
+    }
+    catch {
+        Write-Debug "Could not resolve push protection state for '$target': $($_.Exception.Message)"
+    }
+
     if ($alerts.Count -eq 0) {
         $results.Add((Format-FylgyrResult `
             -CheckName 'SecretScanning' `
@@ -101,6 +128,11 @@
             -Remediation 'No action needed.' `
             -AttackMapping $attackMap `
             -Target $target))
+
+        if ($pushProtectionResult) {
+            $results.Add($pushProtectionResult)
+        }
+
         return $results.ToArray()
     }
 
@@ -161,6 +193,10 @@
         -Remediation $remediation `
         -AttackMapping $attackMap `
         -Target $target))
+
+    if ($pushProtectionResult) {
+        $results.Add($pushProtectionResult)
+    }
 
     $results.ToArray()
 }

@@ -27,7 +27,7 @@ jobs:
             $results[0].Status | Should -Be 'Fail'
             $results[0].Severity | Should -Be 'Critical'
             $results[0].AttackMapping | Should -Contain 'github-actions-script-injection'
-            $results[0].Remediation | Should -Match 'Known limitation'
+            $results[0].Remediation | Should -Match 'shell variable'
         }
 
         It 'passes when run expressions only use allowlisted context values' {
@@ -47,6 +47,148 @@ jobs:
 
             $results = Test-ScriptInjection -WorkflowFiles $wf
             $results[0].Status | Should -Be 'Pass'
+        }
+
+        It 'flags bracket-notation access to an untrusted event field' {
+            $wf = @([PSCustomObject]@{
+                Name = 'bracket.yml'
+                Path = '.github/workflows/bracket.yml'
+                Content = @'
+name: Bracket
+on: issues
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.event['issue']['title'] }}"
+'@
+            })
+
+            $results = Test-ScriptInjection -WorkflowFiles $wf
+            $results[0].Status | Should -Be 'Fail'
+        }
+
+        It 'flags workflow_run.pull_requests interpolation' {
+            $wf = @([PSCustomObject]@{
+                Name = 'wr.yml'
+                Path = '.github/workflows/wr.yml'
+                Content = @'
+name: WR
+on: workflow_run
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.event.workflow_run.pull_requests[0].head.ref }}"
+'@
+            })
+
+            $results = Test-ScriptInjection -WorkflowFiles $wf
+            $results[0].Status | Should -Be 'Fail'
+        }
+
+        It 'flags pull_request_review_comment.body interpolation' {
+            $wf = @([PSCustomObject]@{
+                Name = 'prrc.yml'
+                Path = '.github/workflows/prrc.yml'
+                Content = @'
+name: PRRC
+on: pull_request_review_comment
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.event.pull_request_review_comment.body }}"
+'@
+            })
+
+            $results = Test-ScriptInjection -WorkflowFiles $wf
+            $results[0].Status | Should -Be 'Fail'
+        }
+
+        It 'flags an env var assigned untrusted data and later interpolated in run (indirection)' {
+            $wf = @([PSCustomObject]@{
+                Name = 'envtaint.yml'
+                Path = '.github/workflows/envtaint.yml'
+                Content = @'
+name: EnvTaint
+on: issues
+env:
+  TITLE: ${{ github.event.issue.title }}
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ env.TITLE }}"
+'@
+            })
+
+            $results = Test-ScriptInjection -WorkflowFiles $wf
+            $results[0].Status | Should -Be 'Fail'
+        }
+
+        It 'flags step-level env taint as well as workflow-level' {
+            $wf = @([PSCustomObject]@{
+                Name = 'stepenv.yml'
+                Path = '.github/workflows/stepenv.yml'
+                Content = @'
+name: StepEnv
+on: issues
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          BODY: ${{ github.event.issue.body }}
+        run: echo "${{ env.BODY }}"
+'@
+            })
+
+            $results = Test-ScriptInjection -WorkflowFiles $wf
+            $results[0].Status | Should -Be 'Fail'
+        }
+
+        It 'passes when untrusted data is bound to env and used as a shell variable' {
+            $wf = @([PSCustomObject]@{
+                Name = 'safeenv.yml'
+                Path = '.github/workflows/safeenv.yml'
+                Content = @'
+name: SafeEnv
+on: issues
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TITLE: ${{ github.event.issue.title }}
+        run: echo "$TITLE"
+'@
+            })
+
+            $results = Test-ScriptInjection -WorkflowFiles $wf
+            $results[0].Status | Should -Be 'Pass'
+        }
+
+        It 'flags untrusted interpolation inside a github-script script: input' {
+            $wf = @([PSCustomObject]@{
+                Name = 'ghscript.yml'
+                Path = '.github/workflows/ghscript.yml'
+                Content = @'
+name: GhScript
+on: issues
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            console.log("${{ github.event.issue.title }}")
+'@
+            })
+
+            $results = Test-ScriptInjection -WorkflowFiles $wf
+            $results[0].Status | Should -Be 'Fail'
         }
     }
 
