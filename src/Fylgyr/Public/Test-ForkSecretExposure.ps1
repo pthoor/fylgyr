@@ -98,53 +98,91 @@ function Test-ForkSecretExposure {
         }
     }
 
-    # Check environment protection rules
-    try {
-        $environments = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/environments" -Token $Token
-        if ($environments.environments) {
-            foreach ($env in $environments.environments) {
-                $envName = $env.name
-                $hasProtection = $false
+    # Check environment protection rules only when dangerous triggers exist in the
+    # scanned workflow files. Unprotected environments are not a fork-secret-exposure
+    # risk unless a pull_request_target or workflow_run trigger is present; general
+    # environment protection is handled by Test-EnvironmentProtection.
+    $hasDangerousTrigger = $false
+    $allTriggerPatterns = @(
+        '(?m)^\s*pull_request_target\s*:'
+        '(?m)^\s*on\s*:\s*pull_request_target\s*(?:#.*)?$'
+        '(?m)^\s*on\s*:\s*\[[^\]]*\bpull_request_target\b[^\]]*\]'
+        '(?m)^\s*workflow_run\s*:'
+        '(?m)^\s*on\s*:\s*workflow_run\s*(?:#.*)?$'
+        '(?m)^\s*on\s*:\s*\[[^\]]*\bworkflow_run\b[^\]]*\]'
+    )
+    foreach ($wf in $WorkflowFiles) {
+        $strippedLines = ($wf.Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' }
+        $wfStripped = $strippedLines -join "`n"
+        foreach ($p in $allTriggerPatterns) {
+            if ($wfStripped -match $p) {
+                $hasDangerousTrigger = $true
+                break
+            }
+        }
+        if ($hasDangerousTrigger) { break }
+    }
 
-                # Check for required reviewers
-                if ($env.protection_rules) {
-                    foreach ($rule in $env.protection_rules) {
-                        if ($rule.type -eq 'required_reviewers' -and $rule.reviewers -and $rule.reviewers.Count -gt 0) {
-                            $hasProtection = $true
-                        }
-                        if ($rule.type -eq 'wait_timer' -and $rule.wait_timer -gt 0) {
-                            $hasProtection = $true
+    if ($hasDangerousTrigger) {
+        # Check environment protection rules
+        try {
+            $environments = Invoke-GitHubApi -Endpoint "repos/$Owner/$Repo/environments" -Token $Token
+            if ($environments.environments) {
+                foreach ($env in $environments.environments) {
+                    $envName = $env.name
+                    $hasProtection = $false
+
+                    # Check for required reviewers
+                    if ($env.protection_rules) {
+                        foreach ($rule in $env.protection_rules) {
+                            if ($rule.type -eq 'required_reviewers' -and $rule.reviewers -and $rule.reviewers.Count -gt 0) {
+                                $hasProtection = $true
+                            }
+                            if ($rule.type -eq 'wait_timer' -and $rule.wait_timer -gt 0) {
+                                $hasProtection = $true
+                            }
                         }
                     }
-                }
 
-                if (-not $hasProtection) {
-                    $results.Add((Format-FylgyrResult `
-                        -CheckName 'ForkSecretExposure' `
-                        -Status 'Fail' `
-                        -Severity 'High' `
-                        -Resource "$target (environment: $envName)" `
-                        -Detail "Environment '$envName' has no required reviewers or wait timers. Deployments to this environment can proceed without approval, bypassing human review of potentially malicious code." `
-                        -Remediation "Add required reviewers to the '$envName' environment in Settings > Environments. For production environments, also add a wait timer to allow for review." `
-                        -AttackMapping @('prt-scan-ai-automated', 'hackerbot-claw') `
-                        -Target $target))
+                    if (-not $hasProtection) {
+                        $results.Add((Format-FylgyrResult `
+                            -CheckName 'ForkSecretExposure' `
+                            -Status 'Fail' `
+                            -Severity 'High' `
+                            -Resource "$target (environment: $envName)" `
+                            -Detail "Environment '$envName' has no required reviewers or wait timers. Deployments to this environment can proceed without approval, bypassing human review of potentially malicious code." `
+                            -Remediation "Add required reviewers to the '$envName' environment in Settings > Environments. For production environments, also add a wait timer to allow for review." `
+                            -AttackMapping @('prt-scan-ai-automated', 'hackerbot-claw') `
+                            -Target $target))
+                    }
                 }
             }
         }
-    }
-    catch {
-        $msg = $_.Exception.Message
-        if ($msg -notmatch '404' -and $msg -notmatch '403') {
-            $results.Add((Format-FylgyrResult `
-                -CheckName 'ForkSecretExposure' `
-                -Status 'Error' `
-                -Severity 'Medium' `
-                -Resource $target `
-                -Detail "Failed to check environment protection rules: $($_.Exception.Message)" `
-                -Remediation 'Verify the token has access to read environment settings.' `
-                -Target $target))
+        catch {
+            $msg = $_.Exception.Message
+
+            if ($msg -match '403') {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName 'ForkSecretExposure' `
+                    -Status 'Error' `
+                    -Severity 'Medium' `
+                    -Resource $target `
+                    -Detail 'Insufficient permissions to list deployment environments; cannot evaluate environment protection rules.' `
+                    -Remediation 'Use a token with permission to read environment settings (Actions:read for fine-grained tokens, or repo scope for classic tokens).' `
+                    -Target $target))
+            }
+            elseif ($msg -notmatch '404') {
+                $results.Add((Format-FylgyrResult `
+                    -CheckName 'ForkSecretExposure' `
+                    -Status 'Error' `
+                    -Severity 'Medium' `
+                    -Resource $target `
+                    -Detail "Failed to check environment protection rules: $msg" `
+                    -Remediation 'Verify the token has access to read environment settings.' `
+                    -Target $target))
+            }
         }
-    }
+    } # end if ($hasDangerousTrigger)
 
     # Org-level secret visibility is evaluated once per org by Test-OrgSecretVisibility
     # (an org-scoped check), not re-evaluated here for every repository.

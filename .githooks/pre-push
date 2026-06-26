@@ -18,9 +18,16 @@ cd "$REPO_ROOT"
 
 printf '\n\033[36m[pre-push]\033[0m Running PSScriptAnalyzer...\n'
 pwsh -NoProfile -Command "
-    \$findings = Invoke-ScriptAnalyzer -Path ./src -Recurse -Severity Error,Warning
-    if (\$findings) {
-        \$findings | Format-Table -AutoSize
+    \$paths = Get-ChildItem -Path ./src -Recurse -File |
+        Where-Object { \$_.Extension -in @('.ps1', '.psm1') } |
+        Sort-Object -Property FullName
+    \$blocking = [System.Collections.Generic.List[object]]::new()
+    foreach (\$path in \$paths) {
+        \$issues = @(Invoke-ScriptAnalyzer -Path \$path.FullName -Severity Error,Warning)
+        foreach (\$issue in \$issues) { \$blocking.Add(\$issue) }
+    }
+    if (\$blocking) {
+        \$blocking | Format-Table -AutoSize
         exit 1
     }
 " || { printf '\033[31m[pre-push] PSScriptAnalyzer failed — push blocked.\033[0m\n'; exit 1; }
