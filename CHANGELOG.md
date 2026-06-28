@@ -6,6 +6,17 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-06-28
+
+### Security
+
+- `Invoke-GitHubApi` now validates absolute HTTPS endpoints against an allowlist of GitHub API hosts (`api.github.com`, `github.com`, and the GHES base host when configured), blocking SSRF to non-GitHub URLs.
+- `Invoke-GitHubApi` rejects REST endpoint paths containing path traversal segments (`../`) and enforces a URL-safe character allowlist to prevent endpoint injection.
+- `Invoke-GitHubApi` now respects `GITHUB_API_URL` and `GHES_URL` environment variables for GitHub Enterprise Server support, with HTTPS enforcement on both.
+- `Get-WorkflowFile` adds `[ValidatePattern('^[a-zA-Z0-9._-]+$')]` to `$Owner` and `$Repo` parameters, consistent with all public check functions.
+- `Send-FylgyrToLogAnalytics` now validates ingestion URIs via a new `Resolve-FylgyrIngestionBaseUri` helper that enforces HTTPS and blocks private/link-local IP targets (10.x, 172.16–31.x, 192.168.x, 127.x, 169.254.x) to prevent SSRF. DNS resolution is performed to catch rebinding attacks.
+- IMDS HTTP fallback (`http://169.254.169.254/metadata/identity/...`) removed from `Send-FylgyrToLogAnalytics` — it used an HTTP endpoint incompatible with Fylgyr's HTTPS-only policy. Bare-VM deployments should use `-ClientId`/`-ClientSecret` or run inside Azure Functions/App Service where `IDENTITY_ENDPOINT` is available.
+
 ## [0.8.0] - 2026-06-26
 
 ### Added
