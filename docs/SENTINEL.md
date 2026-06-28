@@ -148,6 +148,18 @@ Supported auth modes, in preferred order:
 2. Workload identity federation (OIDC) with federated token input.
 3. Client secret fallback (`-ClientSecret`) only when required.
 
+There is no IMDS fallback in `Send-FylgyrToLogAnalytics` today. Bare Azure VMs would be the only deployment where an IMDS-based token flow would be relevant.
+
+`Send-FylgyrToLogAnalytics` also validates ingestion endpoints. Both `-DceUri` and `-DcrEndpointUri` must be HTTPS and resolve to non-local, non-private, and non-link-local targets. Private-link or localhost-style endpoints are not supported by this helper's current public-ingestion model.
+
+| Deployment | Auth method | IMDS needed? |
+| --- | --- | --- |
+| GitHub Actions | OIDC / federated token | No |
+| Azure Functions | `IDENTITY_ENDPOINT` + `IDENTITY_HEADER` | No |
+| Azure Container Apps | `IDENTITY_ENDPOINT` + `IDENTITY_HEADER` | No |
+| Azure App Service | `MSI_ENDPOINT` + `MSI_SECRET` | No |
+| Bare Azure VM | IMDS | Yes — this is the only case |
+
 Grant `Monitoring Metrics Publisher` on the target DCR to the ingestion identity.
 
 For `runtimeMode = 'azureFunction'`, also ensure the Function managed identity has `Key Vault Secrets User` on the vault that contains the GitHub token secret.

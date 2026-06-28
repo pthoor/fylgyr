@@ -44,8 +44,50 @@
         'X-GitHub-Api-Version' = '2022-11-28'
     }
 
+    $apiBaseUri = [System.Uri]'https://api.github.com'
+    if ($env:GITHUB_API_URL) {
+        try {
+            $apiBaseUri = [System.Uri]$env:GITHUB_API_URL
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+            throw "GITHUB_API_URL is not a valid URI. $errorMessage"
+        }
+
+        if ($apiBaseUri.Scheme -ne 'https') {
+            throw 'GITHUB_API_URL must use HTTPS.'
+        }
+    }
+    elseif ($env:GHES_URL) {
+        try {
+            $apiBaseUri = [System.Uri]$env:GHES_URL
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+            throw "GHES_URL is not a valid URI. $errorMessage"
+        }
+
+        if ($apiBaseUri.Scheme -ne 'https') {
+            throw 'GHES_URL must use HTTPS.'
+        }
+    }
+
+    $allowedGitHubHosts = [System.Collections.Generic.List[string]]::new()
+    $allowedGitHubHosts.Add('api.github.com')
+    $allowedGitHubHosts.Add('github.com')
+    $allowedGitHubHosts.Add($apiBaseUri.Host)
+
     if ($GraphQL) {
-        $uri = 'https://api.github.com/graphql'
+        $graphQlPath = '/graphql'
+        if ($apiBaseUri.AbsolutePath -match '/api/v3/?$') {
+            $graphQlPath = '/api/graphql'
+        }
+
+        $graphQlUriBuilder = [System.UriBuilder]$apiBaseUri
+        $graphQlUriBuilder.Path = $graphQlPath
+        $graphQlUriBuilder.Query = [string]::Empty
+        $graphQlUriBuilder.Fragment = [string]::Empty
+        $uri = $graphQlUriBuilder.Uri.AbsoluteUri
         $Method = 'POST'
 
         if ($AllPages) {
@@ -74,14 +116,54 @@
         }
 
         if ($Endpoint -match '^https://') {
-            $uri = $Endpoint
+            try {
+                $parsedUri = [System.Uri]$Endpoint
+            }
+            catch {
+                $errorMessage = $_.Exception.Message
+                throw "The endpoint '$Endpoint' is not a valid URI. $errorMessage"
+            }
+
+            if ($parsedUri.Scheme -ne 'https') {
+                throw 'HTTPS endpoints are required.'
+            }
+
+            if ($parsedUri.Host -notin $allowedGitHubHosts) {
+                throw "Only GitHub API hosts are allowed. '$($parsedUri.Host)' is not permitted."
+            }
+
+            $uri = $parsedUri.AbsoluteUri
         }
         elseif ($Endpoint -match '^http://') {
             throw 'HTTP endpoints are not allowed. Use HTTPS only.'
         }
         else {
+            $traversalCandidate = $Endpoint
+            if ($traversalCandidate -match '(^|/)\.\.(/|$)') {
+                throw 'REST endpoints must not contain path traversal segments.'
+            }
+
+            # Bounded decode rounds prevent infinite loops while still catching nested encodings
+            # commonly used for traversal bypass attempts (for example %252e%252e -> %2e%2e -> ..).
+            $maxDecodeRounds = 3
+            for ($decodeRound = 0; $decodeRound -lt $maxDecodeRounds; $decodeRound++) {
+                $decodedTraversalCandidate = [System.Uri]::UnescapeDataString($traversalCandidate)
+                if ($decodedTraversalCandidate -eq $traversalCandidate) {
+                    break
+                }
+                $traversalCandidate = $decodedTraversalCandidate
+                if ($traversalCandidate -match '(^|/)\.\.(/|$)') {
+                    throw 'REST endpoints must not contain path traversal segments.'
+                }
+            }
+
+            $restEndpointPattern = '^(?:[A-Za-z0-9._~/?=&-]|%[0-9A-Fa-f]{2})+$'
+            if ($Endpoint -notmatch $restEndpointPattern) {
+                throw 'REST endpoints may only contain URL-safe characters and valid percent-encoding.'
+            }
+
             $trimmedEndpoint = $Endpoint.TrimStart('/')
-            $uri = "https://api.github.com/$trimmedEndpoint"
+            $uri = $apiBaseUri.AbsoluteUri.TrimEnd('/') + "/$trimmedEndpoint"
         }
     }
 
@@ -134,19 +216,19 @@
             }
 
             $remaining = $null
-            if ($responseHeaders.ContainsKey('X-RateLimit-Remaining')) {
+            if ($responseHeaders -and $responseHeaders.ContainsKey('X-RateLimit-Remaining')) {
                 $remaining = [int]($responseHeaders['X-RateLimit-Remaining'][0])
             }
-            elseif ($responseHeaders.ContainsKey('x-ratelimit-remaining')) {
+            elseif ($responseHeaders -and $responseHeaders.ContainsKey('x-ratelimit-remaining')) {
                 $remaining = [int]($responseHeaders['x-ratelimit-remaining'][0])
             }
 
             if ($null -ne $remaining -and $remaining -le 10) {
                 $resetEpoch = $null
-                if ($responseHeaders.ContainsKey('X-RateLimit-Reset')) {
+                if ($responseHeaders -and $responseHeaders.ContainsKey('X-RateLimit-Reset')) {
                     $resetEpoch = [long]($responseHeaders['X-RateLimit-Reset'][0])
                 }
-                elseif ($responseHeaders.ContainsKey('x-ratelimit-reset')) {
+                elseif ($responseHeaders -and $responseHeaders.ContainsKey('x-ratelimit-reset')) {
                     $resetEpoch = [long]($responseHeaders['x-ratelimit-reset'][0])
                 }
 
@@ -208,10 +290,10 @@
             # Parse Link header for next page
             $nextUri = $null
             $linkHeader = $null
-            if ($responseHeaders.ContainsKey('Link')) {
+            if ($responseHeaders -and $responseHeaders.ContainsKey('Link')) {
                 $linkHeader = $responseHeaders['Link'][0]
             }
-            elseif ($responseHeaders.ContainsKey('link')) {
+            elseif ($responseHeaders -and $responseHeaders.ContainsKey('link')) {
                 $linkHeader = $responseHeaders['link'][0]
             }
 
