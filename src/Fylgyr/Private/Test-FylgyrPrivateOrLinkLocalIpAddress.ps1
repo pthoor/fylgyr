@@ -18,7 +18,16 @@ function Test-FylgyrPrivateOrLinkLocalIpAddress {
             return $is10Network -or $is172Network -or $is192Network -or $isLoopback -or $isLinkLocal
         }
 
-        return $ipAddress.IsIPv6LinkLocal -or $ipAddress.IsIPv6SiteLocal
+        if ($ipAddress.IsIPv4MappedToIPv6) {
+            return Test-FylgyrPrivateOrLinkLocalIpAddress -TargetHost ($ipAddress.MapToIPv4().ToString())
+        }
+
+        $ipv6Bytes = $ipAddress.GetAddressBytes()
+        $isIpv6UniqueLocal = ($ipv6Bytes[0] -band 0xFE) -eq 0xFC
+        $isIpv6Loopback = $ipAddress.Equals([System.Net.IPAddress]::IPv6Loopback)
+        $isIpv6Unspecified = $ipAddress.Equals([System.Net.IPAddress]::IPv6None)
+
+        return $ipAddress.IsIPv6LinkLocal -or $ipAddress.IsIPv6SiteLocal -or $isIpv6UniqueLocal -or $isIpv6Loopback -or $isIpv6Unspecified
     }
 
     try {

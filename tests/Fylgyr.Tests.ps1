@@ -275,6 +275,84 @@ Describe 'Invoke-GitHubApi' {
             { Invoke-GitHubApi -Endpoint 'https://evil.example.com/api' -Token 't' } | Should -Throw
         }
     }
+
+    It 'rejects percent-encoded path traversal in relative REST endpoints' {
+        InModuleScope Fylgyr {
+            { Invoke-GitHubApi -Endpoint 'repos/%2e%2e/org/repo' -Token 't' } | Should -Throw
+        }
+    }
+
+    It 'builds GHES GraphQL URI as /api/graphql when API base ends with /api/v3' {
+        InModuleScope Fylgyr {
+            Mock Invoke-RestMethod {
+                Set-Variable -Name responseHeaders -Value @{} -Scope 1
+                return [PSCustomObject]@{ data = @{ viewer = @{ login = 'octocat' } } }
+            }
+
+            $previousApiUrl = $env:GITHUB_API_URL
+            $previousGhesUrl = $env:GHES_URL
+            try {
+                $env:GITHUB_API_URL = 'https://ghe.example.com/api/v3'
+                Remove-Item Env:GHES_URL -ErrorAction SilentlyContinue
+
+                $null = Invoke-GitHubApi -GraphQL -Query 'query { viewer { login } }' -Token 't'
+
+                Assert-MockCalled Invoke-RestMethod -Times 1 -ParameterFilter {
+                    $Uri -eq 'https://ghe.example.com/api/graphql' -and $Method -eq 'POST'
+                }
+            }
+            finally {
+                if ($null -eq $previousApiUrl) {
+                    Remove-Item Env:GITHUB_API_URL -ErrorAction SilentlyContinue
+                }
+                else {
+                    $env:GITHUB_API_URL = $previousApiUrl
+                }
+
+                if ($null -eq $previousGhesUrl) {
+                    Remove-Item Env:GHES_URL -ErrorAction SilentlyContinue
+                }
+                else {
+                    $env:GHES_URL = $previousGhesUrl
+                }
+            }
+        }
+    }
+}
+
+Describe 'Test-FylgyrPrivateOrLinkLocalIpAddress' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'flags IPv6 loopback and unique-local addresses as private' {
+        InModuleScope Fylgyr {
+            (Test-FylgyrPrivateOrLinkLocalIpAddress -TargetHost '::1') | Should -BeTrue
+            (Test-FylgyrPrivateOrLinkLocalIpAddress -TargetHost 'fc00::1') | Should -BeTrue
+        }
+    }
+
+    It 'allows public IPv6 addresses' {
+        InModuleScope Fylgyr {
+            (Test-FylgyrPrivateOrLinkLocalIpAddress -TargetHost '2001:4860:4860::8888') | Should -BeFalse
+        }
+    }
+}
+
+Describe 'Resolve-FylgyrIngestionBaseUri' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'rejects IPv6 loopback ingestion endpoints' {
+        InModuleScope Fylgyr {
+            { Resolve-FylgyrIngestionBaseUri -UriValue 'https://[::1]/ingest' -ParameterName 'DceUri' } | Should -Throw
+        }
+    }
 }
 
 Describe 'Test-DangerousTrigger' {

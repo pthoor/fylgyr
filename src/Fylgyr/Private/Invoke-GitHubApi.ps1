@@ -78,7 +78,16 @@
     $allowedGitHubHosts.Add($apiBaseUri.Host)
 
     if ($GraphQL) {
-        $uri = $apiBaseUri.AbsoluteUri.TrimEnd('/') + '/graphql'
+        $graphQlPath = '/graphql'
+        if ($apiBaseUri.AbsolutePath -match '/api/v3/?$') {
+            $graphQlPath = '/api/graphql'
+        }
+
+        $graphQlUriBuilder = [System.UriBuilder]$apiBaseUri
+        $graphQlUriBuilder.Path = $graphQlPath
+        $graphQlUriBuilder.Query = [string]::Empty
+        $graphQlUriBuilder.Fragment = [string]::Empty
+        $uri = $graphQlUriBuilder.Uri.AbsoluteUri
         $Method = 'POST'
 
         if ($AllPages) {
@@ -129,7 +138,17 @@
             throw 'HTTP endpoints are not allowed. Use HTTPS only.'
         }
         else {
-            if ($Endpoint -match '(^|/)\.\.(/|$)') {
+            $traversalCandidate = $Endpoint
+            for ($decodeRound = 0; $decodeRound -lt 3; $decodeRound++) {
+                $decodedTraversalCandidate = [System.Uri]::UnescapeDataString($traversalCandidate)
+                if ($decodedTraversalCandidate -eq $traversalCandidate) {
+                    break
+                }
+
+                $traversalCandidate = $decodedTraversalCandidate
+            }
+
+            if ($traversalCandidate -match '(^|/)\.\.(/|$)') {
                 throw 'REST endpoints must not contain path traversal segments.'
             }
 
@@ -164,6 +183,7 @@
             TimeoutSec = $TimeoutSec
             SkipHeaderValidation = $true
         }
+        $responseHeaders = @{}
 
         if ($Body) {
             $invokeParams['ContentType'] = 'application/json'
