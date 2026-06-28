@@ -282,6 +282,12 @@ Describe 'Invoke-GitHubApi' {
         }
     }
 
+    It 'rejects double-encoded path traversal in relative REST endpoints' {
+        InModuleScope Fylgyr {
+            { Invoke-GitHubApi -Endpoint 'repos/%252e%252e/org/repo' -Token 't' } | Should -Throw
+        }
+    }
+
     It 'builds GHES GraphQL URI as /api/graphql when API base ends with /api/v3' {
         InModuleScope Fylgyr {
             Mock Invoke-RestMethod {

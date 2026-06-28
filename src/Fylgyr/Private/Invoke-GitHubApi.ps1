@@ -139,17 +139,22 @@
         }
         else {
             $traversalCandidate = $Endpoint
-            for ($decodeRound = 0; $decodeRound -lt 3; $decodeRound++) {
+            if ($traversalCandidate -match '(^|/)\.\.(/|$)') {
+                throw 'REST endpoints must not contain path traversal segments.'
+            }
+
+            # Bounded decode rounds prevent infinite loops while still catching nested encodings
+            # commonly used for traversal bypass attempts (for example %252e%252e -> %2e%2e -> ..).
+            $maxDecodeRounds = 3
+            for ($decodeRound = 0; $decodeRound -lt $maxDecodeRounds; $decodeRound++) {
                 $decodedTraversalCandidate = [System.Uri]::UnescapeDataString($traversalCandidate)
                 if ($decodedTraversalCandidate -eq $traversalCandidate) {
                     break
                 }
-
                 $traversalCandidate = $decodedTraversalCandidate
-            }
-
-            if ($traversalCandidate -match '(^|/)\.\.(/|$)') {
-                throw 'REST endpoints must not contain path traversal segments.'
+                if ($traversalCandidate -match '(^|/)\.\.(/|$)') {
+                    throw 'REST endpoints must not contain path traversal segments.'
+                }
             }
 
             $restEndpointPattern = '^(?:[A-Za-z0-9._~/?=&-]|%[0-9A-Fa-f]{2})+$'
@@ -183,7 +188,6 @@
             TimeoutSec = $TimeoutSec
             SkipHeaderValidation = $true
         }
-        $responseHeaders = @{}
 
         if ($Body) {
             $invokeParams['ContentType'] = 'application/json'
@@ -212,19 +216,19 @@
             }
 
             $remaining = $null
-            if ($responseHeaders.ContainsKey('X-RateLimit-Remaining')) {
+            if ($responseHeaders -and $responseHeaders.ContainsKey('X-RateLimit-Remaining')) {
                 $remaining = [int]($responseHeaders['X-RateLimit-Remaining'][0])
             }
-            elseif ($responseHeaders.ContainsKey('x-ratelimit-remaining')) {
+            elseif ($responseHeaders -and $responseHeaders.ContainsKey('x-ratelimit-remaining')) {
                 $remaining = [int]($responseHeaders['x-ratelimit-remaining'][0])
             }
 
             if ($null -ne $remaining -and $remaining -le 10) {
                 $resetEpoch = $null
-                if ($responseHeaders.ContainsKey('X-RateLimit-Reset')) {
+                if ($responseHeaders -and $responseHeaders.ContainsKey('X-RateLimit-Reset')) {
                     $resetEpoch = [long]($responseHeaders['X-RateLimit-Reset'][0])
                 }
-                elseif ($responseHeaders.ContainsKey('x-ratelimit-reset')) {
+                elseif ($responseHeaders -and $responseHeaders.ContainsKey('x-ratelimit-reset')) {
                     $resetEpoch = [long]($responseHeaders['x-ratelimit-reset'][0])
                 }
 
@@ -286,10 +290,10 @@
             # Parse Link header for next page
             $nextUri = $null
             $linkHeader = $null
-            if ($responseHeaders.ContainsKey('Link')) {
+            if ($responseHeaders -and $responseHeaders.ContainsKey('Link')) {
                 $linkHeader = $responseHeaders['Link'][0]
             }
-            elseif ($responseHeaders.ContainsKey('link')) {
+            elseif ($responseHeaders -and $responseHeaders.ContainsKey('link')) {
                 $linkHeader = $responseHeaders['link'][0]
             }
 
