@@ -2378,6 +2378,32 @@ Describe 'Test-EnvironmentProtection' {
         $fail[0].AttackMapping | Should -Contain 'unauthorized-env-deployment'
     }
 
+    It 'warns when environment has required reviewers but prevent-self-review is disabled' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            return [PSCustomObject]@{
+                environments = @(
+                    [PSCustomObject]@{
+                        name                = 'production'
+                        prevent_self_review = $false
+                        protection_rules    = @(
+                            [PSCustomObject]@{
+                                type      = 'required_reviewers'
+                                reviewers = @([PSCustomObject]@{ type = 'User' })
+                            }
+                        )
+                        deployment_branch_policy = [PSCustomObject]@{ protected_branches = $true }
+                    }
+                )
+            }
+        }
+
+        $results = Test-EnvironmentProtection -Owner 'org' -Repo 'repo' -Token 'fake'
+        $warn = $results | Where-Object Status -EQ 'Warning'
+        $warn | Should -Not -BeNullOrEmpty
+        $warn[0].Severity | Should -Be 'Medium'
+        ($results | Where-Object Status -EQ 'Fail') | Should -BeNullOrEmpty
+    }
+
     It 'passes when all environments have required reviewers, prevent-self-review, and branch policies' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             return [PSCustomObject]@{

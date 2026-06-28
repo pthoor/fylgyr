@@ -126,15 +126,15 @@ function Test-EnvironmentProtection {
                 -Target $target))
         }
         else {
-            # Reviewer(s) are required. Now check self-review prevention.
+            # Reviewer(s) are required. Now check self-review prevention (defense-in-depth, not a hard gate).
             if (-not $preventSelfReview) {
                 $findings.Add((Format-FylgyrResult `
                     -CheckName 'EnvironmentProtection' `
-                    -Status 'Fail' `
-                    -Severity 'High' `
+                    -Status 'Warning' `
+                    -Severity 'Medium' `
                     -Resource $envResource `
-                    -Detail "Environment '$envName' has required reviewers but does not prevent self-review. The workflow author can approve their own deployment, which means a single compromised or socially-engineered maintainer account can bypass the reviewer gate entirely." `
-                    -Remediation "Enable 'Prevent self-review' in Settings > Environments > '$envName' so that the person who triggered the deployment cannot also approve it." `
+                    -Detail "Environment '$envName' has required reviewers but does not prevent self-review. The workflow author can approve their own deployment, which partially undermines the reviewer gate for solo-maintainer accounts." `
+                    -Remediation "Enable 'Prevent self-review' in Settings > Environments > '$envName' so that the person who triggered the deployment cannot also approve it. For single-maintainer repos, consider adding a trusted co-reviewer." `
                     -AttackMapping @('unauthorized-env-deployment', 'xz-utils-backdoor') `
                     -Target $target))
             }
