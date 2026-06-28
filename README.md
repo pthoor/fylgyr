@@ -321,7 +321,7 @@ Get-Content ./fylgyr-la.ndjson |
     -UseManagedIdentity
 ```
 
-`Send-FylgyrToLogAnalytics` currently supports the following ingestion identities. There is no IMDS fallback in the helper today, so a bare Azure VM would be the only environment where an IMDS-based token flow would be relevant.
+`Send-FylgyrToLogAnalytics` currently supports the following ingestion identities. There is no IMDS fallback in the helper today, so a bare Azure VM would be the only environment where an IMDS-based token flow would be relevant. Ingestion endpoint parameters (`-DceUri`, `-DcrEndpointUri`) must be HTTPS and must not resolve to local/private/link-local targets.
 
 | Deployment | Auth method | IMDS needed? |
 | --- | --- | --- |
