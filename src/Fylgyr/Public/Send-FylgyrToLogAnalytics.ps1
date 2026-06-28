@@ -70,10 +70,10 @@ function Send-FylgyrToLogAnalytics {
 
         $baseIngestionUri = $null
         if ($DcrEndpointUri) {
-            $baseIngestionUri = $DcrEndpointUri.TrimEnd('/')
+            $baseIngestionUri = Resolve-FylgyrIngestionBaseUri -UriValue $DcrEndpointUri -ParameterName 'DcrEndpointUri'
         }
         elseif ($DceUri) {
-            $baseIngestionUri = $DceUri.TrimEnd('/')
+            $baseIngestionUri = Resolve-FylgyrIngestionBaseUri -UriValue $DceUri -ParameterName 'DceUri'
         }
         else {
             throw 'Provide either -DcrEndpointUri or -DceUri.'
@@ -101,13 +101,7 @@ function Send-FylgyrToLogAnalytics {
                     $msiResponse = Invoke-RestMethod -Method GET -Uri $msiUri -Headers @{ Secret = $env:MSI_SECRET } -ErrorAction Stop
                 }
                 else {
-                    # IMDS endpoint fallback for environments where App Service identity endpoints are not exposed.
-                    $msiUri = 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmonitor.azure.com%2F'
-                    if ($ClientId) {
-                        $msiUri = "$msiUri&client_id=$ClientId"
-                    }
-
-                    $msiResponse = Invoke-RestMethod -Method GET -Uri $msiUri -Headers @{ Metadata = 'true' } -ErrorAction Stop
+                    throw 'Managed identity IMDS fallback is not supported because it requires an HTTP endpoint. Configure IDENTITY_ENDPOINT/IDENTITY_HEADER or MSI_ENDPOINT/MSI_SECRET to use a supported managed identity flow.'
                 }
 
                 $token = [string]$msiResponse.access_token

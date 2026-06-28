@@ -44,8 +44,41 @@
         'X-GitHub-Api-Version' = '2022-11-28'
     }
 
+    $apiBaseUri = [System.Uri]'https://api.github.com'
+    if ($env:GITHUB_API_URL) {
+        try {
+            $apiBaseUri = [System.Uri]$env:GITHUB_API_URL
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+            throw "GITHUB_API_URL is not a valid URI. $errorMessage"
+        }
+
+        if ($apiBaseUri.Scheme -ne 'https') {
+            throw 'GITHUB_API_URL must use HTTPS.'
+        }
+    }
+    elseif ($env:GHES_URL) {
+        try {
+            $apiBaseUri = [System.Uri]$env:GHES_URL
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+            throw "GHES_URL is not a valid URI. $errorMessage"
+        }
+
+        if ($apiBaseUri.Scheme -ne 'https') {
+            throw 'GHES_URL must use HTTPS.'
+        }
+    }
+
+    $allowedGitHubHosts = [System.Collections.Generic.List[string]]::new()
+    $allowedGitHubHosts.Add('api.github.com')
+    $allowedGitHubHosts.Add('github.com')
+    $allowedGitHubHosts.Add($apiBaseUri.Host)
+
     if ($GraphQL) {
-        $uri = 'https://api.github.com/graphql'
+        $uri = $apiBaseUri.AbsoluteUri.TrimEnd('/') + '/graphql'
         $Method = 'POST'
 
         if ($AllPages) {
@@ -74,14 +107,39 @@
         }
 
         if ($Endpoint -match '^https://') {
-            $uri = $Endpoint
+            try {
+                $parsedUri = [System.Uri]$Endpoint
+            }
+            catch {
+                $errorMessage = $_.Exception.Message
+                throw "The endpoint '$Endpoint' is not a valid URI. $errorMessage"
+            }
+
+            if ($parsedUri.Scheme -ne 'https') {
+                throw 'HTTPS endpoints are required.'
+            }
+
+            if ($parsedUri.Host -notin $allowedGitHubHosts) {
+                throw "Only GitHub API hosts are allowed. '$($parsedUri.Host)' is not permitted."
+            }
+
+            $uri = $parsedUri.AbsoluteUri
         }
         elseif ($Endpoint -match '^http://') {
             throw 'HTTP endpoints are not allowed. Use HTTPS only.'
         }
         else {
+            if ($Endpoint -match '(^|/)\.\.(/|$)') {
+                throw 'REST endpoints must not contain path traversal segments.'
+            }
+
+            $restEndpointPattern = '^(?:[A-Za-z0-9._~/?=&-]|%[0-9A-Fa-f]{2})+$'
+            if ($Endpoint -notmatch $restEndpointPattern) {
+                throw 'REST endpoints may only contain URL-safe characters and valid percent-encoding.'
+            }
+
             $trimmedEndpoint = $Endpoint.TrimStart('/')
-            $uri = "https://api.github.com/$trimmedEndpoint"
+            $uri = $apiBaseUri.AbsoluteUri.TrimEnd('/') + "/$trimmedEndpoint"
         }
     }
 

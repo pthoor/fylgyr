@@ -248,6 +248,35 @@ Describe 'Get-ActionDefinitionFile' {
     }
 }
 
+Describe 'Get-WorkflowFile' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'rejects owner and repo values that contain path separators' {
+        InModuleScope Fylgyr {
+            { Get-WorkflowFile -Owner 'bad/owner' -Repo 'repo' -Token 't' } | Should -Throw
+            { Get-WorkflowFile -Owner 'owner' -Repo 'bad/repo' -Token 't' } | Should -Throw
+        }
+    }
+}
+
+Describe 'Invoke-GitHubApi' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'rejects non-GitHub HTTPS endpoints' {
+        InModuleScope Fylgyr {
+            { Invoke-GitHubApi -Endpoint 'https://evil.example.com/api' -Token 't' } | Should -Throw
+        }
+    }
+}
+
 Describe 'Test-DangerousTrigger' {
     BeforeAll {
         $repoRoot = Split-Path -Path $PSScriptRoot -Parent
