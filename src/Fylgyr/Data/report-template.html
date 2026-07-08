@@ -18,13 +18,55 @@
       --error: #7e22ce;
       --info: #0e7490;
       --suppressed: #155e75;
+      --page-gradient: linear-gradient(160deg, #eff6ff 0%, #f8fafc 60%, #ecfeff 100%);
+      --chip-bg: #f8fafc;
+      --code-bg: #0f172a;
+      --code-text: #e2e8f0;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0b1220;
+        --panel: #111827;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --border: #374151;
+        --pass: #34d399;
+        --fail: #f87171;
+        --warn: #fbbf24;
+        --error: #c084fc;
+        --info: #22d3ee;
+        --suppressed: #67e8f9;
+        --page-gradient: linear-gradient(160deg, #0b1220 0%, #0f172a 60%, #0b1a1f 100%);
+        --chip-bg: #1f2937;
+        --code-bg: #030712;
+        --code-text: #e5e7eb;
+      }
+    }
+
+    :root[data-theme="dark"] {
+      --bg: #0b1220;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --border: #374151;
+      --pass: #34d399;
+      --fail: #f87171;
+      --warn: #fbbf24;
+      --error: #c084fc;
+      --info: #22d3ee;
+      --suppressed: #67e8f9;
+      --page-gradient: linear-gradient(160deg, #0b1220 0%, #0f172a 60%, #0b1a1f 100%);
+      --chip-bg: #1f2937;
+      --code-bg: #030712;
+      --code-text: #e5e7eb;
     }
 
     body {
       margin: 0;
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
       color: var(--text);
-      background: linear-gradient(160deg, #eff6ff 0%, #f8fafc 60%, #ecfeff 100%);
+      background: var(--page-gradient);
     }
 
     .container {
@@ -56,14 +98,14 @@
       border-radius: 8px;
       padding: 10px;
       text-align: center;
-      background: #f8fafc;
+      background: var(--chip-bg);
     }
 
     .coverage-card {
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 12px;
-      background: #f9fafb;
+      background: var(--chip-bg);
     }
 
     .scope-block { margin-bottom: 18px; }
@@ -116,7 +158,7 @@
       border: 1px solid var(--border);
       border-left: 4px solid #2563eb;
       border-radius: 8px;
-      background: #f8fbff;
+      background: var(--chip-bg);
       padding: 10px 12px;
       margin-bottom: 12px;
     }
@@ -140,19 +182,64 @@
       border-radius: 999px;
       font-size: 12px;
       border: 1px solid var(--border);
-      background: #f8fafc;
+      background: var(--chip-bg);
       margin-right: 6px;
       margin-bottom: 6px;
     }
 
-    .repo-group { margin-bottom: 18px; }
+    .repo-group { margin-bottom: 12px; }
     .check-group { margin: 10px 0 14px 0; }
+    .check-group.is-hidden,
+    .finding.is-hidden { display: none; }
+
+    details.repo-group {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: var(--chip-bg);
+    }
+
+    details.repo-group > summary {
+      cursor: pointer;
+      list-style: none;
+    }
+
+    details.repo-group > summary::-webkit-details-marker { display: none; }
+
+    details.repo-group > summary::before {
+      content: "\25B8";
+      display: inline-block;
+      margin-right: 8px;
+      transition: transform 0.15s ease;
+      color: var(--muted);
+    }
+
+    details.repo-group[open] > summary::before { transform: rotate(90deg); }
+
+    .repo-group-body { margin-top: 8px; }
+
+    .status-chip {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-right: 6px;
+      color: #ffffff;
+    }
+
+    .status-chip.status-fail { background: var(--fail); }
+    .status-chip.status-warning { background: var(--warn); }
+    .status-chip.status-error { background: var(--error); }
+    .status-chip.status-info { background: var(--info); }
+    .status-chip.status-suppressed { background: var(--suppressed); }
+    .status-chip.status-pass { background: var(--pass); }
 
     .finding {
       border: 1px solid var(--border);
       border-left-width: 6px;
       border-radius: 8px;
-      background: #ffffff;
+      background: var(--panel);
       padding: 10px;
       margin: 8px 0;
     }
@@ -181,8 +268,8 @@
 
     pre {
       overflow-x: auto;
-      background: #0f172a;
-      color: #e2e8f0;
+      background: var(--code-bg);
+      color: var(--code-text);
       border-radius: 8px;
       padding: 10px;
       font-size: 12px;
@@ -200,6 +287,136 @@
     .report-logo {
       color: var(--pass);
       flex-shrink: 0;
+    }
+
+    :root[data-theme="dark"] a { color: #93c5fd; }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) a { color: #93c5fd; }
+    }
+
+    .collapsible-panel > summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .collapsible-panel > summary::-webkit-details-marker { display: none; }
+
+    .collapsible-panel > summary::before {
+      content: "\25B8";
+      color: var(--muted);
+      transition: transform 0.15s ease;
+    }
+
+    .collapsible-panel[open] > summary::before { transform: rotate(90deg); }
+
+    .summary-hint {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--muted);
+    }
+
+    .filter-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+    }
+
+    .filter-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .filter-btn {
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--chip-bg);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .filter-btn.active {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+      color: #ffffff;
+    }
+
+    .filter-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+
+    .filter-controls input[type="search"] {
+      font: inherit;
+      font-size: 13px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      min-width: 220px;
+    }
+
+    .filter-controls button {
+      font: inherit;
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--chip-bg);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .filter-status-line {
+      margin: 8px 0 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    #back-to-top {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 30;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+
+    #back-to-top.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    @media print {
+      .filter-toolbar, #back-to-top { display: none; }
     }
   </style>
 </head>
@@ -227,9 +444,30 @@
         <div class="summary-item"><h3>{{SUMMARY_FAIL}}</h3><p>Fail</p></div>
         <div class="summary-item"><h3>{{SUMMARY_WARNING}}</h3><p>Warning</p></div>
         <div class="summary-item"><h3>{{SUMMARY_ERROR}}</h3><p>Error</p></div>
+        <div class="summary-item"><h3>{{SUMMARY_DRIFT}}</h3><p>Drift</p></div>
         <div class="summary-item"><h3>{{SUMMARY_INFO}}</h3><p>Info</p></div>
         <div class="summary-item"><h3>{{SUMMARY_SUPPRESSED}}</h3><p>Suppressed</p></div>
       </div>
+    </section>
+
+    <section class="panel filter-toolbar" id="filter-toolbar">
+      <div class="filter-buttons" role="group" aria-label="Filter findings by status">
+        <button type="button" class="filter-btn active" data-filter-status="all" aria-pressed="true">All ({{SUMMARY_TOTAL}})</button>
+        <button type="button" class="filter-btn" data-filter-status="Fail" aria-pressed="false">Fail ({{SUMMARY_FAIL}})</button>
+        <button type="button" class="filter-btn" data-filter-status="Warning" aria-pressed="false">Warning ({{SUMMARY_WARNING}})</button>
+        <button type="button" class="filter-btn" data-filter-status="Error" aria-pressed="false">Error ({{SUMMARY_ERROR}})</button>
+        <button type="button" class="filter-btn" data-filter-status="Drift" aria-pressed="false">Drift ({{SUMMARY_DRIFT}})</button>
+        <button type="button" class="filter-btn" data-filter-status="Info" aria-pressed="false">Info ({{SUMMARY_INFO}})</button>
+        <button type="button" class="filter-btn" data-filter-status="Pass" aria-pressed="false">Pass ({{SUMMARY_PASS}})</button>
+        <button type="button" class="filter-btn" data-filter-status="Suppressed" aria-pressed="false">Suppressed ({{SUMMARY_SUPPRESSED}})</button>
+      </div>
+      <div class="filter-controls">
+        <label><input type="checkbox" id="toggle-hide-pass" checked /> Hide passing &amp; suppressed by default</label>
+        <input type="search" id="finding-search" placeholder="Search findings (check, resource, detail)..." aria-label="Search findings" />
+        <button type="button" id="expand-all-btn">Expand all repos</button>
+        <button type="button" id="collapse-all-btn">Collapse all repos</button>
+      </div>
+      <p class="filter-status-line" id="filter-status-line"></p>
     </section>
 
     <section class="panel">
@@ -252,8 +490,10 @@
     </section>
 
     <section class="panel">
-      <h2>Defender XDR Custom Detection Rules</h2>
-      {{DEFENDER_XDR_RULES}}
+      <details class="collapsible-panel">
+        <summary><h2>Defender XDR Custom Detection Rules</h2><span class="summary-hint">Optional companion detections &mdash; click to expand</span></summary>
+        {{DEFENDER_XDR_RULES}}
+      </details>
     </section>
 
     <section class="panel">
@@ -265,5 +505,126 @@
       {{RESULT_SECTIONS}}
     </section>
   </div>
+
+  <button type="button" id="back-to-top" aria-label="Back to top">&uarr; Top</button>
+
+  <script>
+    (function () {
+      var findings = Array.prototype.slice.call(document.querySelectorAll('.finding'));
+      var checkGroups = Array.prototype.slice.call(document.querySelectorAll('.check-group'));
+      var repoDetails = Array.prototype.slice.call(document.querySelectorAll('details.repo-group'));
+      var filterButtons = Array.prototype.slice.call(document.querySelectorAll('.filter-btn'));
+      var hidePassToggle = document.getElementById('toggle-hide-pass');
+      var searchInput = document.getElementById('finding-search');
+      var statusLine = document.getElementById('filter-status-line');
+      var expandAllBtn = document.getElementById('expand-all-btn');
+      var collapseAllBtn = document.getElementById('collapse-all-btn');
+      var backToTop = document.getElementById('back-to-top');
+
+      var state = { status: 'all', query: '' };
+
+      function isFilterActive() {
+        return state.status !== 'all' || state.query !== '' || (hidePassToggle && hidePassToggle.checked);
+      }
+
+      function matchesQuery(finding) {
+        if (!state.query) { return true; }
+        var checkName = (finding.getAttribute('data-check') || '').toLowerCase();
+        var haystack = checkName + ' ' + finding.textContent.toLowerCase();
+        return haystack.indexOf(state.query) !== -1;
+      }
+
+      function isVisible(finding) {
+        var status = finding.getAttribute('data-status') || '';
+        if (state.status !== 'all') {
+          return status === state.status && matchesQuery(finding);
+        }
+        if (hidePassToggle && hidePassToggle.checked && (status === 'Pass' || status === 'Suppressed')) {
+          return false;
+        }
+        return matchesQuery(finding);
+      }
+
+      function applyFilters() {
+        var shownCount = 0;
+        findings.forEach(function (finding) {
+          var visible = isVisible(finding);
+          finding.classList.toggle('is-hidden', !visible);
+          if (visible) { shownCount++; }
+        });
+
+        checkGroups.forEach(function (group) {
+          var anyVisible = group.querySelector('.finding:not(.is-hidden)');
+          group.classList.toggle('is-hidden', !anyVisible);
+        });
+
+        var filterActive = isFilterActive();
+        repoDetails.forEach(function (group) {
+          var anyVisible = group.querySelector('.finding:not(.is-hidden)');
+          if (filterActive) {
+            group.open = !!anyVisible;
+          } else {
+            group.open = group.getAttribute('data-default-open') === 'true';
+          }
+        });
+
+        if (statusLine) {
+          statusLine.textContent = shownCount + ' of ' + findings.length + ' findings shown.';
+        }
+      }
+
+      filterButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+          filterButtons.forEach(function (b) {
+            b.classList.remove('active');
+            b.setAttribute('aria-pressed', 'false');
+          });
+          button.classList.add('active');
+          button.setAttribute('aria-pressed', 'true');
+          state.status = button.getAttribute('data-filter-status');
+          applyFilters();
+        });
+      });
+
+      if (hidePassToggle) {
+        hidePassToggle.addEventListener('change', applyFilters);
+      }
+
+      if (searchInput) {
+        searchInput.addEventListener('input', function () {
+          state.query = searchInput.value.trim().toLowerCase();
+          applyFilters();
+        });
+      }
+
+      if (expandAllBtn) {
+        expandAllBtn.addEventListener('click', function () {
+          repoDetails.forEach(function (d) { d.open = true; });
+        });
+      }
+
+      if (collapseAllBtn) {
+        collapseAllBtn.addEventListener('click', function () {
+          repoDetails.forEach(function (d) { d.open = false; });
+        });
+      }
+
+      window.addEventListener('beforeprint', function () {
+        repoDetails.forEach(function (d) { d.open = true; });
+        document.querySelectorAll('details.collapsible-panel').forEach(function (d) { d.open = true; });
+      });
+
+      if (backToTop) {
+        window.addEventListener('scroll', function () {
+          backToTop.classList.toggle('visible', window.scrollY > 400);
+        });
+        backToTop.addEventListener('click', function () {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      }
+
+      applyFilters();
+    })();
+  </script>
 </body>
 </html>

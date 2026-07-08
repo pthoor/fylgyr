@@ -207,6 +207,30 @@ $coverageSummaryHtml = @"
         $groupCheckCount = @($resultGroup.Group).Count
         $groupNonPassCount = @($resultGroup.Group | Where-Object { $_.Status -ne 'Pass' }).Count
 
+        $groupStatusCountMap = @{}
+        foreach ($groupStatusEntry in @($resultGroup.Group | Group-Object -Property Status)) {
+            $groupStatusCountMap[[string]$groupStatusEntry.Name] = $groupStatusEntry.Count
+        }
+        $groupStatusOrder = @('Fail', 'Error', 'Warning', 'Drift', 'Suppressed', 'Info', 'Pass')
+        $groupStatusClassMap = @{
+            Fail       = 'status-fail'
+            Warning    = 'status-warning'
+            Error      = 'status-error'
+            Info       = 'status-info'
+            Drift      = 'status-warning'
+            Suppressed = 'status-suppressed'
+            Pass       = 'status-pass'
+        }
+        $groupChipParts = [System.Collections.Generic.List[string]]::new()
+        foreach ($groupStatusName in $groupStatusOrder) {
+            if ($groupStatusCountMap.ContainsKey($groupStatusName) -and $groupStatusCountMap[$groupStatusName] -gt 0) {
+                $groupChipParts.Add("<span class='status-chip $($groupStatusClassMap[$groupStatusName])'>$groupStatusName $($groupStatusCountMap[$groupStatusName])</span>")
+            }
+        }
+        $groupChipsHtml = $groupChipParts -join ' '
+        $groupDefaultOpen = if ($groupNonPassCount -gt 0) { 'true' } else { 'false' }
+        $groupOpenAttr = if ($groupNonPassCount -gt 0) { ' open' } else { '' }
+
         $checkGroups = @($resultGroup.Group | Group-Object -Property CheckName)
         $checkHtml = [System.Collections.Generic.List[string]]::new()
         foreach ($checkGroup in $checkGroups) {
@@ -229,6 +253,7 @@ $coverageSummaryHtml = @"
                 $resource = [System.Net.WebUtility]::HtmlEncode([string]$result.Resource)
                 $severity = [System.Net.WebUtility]::HtmlEncode([string]$result.Severity)
                 $remediation = [System.Net.WebUtility]::HtmlEncode([string]$result.Remediation)
+                $statusAttr = [System.Net.WebUtility]::HtmlEncode($status)
 
                 $attacksHtml = ''
                 $attackText = @($result.AttackMapping) -join ', '
@@ -261,7 +286,7 @@ $evidenceHtml = @"
                 }
 
 $findingHtml.Add(@"
-<div class="finding $statusClass">
+<div class="finding $statusClass" data-status="$statusAttr" data-severity="$severity" data-check="$checkName">
   <div class="finding-header">
     <span class="status">$status</span>
     <span class="severity">$severity</span>
@@ -284,11 +309,16 @@ $checkHtml.Add(@"
         }
 
 $groupHtml = @"
-<section class="repo-group">
-  <h3 id="$groupId">$groupTitle</h3>
-  <p class="group-meta">$groupNonPassCount non-pass result(s) across $groupCheckCount check result(s).</p>
-  $($checkHtml -join "`n")
-</section>
+<details class="repo-group" data-default-open="$groupDefaultOpen"$groupOpenAttr>
+  <summary>
+    <h3 id="$groupId">$groupTitle</h3>
+    <p class="group-meta">$groupNonPassCount non-pass result(s) across $groupCheckCount check result(s).</p>
+    <p class="group-badges">$groupChipsHtml</p>
+  </summary>
+  <div class="repo-group-body">
+    $($checkHtml -join "`n")
+  </div>
+</details>
 "@
 
         $tocItem = "<li><a href='#$groupId'>$groupTitle</a><span class='toc-count'>$groupNonPassCount non-pass / $groupCheckCount checks</span></li>"
@@ -532,10 +562,11 @@ $missingRiskHtml
     }
 
     $companionControlHtml = @"
+<details class="collapsible-panel">
+  <summary><h3>Recommended Companion Controls</h3><span class="summary-hint">Endpoint and network hardening &mdash; click to expand</span></summary>
 <div class="note-box">
   <strong>Scope note:</strong> Controls in this section are companion recommendations for endpoint and network hardening. They are not directly validated by this scan unless a corresponding GitHub finding exists.
 </div>
-<h3>Recommended Companion Controls</h3>
 <ul class="recommendation-list">
   <li>Extension governance: enforce publisher allowlists via Intune or Group Policy and use staged extension update rings for sensitive developer populations.</li>
   <li>Endpoint protection: deploy Microsoft Defender XDR (or equivalent EDR), enable tamper protection, and maintain host isolation runbooks.</li>
@@ -546,6 +577,7 @@ $missingRiskHtml
     <li>Dependency hardening on workstations: use package-manager cooldown controls to reduce exposure to freshly compromised package versions.</li>
     <li>Workstation posture scanners (for example Bagel) can complement Fylgyr by inventorying local credential and configuration risk on developer endpoints.</li>
 </ul>
+</details>
 "@
 
     $overallRecommendationsHtml = @"
@@ -644,6 +676,7 @@ $companionControlHtml
     $html = $html.Replace('{{SUMMARY_FAIL}}', [string]$summary.fail)
     $html = $html.Replace('{{SUMMARY_WARNING}}', [string]$summary.warning)
     $html = $html.Replace('{{SUMMARY_ERROR}}', [string]$summary.error)
+    $html = $html.Replace('{{SUMMARY_DRIFT}}', [string]$summary.drift)
     $html = $html.Replace('{{SUMMARY_INFO}}', [string]$summary.info)
     $html = $html.Replace('{{SUMMARY_SUPPRESSED}}', [string]$summary.suppressed)
     $html = $html.Replace('{{SCAN_SCOPE}}', $scanScopeHtml)
