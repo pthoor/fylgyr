@@ -84,11 +84,13 @@ function Test-EnvironmentProtection {
         $hasRequiredReviewers = $false
         $hasWaitTimer = $false
         $hasBranchPolicy = $false
+        $reviewerCount = 0
 
         if ($env.protection_rules) {
             foreach ($rule in $env.protection_rules) {
                 if ($rule.type -eq 'required_reviewers' -and $rule.reviewers -and $rule.reviewers.Count -gt 0) {
                     $hasRequiredReviewers = $true
+                    $reviewerCount = $rule.reviewers.Count
                 }
                 if ($rule.type -eq 'wait_timer' -and $rule.wait_timer -gt 0) {
                     $hasWaitTimer = $true
@@ -126,15 +128,33 @@ function Test-EnvironmentProtection {
                 -Target $target))
         }
         else {
-            # Reviewer(s) are required. Now check self-review prevention.
+            # Reviewer(s) are required. Now check self-review prevention. With
+            # only one reviewer configured, that reviewer could plausibly be
+            # whoever triggers the deployment, in which case enabling
+            # prevent-self-review would deadlock it - so downgrade to Warning.
+            # Two or more reviewers means the gate is achievable without that
+            # risk, so keep it a hard Fail.
             if (-not $preventSelfReview) {
+                $selfReviewStatus = if ($reviewerCount -le 1) { 'Warning' } else { 'Fail' }
+                $selfReviewSeverity = if ($reviewerCount -le 1) { 'Medium' } else { 'High' }
+                $singleReviewerNote = if ($reviewerCount -le 1) {
+                    ' Only one reviewer is configured for this environment; if that reviewer is also whoever triggers the deployment, enabling prevent-self-review would leave no one else available to approve it.'
+                }
+                else { '' }
+                $selfReviewRemediation = if ($reviewerCount -le 1) {
+                    "Add at least one more required reviewer to '$envName' first, then enable 'Prevent self-review' in Settings > Environments > '$envName'. Enabling it before adding a second reviewer would block every deployment if the sole reviewer is also whoever triggers it."
+                }
+                else {
+                    "Enable 'Prevent self-review' in Settings > Environments > '$envName' so that the person who triggered the deployment cannot also approve it."
+                }
+
                 $findings.Add((Format-FylgyrResult `
                     -CheckName 'EnvironmentProtection' `
-                    -Status 'Fail' `
-                    -Severity 'High' `
+                    -Status $selfReviewStatus `
+                    -Severity $selfReviewSeverity `
                     -Resource $envResource `
-                    -Detail "Environment '$envName' has required reviewers but does not prevent self-review. The workflow author can approve their own deployment, which means a single compromised or socially-engineered maintainer account can bypass the reviewer gate entirely." `
-                    -Remediation "Enable 'Prevent self-review' in Settings > Environments > '$envName' so that the person who triggered the deployment cannot also approve it." `
+                    -Detail "Environment '$envName' has required reviewers but does not prevent self-review. The person who triggers the deployment can also approve it, letting a single compromised or socially-engineered account bypass the reviewer gate.$singleReviewerNote" `
+                    -Remediation $selfReviewRemediation `
                     -AttackMapping @('unauthorized-env-deployment', 'xz-utils-backdoor') `
                     -Target $target))
             }
