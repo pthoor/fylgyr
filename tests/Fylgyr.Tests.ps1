@@ -2359,6 +2359,12 @@ Describe 'Test-EnvironmentProtection' {
         Import-Module -Name $modulePath -Force
     }
 
+    BeforeEach {
+        InModuleScope Fylgyr {
+            $script:FylgyrOwnerContextCache = @{}
+        }
+    }
+
     It 'fails when an environment has no required reviewers' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             return [PSCustomObject]@{

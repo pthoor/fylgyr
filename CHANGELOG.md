@@ -6,12 +6,12 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
-## [0.8.1] - 2026-06-28
-
 ### Fixed
 
-- `Test-EnvironmentProtection` no longer reports `Fail/High` for environments with required reviewers but `prevent_self_review` disabled on personal (User) GitHub accounts, where the deployer is often the only available reviewer. The finding is downgraded to `Warning/Medium` in that case; organizations still get `Fail/High` since they have no structural excuse to skip the control.
+- `Test-EnvironmentProtection` no longer reports `Fail/High` for environments with required reviewers but `prevent_self_review` disabled on personal (User) GitHub accounts, where the person triggering the deployment is often the only available reviewer. The finding is downgraded to `Warning/Medium` in that case; organizations still get `Fail/High` since they have no structural excuse to skip the control.
 - `ci.yml` and `release.yml` pin `Pester` to `< 6.0` (`-MaximumVersion 5.99.99`). PSGallery began serving Pester v6, which breaks `Assert-MockCalled` and failed every test run; this had also silently broken the release workflow's own test gate.
+
+## [0.8.1] - 2026-06-28
 
 ### Security
 

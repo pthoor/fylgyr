@@ -92,7 +92,7 @@ function Test-EnvironmentProtection {
     $selfReviewStatus = if ($ownerType -eq 'User') { 'Warning' } else { 'Fail' }
     $selfReviewSeverity = if ($ownerType -eq 'User') { 'Medium' } else { 'High' }
     $personalNote = if ($ownerType -eq 'User') {
-        ' Note: this is a personal GitHub account - the deployer may be the only available reviewer, making self-review unavoidable without adding a collaborator co-reviewer.'
+        ' Note: this is a personal GitHub account - the person who triggers the deployment may be the only available reviewer, making self-review unavoidable without adding a collaborator co-reviewer.'
     }
     else { '' }
 
