@@ -77,25 +77,6 @@ function Test-EnvironmentProtection {
 
     $findings = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-    # Personal GitHub accounts are frequently solo-maintained, so the deployer
-    # may be the only available reviewer, making self-review unavoidable -
-    # downgrade that finding to Warning to keep the signal without failing
-    # dogfood on a structural limitation. Organizations have no such excuse.
-    $ownerContext = Get-FylgyrOwnerContext -Owner $Owner -Token $Token
-    $ownerType = if ($ownerContext -and $ownerContext.PSObject.Properties['Type']) {
-        $ownerContext.Type
-    }
-    else {
-        'Unknown'
-    }
-
-    $selfReviewStatus = if ($ownerType -eq 'User') { 'Warning' } else { 'Fail' }
-    $selfReviewSeverity = if ($ownerType -eq 'User') { 'Medium' } else { 'High' }
-    $personalNote = if ($ownerType -eq 'User') {
-        ' Note: this is a personal GitHub account - the person who triggers the deployment may be the only available reviewer, making self-review unavoidable without adding a collaborator co-reviewer.'
-    }
-    else { '' }
-
     foreach ($env in $environments) {
         $envName = $env.name
         $envResource = "$target (environment: $envName)"
@@ -103,11 +84,13 @@ function Test-EnvironmentProtection {
         $hasRequiredReviewers = $false
         $hasWaitTimer = $false
         $hasBranchPolicy = $false
+        $reviewerCount = 0
 
         if ($env.protection_rules) {
             foreach ($rule in $env.protection_rules) {
                 if ($rule.type -eq 'required_reviewers' -and $rule.reviewers -and $rule.reviewers.Count -gt 0) {
                     $hasRequiredReviewers = $true
+                    $reviewerCount = $rule.reviewers.Count
                 }
                 if ($rule.type -eq 'wait_timer' -and $rule.wait_timer -gt 0) {
                     $hasWaitTimer = $true
@@ -145,14 +128,25 @@ function Test-EnvironmentProtection {
                 -Target $target))
         }
         else {
-            # Reviewer(s) are required. Now check self-review prevention.
+            # Reviewer(s) are required. Now check self-review prevention. With
+            # only one reviewer configured, enabling prevent-self-review would
+            # deadlock every deployment - nobody else exists to approve it -
+            # so downgrade to Warning. Two or more reviewers means the gate is
+            # achievable without deadlock, so keep it a hard Fail.
             if (-not $preventSelfReview) {
+                $selfReviewStatus = if ($reviewerCount -le 1) { 'Warning' } else { 'Fail' }
+                $selfReviewSeverity = if ($reviewerCount -le 1) { 'Medium' } else { 'High' }
+                $singleReviewerNote = if ($reviewerCount -le 1) {
+                    ' Only one reviewer is configured for this environment, so the person who triggers the deployment has no other reviewer available to approve it - enabling prevent-self-review here would block every deployment.'
+                }
+                else { '' }
+
                 $findings.Add((Format-FylgyrResult `
                     -CheckName 'EnvironmentProtection' `
                     -Status $selfReviewStatus `
                     -Severity $selfReviewSeverity `
                     -Resource $envResource `
-                    -Detail "Environment '$envName' has required reviewers but does not prevent self-review. The person who triggers the deployment can also approve it, letting a single compromised or socially-engineered account bypass the reviewer gate.$personalNote" `
+                    -Detail "Environment '$envName' has required reviewers but does not prevent self-review. The person who triggers the deployment can also approve it, letting a single compromised or socially-engineered account bypass the reviewer gate.$singleReviewerNote" `
                     -Remediation "Enable 'Prevent self-review' in Settings > Environments > '$envName' so that the person who triggered the deployment cannot also approve it." `
                     -AttackMapping @('unauthorized-env-deployment', 'xz-utils-backdoor') `
                     -Target $target))

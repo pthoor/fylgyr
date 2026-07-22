@@ -2359,12 +2359,6 @@ Describe 'Test-EnvironmentProtection' {
         Import-Module -Name $modulePath -Force
     }
 
-    BeforeEach {
-        InModuleScope Fylgyr {
-            $script:FylgyrOwnerContextCache = @{}
-        }
-    }
-
     It 'fails when an environment has no required reviewers' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
             return [PSCustomObject]@{
@@ -2384,12 +2378,8 @@ Describe 'Test-EnvironmentProtection' {
         $fail[0].AttackMapping | Should -Contain 'unauthorized-env-deployment'
     }
 
-    It 'downgrades missing prevent-self-review to Warning for personal (User) accounts' {
+    It 'downgrades missing prevent-self-review to Warning when only one reviewer is configured' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
-            param($Endpoint)
-            if ($Endpoint -eq 'users/pthoor') {
-                return [PSCustomObject]@{ type = 'User' }
-            }
             return [PSCustomObject]@{
                 environments = @(
                     [PSCustomObject]@{
@@ -2411,16 +2401,12 @@ Describe 'Test-EnvironmentProtection' {
         $warn = $results | Where-Object Status -EQ 'Warning'
         $warn | Should -Not -BeNullOrEmpty
         $warn[0].Severity | Should -Be 'Medium'
-        ($warn.Detail -join ' ') | Should -Match 'personal GitHub account'
+        ($warn.Detail -join ' ') | Should -Match 'Only one reviewer is configured'
         ($results | Where-Object Status -EQ 'Fail') | Should -BeNullOrEmpty
     }
 
-    It 'keeps missing prevent-self-review as Fail/High for organizations' {
+    It 'keeps missing prevent-self-review as Fail/High when two or more reviewers are configured' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
-            param($Endpoint)
-            if ($Endpoint -eq 'users/acme') {
-                return [PSCustomObject]@{ type = 'Organization' }
-            }
             return [PSCustomObject]@{
                 environments = @(
                     [PSCustomObject]@{
@@ -2429,7 +2415,10 @@ Describe 'Test-EnvironmentProtection' {
                         protection_rules    = @(
                             [PSCustomObject]@{
                                 type      = 'required_reviewers'
-                                reviewers = @([PSCustomObject]@{ type = 'User' })
+                                reviewers = @(
+                                    [PSCustomObject]@{ type = 'User' },
+                                    [PSCustomObject]@{ type = 'User' }
+                                )
                             }
                         )
                         deployment_branch_policy = [PSCustomObject]@{ protected_branches = $true }
