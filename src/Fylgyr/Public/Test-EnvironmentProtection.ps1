@@ -77,6 +77,25 @@ function Test-EnvironmentProtection {
 
     $findings = [System.Collections.Generic.List[PSCustomObject]]::new()
 
+    # Personal GitHub accounts are frequently solo-maintained, so the deployer
+    # may be the only available reviewer, making self-review unavoidable -
+    # downgrade that finding to Warning to keep the signal without failing
+    # dogfood on a structural limitation. Organizations have no such excuse.
+    $ownerContext = Get-FylgyrOwnerContext -Owner $Owner -Token $Token
+    $ownerType = if ($ownerContext -and $ownerContext.PSObject.Properties['Type']) {
+        $ownerContext.Type
+    }
+    else {
+        'Unknown'
+    }
+
+    $selfReviewStatus = if ($ownerType -eq 'User') { 'Warning' } else { 'Fail' }
+    $selfReviewSeverity = if ($ownerType -eq 'User') { 'Medium' } else { 'High' }
+    $personalNote = if ($ownerType -eq 'User') {
+        ' Note: this is a personal GitHub account - the deployer may be the only available reviewer, making self-review unavoidable without adding a collaborator co-reviewer.'
+    }
+    else { '' }
+
     foreach ($env in $environments) {
         $envName = $env.name
         $envResource = "$target (environment: $envName)"
@@ -126,15 +145,15 @@ function Test-EnvironmentProtection {
                 -Target $target))
         }
         else {
-            # Reviewer(s) are required. Now check self-review prevention (defense-in-depth, not a hard gate).
+            # Reviewer(s) are required. Now check self-review prevention.
             if (-not $preventSelfReview) {
                 $findings.Add((Format-FylgyrResult `
                     -CheckName 'EnvironmentProtection' `
-                    -Status 'Warning' `
-                    -Severity 'Medium' `
+                    -Status $selfReviewStatus `
+                    -Severity $selfReviewSeverity `
                     -Resource $envResource `
-                    -Detail "Environment '$envName' has required reviewers but does not prevent self-review. The workflow author can approve their own deployment, which partially undermines the reviewer gate for solo-maintainer accounts." `
-                    -Remediation "Enable 'Prevent self-review' in Settings > Environments > '$envName' so that the person who triggered the deployment cannot also approve it. For single-maintainer repos, consider adding a trusted co-reviewer." `
+                    -Detail "Environment '$envName' has required reviewers but does not prevent self-review. The person who triggers the deployment can also approve it, letting a single compromised or socially-engineered account bypass the reviewer gate.$personalNote" `
+                    -Remediation "Enable 'Prevent self-review' in Settings > Environments > '$envName' so that the person who triggered the deployment cannot also approve it." `
                     -AttackMapping @('unauthorized-env-deployment', 'xz-utils-backdoor') `
                     -Target $target))
             }

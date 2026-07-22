@@ -8,6 +8,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [0.8.1] - 2026-06-28
 
+### Fixed
+
+- `Test-EnvironmentProtection` no longer reports `Fail/High` for environments with required reviewers but `prevent_self_review` disabled on personal (User) GitHub accounts, where the deployer is often the only available reviewer. The finding is downgraded to `Warning/Medium` in that case; organizations still get `Fail/High` since they have no structural excuse to skip the control.
+
 ### Security
 
 - `Invoke-GitHubApi` now validates absolute HTTPS endpoints against an allowlist of GitHub API hosts (`api.github.com`, `github.com`, and the GHES base host when configured), blocking SSRF to non-GitHub URLs.

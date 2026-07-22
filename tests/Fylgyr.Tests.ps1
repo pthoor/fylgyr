@@ -2378,8 +2378,12 @@ Describe 'Test-EnvironmentProtection' {
         $fail[0].AttackMapping | Should -Contain 'unauthorized-env-deployment'
     }
 
-    It 'warns when environment has required reviewers but prevent-self-review is disabled' {
+    It 'downgrades missing prevent-self-review to Warning for personal (User) accounts' {
         Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/pthoor') {
+                return [PSCustomObject]@{ type = 'User' }
+            }
             return [PSCustomObject]@{
                 environments = @(
                     [PSCustomObject]@{
@@ -2397,11 +2401,41 @@ Describe 'Test-EnvironmentProtection' {
             }
         }
 
-        $results = Test-EnvironmentProtection -Owner 'org' -Repo 'repo' -Token 'fake'
+        $results = Test-EnvironmentProtection -Owner 'pthoor' -Repo 'repo' -Token 'fake'
         $warn = $results | Where-Object Status -EQ 'Warning'
         $warn | Should -Not -BeNullOrEmpty
         $warn[0].Severity | Should -Be 'Medium'
+        ($warn.Detail -join ' ') | Should -Match 'personal GitHub account'
         ($results | Where-Object Status -EQ 'Fail') | Should -BeNullOrEmpty
+    }
+
+    It 'keeps missing prevent-self-review as Fail/High for organizations' {
+        Mock -ModuleName Fylgyr Invoke-GitHubApi {
+            param($Endpoint)
+            if ($Endpoint -eq 'users/acme') {
+                return [PSCustomObject]@{ type = 'Organization' }
+            }
+            return [PSCustomObject]@{
+                environments = @(
+                    [PSCustomObject]@{
+                        name                = 'production'
+                        prevent_self_review = $false
+                        protection_rules    = @(
+                            [PSCustomObject]@{
+                                type      = 'required_reviewers'
+                                reviewers = @([PSCustomObject]@{ type = 'User' })
+                            }
+                        )
+                        deployment_branch_policy = [PSCustomObject]@{ protected_branches = $true }
+                    }
+                )
+            }
+        }
+
+        $results = Test-EnvironmentProtection -Owner 'acme' -Repo 'repo' -Token 'fake'
+        $fail = $results | Where-Object Status -EQ 'Fail'
+        $fail | Should -Not -BeNullOrEmpty
+        $fail[0].Severity | Should -Be 'High'
     }
 
     It 'passes when all environments have required reviewers, prevent-self-review, and branch policies' {
