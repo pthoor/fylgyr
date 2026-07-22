@@ -129,15 +129,16 @@ function Test-EnvironmentProtection {
         }
         else {
             # Reviewer(s) are required. Now check self-review prevention. With
-            # only one reviewer configured, enabling prevent-self-review would
-            # deadlock every deployment - nobody else exists to approve it -
-            # so downgrade to Warning. Two or more reviewers means the gate is
-            # achievable without deadlock, so keep it a hard Fail.
+            # only one reviewer configured, that reviewer could plausibly be
+            # whoever triggers the deployment, in which case enabling
+            # prevent-self-review would deadlock it - so downgrade to Warning.
+            # Two or more reviewers means the gate is achievable without that
+            # risk, so keep it a hard Fail.
             if (-not $preventSelfReview) {
                 $selfReviewStatus = if ($reviewerCount -le 1) { 'Warning' } else { 'Fail' }
                 $selfReviewSeverity = if ($reviewerCount -le 1) { 'Medium' } else { 'High' }
                 $singleReviewerNote = if ($reviewerCount -le 1) {
-                    ' Only one reviewer is configured for this environment, so the person who triggers the deployment has no other reviewer available to approve it - enabling prevent-self-review here would block every deployment.'
+                    ' Only one reviewer is configured for this environment; if that reviewer is also whoever triggers the deployment, enabling prevent-self-review would leave no one else available to approve it.'
                 }
                 else { '' }
 
