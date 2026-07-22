@@ -141,6 +141,12 @@ function Test-EnvironmentProtection {
                     ' Only one reviewer is configured for this environment; if that reviewer is also whoever triggers the deployment, enabling prevent-self-review would leave no one else available to approve it.'
                 }
                 else { '' }
+                $selfReviewRemediation = if ($reviewerCount -le 1) {
+                    "Add at least one more required reviewer to '$envName' first, then enable 'Prevent self-review' in Settings > Environments > '$envName'. Enabling it before adding a second reviewer would block every deployment if the sole reviewer is also whoever triggers it."
+                }
+                else {
+                    "Enable 'Prevent self-review' in Settings > Environments > '$envName' so that the person who triggered the deployment cannot also approve it."
+                }
 
                 $findings.Add((Format-FylgyrResult `
                     -CheckName 'EnvironmentProtection' `
@@ -148,7 +154,7 @@ function Test-EnvironmentProtection {
                     -Severity $selfReviewSeverity `
                     -Resource $envResource `
                     -Detail "Environment '$envName' has required reviewers but does not prevent self-review. The person who triggers the deployment can also approve it, letting a single compromised or socially-engineered account bypass the reviewer gate.$singleReviewerNote" `
-                    -Remediation "Enable 'Prevent self-review' in Settings > Environments > '$envName' so that the person who triggered the deployment cannot also approve it." `
+                    -Remediation $selfReviewRemediation `
                     -AttackMapping @('unauthorized-env-deployment', 'xz-utils-backdoor') `
                     -Target $target))
             }
