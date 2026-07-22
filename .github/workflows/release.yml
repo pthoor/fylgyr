@@ -84,7 +84,7 @@ jobs:
       - name: Run tests
         shell: pwsh
         run: |
-          Install-Module -Name Pester -MinimumVersion 5.0 -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
+          Install-Module -Name Pester -MinimumVersion 5.0 -MaximumVersion 5.99.99 -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
           $testResult = Invoke-Pester -Path ./tests -Output Detailed -PassThru
           if ($testResult.FailedCount -gt 0) {
             throw "Pester failed with $($testResult.FailedCount) failed test(s)."

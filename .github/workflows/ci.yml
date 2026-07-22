@@ -38,7 +38,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module -Name powershell-yaml -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
-          Install-Module -Name Pester -MinimumVersion 5.0 -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
+          Install-Module -Name Pester -MinimumVersion 5.0 -MaximumVersion 5.99.99 -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
           Install-Module -Name PSScriptAnalyzer -Repository PSGallery -Scope CurrentUser -Force -AcceptLicense
 
       - name: Run PSScriptAnalyzer
