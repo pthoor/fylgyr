@@ -3506,3 +3506,104 @@ jobs:
         $results[0].Detail | Should -Match 'windows-latest'
     }
 }
+
+Describe 'ConvertTo-FylgyrHtml' {
+    BeforeAll {
+        $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+        $modulePath = Join-Path -Path $repoRoot -ChildPath 'src/Fylgyr/Fylgyr.psm1'
+        Import-Module -Name $modulePath -Force
+    }
+
+    It 'does not default-open a repo group whose only findings are Suppressed or Info' {
+        InModuleScope Fylgyr {
+            $results = @(
+                Format-FylgyrResult -CheckName 'SecretScanning' -Status 'Suppressed' -Severity 'Low' -Resource 'org/repo1' -Detail 'Suppressed by policy.' -Remediation 'N/A' -Target 'org/repo1'
+                Format-FylgyrResult -CheckName 'RepoVisibility' -Status 'Info' -Severity 'Info' -Resource 'org/repo1' -Detail 'Advisory only.' -Remediation 'N/A' -Target 'org/repo1'
+            )
+
+            $html = ConvertTo-FylgyrHtml -Results $results -Target 'org'
+            $html | Should -Match 'data-default-open="false"'
+            $html | Should -Not -Match '<details class="repo-group" data-default-open="false" open>'
+        }
+    }
+
+    It 'default-opens a repo group that has a Fail, Warning, Error, or Drift finding' {
+        InModuleScope Fylgyr {
+            $results = @(
+                Format-FylgyrResult -CheckName 'SecretScanning' -Status 'Suppressed' -Severity 'Low' -Resource 'org/repo1' -Detail 'Suppressed by policy.' -Remediation 'N/A' -Target 'org/repo1'
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'Critical' -Resource 'org/repo1' -Detail 'Unpinned action.' -Remediation 'Pin to a SHA.' -Target 'org/repo1'
+            )
+
+            $html = ConvertTo-FylgyrHtml -Results $results -Target 'org'
+            $html | Should -Match '<details class="repo-group" data-default-open="true" open>'
+        }
+    }
+
+    It 'keeps the repo-group summary free of block-level elements for HTML validity' {
+        InModuleScope Fylgyr {
+            $results = @(
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'Critical' -Resource 'org/repo1' -Detail 'Unpinned action.' -Remediation 'Pin to a SHA.' -Target 'org/repo1'
+            )
+
+            $html = ConvertTo-FylgyrHtml -Results $results -Target 'org'
+            $html | Should -Match '<span class="group-meta">'
+            $html | Should -Match '<span class="group-badges">'
+            $html | Should -Not -Match '<p class="group-meta">'
+            $html | Should -Not -Match '<p class="group-badges">'
+        }
+    }
+
+    It 'rolls up Fail/Warning/Error/Drift findings by check across targets, excluding all-Pass checks' {
+        InModuleScope Fylgyr {
+            $results = @(
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'Critical' -Resource 'org/repo1' -Detail 'Unpinned action.' -Remediation 'Pin to a SHA.' -Target 'org/repo1'
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Pass' -Severity 'Low' -Resource 'org/repo2' -Detail 'All actions pinned.' -Remediation 'N/A' -Target 'org/repo2'
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'Critical' -Resource 'org/repo3' -Detail 'Unpinned action.' -Remediation 'Pin to a SHA.' -Target 'org/repo3'
+                Format-FylgyrResult -CheckName 'SecretScanning' -Status 'Pass' -Severity 'Low' -Resource 'org/repo1' -Detail 'Enabled.' -Remediation 'N/A' -Target 'org/repo1'
+            )
+
+            $html = ConvertTo-FylgyrHtml -Results $results -Target 'org'
+            $html | Should -Match '<td>ActionPinning</td>'
+            $html | Should -Match "Fail 2"
+            $html | Should -Match '<td>2 / 3</td>'
+            $html | Should -Not -Match '<td>SecretScanning</td>'
+        }
+    }
+
+    It 'shows a no-rollup message when nothing is Fail/Warning/Error/Drift' {
+        InModuleScope Fylgyr {
+            $results = @(
+                Format-FylgyrResult -CheckName 'SecretScanning' -Status 'Pass' -Severity 'Low' -Resource 'org/repo1' -Detail 'Enabled.' -Remediation 'N/A' -Target 'org/repo1'
+            )
+
+            $html = ConvertTo-FylgyrHtml -Results $results -Target 'org'
+            $html | Should -Match 'No Fail/Warning/Error/Drift findings to roll up by check\.'
+        }
+    }
+
+    It 'builds a summary ring gradient that includes only statuses actually present' {
+        InModuleScope Fylgyr {
+            $results = @(
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'Critical' -Resource 'org/repo1' -Detail 'Unpinned action.' -Remediation 'Pin to a SHA.' -Target 'org/repo1'
+                Format-FylgyrResult -CheckName 'SecretScanning' -Status 'Pass' -Severity 'Low' -Resource 'org/repo1' -Detail 'Enabled.' -Remediation 'N/A' -Target 'org/repo1'
+            )
+
+            $html = ConvertTo-FylgyrHtml -Results $results -Target 'org'
+            $ringMatch = [regex]::Match($html, 'class="summary-ring" style="background: conic-gradient\((.+?)\);">')
+            $ringMatch.Success | Should -BeTrue
+            $ringMatch.Groups[1].Value | Should -Be 'var(--fail) 0% 50%, var(--pass) 50% 100%'
+        }
+    }
+
+    It 'includes a theme toggle button that is hidden when JavaScript is disabled' {
+        InModuleScope Fylgyr {
+            $results = @(
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Pass' -Severity 'Low' -Resource 'org/repo1' -Detail 'All actions pinned.' -Remediation 'N/A' -Target 'org/repo1'
+            )
+
+            $html = ConvertTo-FylgyrHtml -Results $results -Target 'org'
+            $html | Should -Match '<button type="button" id="theme-toggle"'
+            $html | Should -Match '<noscript><style>#theme-toggle \{ display: none; \}</style></noscript>'
+        }
+    }
+}

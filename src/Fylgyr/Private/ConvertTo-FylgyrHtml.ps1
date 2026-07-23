@@ -169,6 +169,111 @@ $coverageSummaryHtml = @"
         suppressed = ($Results | Where-Object Status -EQ 'Suppressed').Count
     }
 
+    $ringStatusOrder = @('Fail', 'Error', 'Warning', 'Drift', 'Suppressed', 'Info', 'Pass')
+    $ringColorVarMap = @{
+        Fail       = '--fail'
+        Error      = '--error'
+        Warning    = '--warn'
+        Drift      = '--warn'
+        Suppressed = '--suppressed'
+        Info       = '--info'
+        Pass       = '--pass'
+    }
+    $ringCountMap = @{
+        Fail       = $summary.fail
+        Error      = $summary.error
+        Warning    = $summary.warning
+        Drift      = $summary.drift
+        Suppressed = $summary.suppressed
+        Info       = $summary.info
+        Pass       = $summary.pass
+    }
+    $ringStops = [System.Collections.Generic.List[string]]::new()
+    $ringTotal = [double]$summary.total
+    $ringCursor = 0.0
+    if ($ringTotal -gt 0) {
+        foreach ($ringStatusName in $ringStatusOrder) {
+            $ringCount = [double]$ringCountMap[$ringStatusName]
+            if ($ringCount -le 0) {
+                continue
+            }
+
+            $ringStart = [Math]::Round(($ringCursor / $ringTotal) * 100, 2)
+            $ringCursor += $ringCount
+            $ringEnd = [Math]::Round(($ringCursor / $ringTotal) * 100, 2)
+            $ringStartText = $ringStart.ToString('0.##', [System.Globalization.CultureInfo]::InvariantCulture)
+            $ringEndText = $ringEnd.ToString('0.##', [System.Globalization.CultureInfo]::InvariantCulture)
+            $ringStops.Add("var($($ringColorVarMap[$ringStatusName])) $ringStartText% $ringEndText%")
+        }
+    }
+    $summaryRingGradient = if ($ringStops.Count -gt 0) { $ringStops -join ', ' } else { 'var(--border) 0% 100%' }
+
+    $actionableStatuses = @('Fail', 'Error', 'Warning', 'Drift')
+    $checkRollupRows = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($checkNameGroup in @($Results | Group-Object -Property CheckName)) {
+        $checkResults = @($checkNameGroup.Group)
+        $actionableResults = @($checkResults | Where-Object { $_.Status -in $actionableStatuses })
+        if ($actionableResults.Count -eq 0) {
+            continue
+        }
+
+        $checkedTargetCount = @($checkResults | Select-Object -ExpandProperty Target -Unique).Count
+        $affectedTargetCount = @($actionableResults | Select-Object -ExpandProperty Target -Unique).Count
+        $checkRollupRows.Add([PSCustomObject]@{
+                CheckName      = [string]$checkNameGroup.Name
+                AffectedCount  = $affectedTargetCount
+                CheckedCount   = $checkedTargetCount
+                FailCount      = @($actionableResults | Where-Object Status -EQ 'Fail').Count
+                ErrorCount     = @($actionableResults | Where-Object Status -EQ 'Error').Count
+                WarningCount   = @($actionableResults | Where-Object Status -EQ 'Warning').Count
+                DriftCount     = @($actionableResults | Where-Object Status -EQ 'Drift').Count
+            }) | Out-Null
+    }
+
+    $orderedCheckRollupRows = @($checkRollupRows | Sort-Object -Property @(
+        @{ Expression = { $_.FailCount + $_.ErrorCount }; Descending = $true },
+        @{ Expression = { $_.WarningCount }; Descending = $true },
+        @{ Expression = { $_.DriftCount }; Descending = $true },
+        @{ Expression = { $_.CheckName }; Descending = $false }
+    ))
+
+    $checkRollupRowsHtml = [System.Collections.Generic.List[string]]::new()
+    foreach ($rollupRow in $orderedCheckRollupRows) {
+        $rollupCheckName = [System.Net.WebUtility]::HtmlEncode($rollupRow.CheckName)
+        $rollupChipParts = [System.Collections.Generic.List[string]]::new()
+        if ($rollupRow.FailCount -gt 0) { $rollupChipParts.Add("<span class='status-chip status-fail'>Fail $($rollupRow.FailCount)</span>") }
+        if ($rollupRow.ErrorCount -gt 0) { $rollupChipParts.Add("<span class='status-chip status-error'>Error $($rollupRow.ErrorCount)</span>") }
+        if ($rollupRow.WarningCount -gt 0) { $rollupChipParts.Add("<span class='status-chip status-warning'>Warning $($rollupRow.WarningCount)</span>") }
+        if ($rollupRow.DriftCount -gt 0) { $rollupChipParts.Add("<span class='status-chip status-warning'>Drift $($rollupRow.DriftCount)</span>") }
+        $rollupChipsHtml = $rollupChipParts -join ' '
+
+        $checkRollupRowsHtml.Add(@"
+<tr>
+  <td>$rollupCheckName</td>
+  <td>$rollupChipsHtml</td>
+  <td>$($rollupRow.AffectedCount) / $($rollupRow.CheckedCount)</td>
+</tr>
+"@) | Out-Null
+    }
+
+    $checkRollupHtml = if ($checkRollupRowsHtml.Count -gt 0) {
+@"
+<div class="table-scroll">
+<table class="rollup-table">
+  <thead>
+    <tr><th>Check</th><th>Findings</th><th>Targets affected</th></tr>
+  </thead>
+  <tbody>
+    $($checkRollupRowsHtml -join "`n    ")
+  </tbody>
+</table>
+</div>
+"@
+    }
+    else {
+        '<p>No Fail/Warning/Error/Drift findings to roll up by check.</p>'
+    }
+
     $scannedRepoSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($scanTarget in @($ScannedTargets)) {
         if ([string]::IsNullOrWhiteSpace($scanTarget)) {
@@ -228,8 +333,9 @@ $coverageSummaryHtml = @"
             }
         }
         $groupChipsHtml = $groupChipParts -join ' '
-        $groupDefaultOpen = if ($groupNonPassCount -gt 0) { 'true' } else { 'false' }
-        $groupOpenAttr = if ($groupNonPassCount -gt 0) { ' open' } else { '' }
+        $groupActionableCount = @($resultGroup.Group | Where-Object { $_.Status -in @('Fail', 'Error', 'Warning', 'Drift') }).Count
+        $groupDefaultOpen = if ($groupActionableCount -gt 0) { 'true' } else { 'false' }
+        $groupOpenAttr = if ($groupActionableCount -gt 0) { ' open' } else { '' }
 
         $checkGroups = @($resultGroup.Group | Group-Object -Property CheckName)
         $checkHtml = [System.Collections.Generic.List[string]]::new()
@@ -312,8 +418,8 @@ $groupHtml = @"
 <details class="repo-group" data-default-open="$groupDefaultOpen"$groupOpenAttr>
   <summary>
     <h3 id="$groupId">$groupTitle</h3>
-    <p class="group-meta">$groupNonPassCount non-pass result(s) across $groupCheckCount check result(s).</p>
-    <p class="group-badges">$groupChipsHtml</p>
+    <span class="group-meta">$groupNonPassCount non-pass result(s) across $groupCheckCount check result(s).</span>
+    <span class="group-badges">$groupChipsHtml</span>
   </summary>
   <div class="repo-group-body">
     $($checkHtml -join "`n")
@@ -679,8 +785,10 @@ $companionControlHtml
     $html = $html.Replace('{{SUMMARY_DRIFT}}', [string]$summary.drift)
     $html = $html.Replace('{{SUMMARY_INFO}}', [string]$summary.info)
     $html = $html.Replace('{{SUMMARY_SUPPRESSED}}', [string]$summary.suppressed)
+    $html = $html.Replace('{{SUMMARY_RING_GRADIENT}}', $summaryRingGradient)
     $html = $html.Replace('{{SCAN_SCOPE}}', $scanScopeHtml)
     $html = $html.Replace('{{TABLE_OF_CONTENTS}}', $tableOfContentsHtml)
+    $html = $html.Replace('{{CHECK_ROLLUP}}', $checkRollupHtml)
     $html = $html.Replace('{{RISK_PRIORITIES}}', $riskPrioritizationHtml)
     $html = $html.Replace('{{OVERALL_RECOMMENDATIONS}}', $overallRecommendationsHtml)
     $html = $html.Replace('{{DEFENDER_XDR_RULES}}', $defenderXdrRulesHtml)

@@ -87,7 +87,52 @@
     h1, h2, h3, h4, h5 { margin: 0 0 8px 0; }
     p { margin: 6px 0; }
 
+    .summary-layout {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .summary-ring-wrap {
+      flex: 0 0 auto;
+    }
+
+    .summary-ring {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+    }
+
+    .summary-ring-hole {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      bottom: 14px;
+      left: 14px;
+      border-radius: 50%;
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      line-height: 1.2;
+    }
+
+    .summary-ring-hole strong {
+      font-size: 22px;
+    }
+
+    .summary-ring-hole span {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
     .summary-grid {
+      flex: 1 1 260px;
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
       gap: 8px;
@@ -116,7 +161,9 @@
     }
 
     .group-meta {
-      margin: 4px 0 8px 0;
+      display: block;
+      flex-basis: 100%;
+      margin: 2px 0 0 0;
       color: var(--muted);
       font-size: 13px;
     }
@@ -163,6 +210,31 @@
       margin-bottom: 12px;
     }
 
+    .table-scroll {
+      overflow-x: auto;
+    }
+
+    .rollup-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .rollup-table th,
+    .rollup-table td {
+      text-align: left;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .rollup-table th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
     .code-title {
       margin: 8px 0 4px 0;
       color: var(--muted);
@@ -200,8 +272,17 @@
     }
 
     details.repo-group > summary {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      column-gap: 10px;
+      row-gap: 2px;
       cursor: pointer;
       list-style: none;
+    }
+
+    details.repo-group > summary > h3 {
+      margin: 0;
     }
 
     details.repo-group > summary::-webkit-details-marker { display: none; }
@@ -209,6 +290,9 @@
     details.repo-group > summary::before {
       content: "\25B8";
       display: inline-block;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
       margin-right: 8px;
       transition: transform 0.15s ease;
       color: var(--muted);
@@ -280,6 +364,7 @@
 
     .report-title {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 10px;
     }
@@ -287,6 +372,18 @@
     .report-logo {
       color: var(--pass);
       flex-shrink: 0;
+    }
+
+    .theme-toggle-btn {
+      font: inherit;
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--chip-bg);
+      color: var(--text);
+      cursor: pointer;
+      margin-left: auto;
     }
 
     :root[data-theme="dark"] a { color: #93c5fd; }
@@ -307,6 +404,9 @@
 
     .collapsible-panel > summary::before {
       content: "\25B8";
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
       color: var(--muted);
       transition: transform 0.15s ease;
     }
@@ -440,6 +540,8 @@
   <path d="M50 22 V78 M50 22 L68 36 M50 48 L68 62" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
 </svg>
         <h1>{{TITLE}}</h1>
+        <button type="button" id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle color theme">Toggle theme</button>
+        <noscript><style>#theme-toggle { display: none; }</style></noscript>
       </div>
       <p><strong>Generated:</strong> {{GENERATED_AT}}</p>
       <p><strong>Target:</strong> {{TARGET}}</p>
@@ -448,19 +550,34 @@
 
     <section class="panel">
       <h2>Summary</h2>
-      <div class="summary-grid">
-        <div class="summary-item"><h3>{{SUMMARY_TOTAL}}</h3><p>Total</p></div>
-        <div class="summary-item"><h3>{{SUMMARY_PASS}}</h3><p>Pass</p></div>
-        <div class="summary-item"><h3>{{SUMMARY_FAIL}}</h3><p>Fail</p></div>
-        <div class="summary-item"><h3>{{SUMMARY_WARNING}}</h3><p>Warning</p></div>
-        <div class="summary-item"><h3>{{SUMMARY_ERROR}}</h3><p>Error</p></div>
-        <div class="summary-item"><h3>{{SUMMARY_DRIFT}}</h3><p>Drift</p></div>
-        <div class="summary-item"><h3>{{SUMMARY_INFO}}</h3><p>Info</p></div>
-        <div class="summary-item"><h3>{{SUMMARY_SUPPRESSED}}</h3><p>Suppressed</p></div>
+      <div class="summary-layout">
+        <div class="summary-ring-wrap" aria-hidden="true">
+          <div class="summary-ring" style="background: conic-gradient({{SUMMARY_RING_GRADIENT}});">
+            <div class="summary-ring-hole">
+              <strong>{{SUMMARY_TOTAL}}</strong>
+              <span>checks</span>
+            </div>
+          </div>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-item"><h3>{{SUMMARY_TOTAL}}</h3><p>Total</p></div>
+          <div class="summary-item"><h3>{{SUMMARY_PASS}}</h3><p>Pass</p></div>
+          <div class="summary-item"><h3>{{SUMMARY_FAIL}}</h3><p>Fail</p></div>
+          <div class="summary-item"><h3>{{SUMMARY_WARNING}}</h3><p>Warning</p></div>
+          <div class="summary-item"><h3>{{SUMMARY_ERROR}}</h3><p>Error</p></div>
+          <div class="summary-item"><h3>{{SUMMARY_DRIFT}}</h3><p>Drift</p></div>
+          <div class="summary-item"><h3>{{SUMMARY_INFO}}</h3><p>Info</p></div>
+          <div class="summary-item"><h3>{{SUMMARY_SUPPRESSED}}</h3><p>Suppressed</p></div>
+        </div>
       </div>
     </section>
 
     <section class="panel filter-toolbar" id="filter-toolbar">
+      <noscript>
+        <div class="note-box">
+          JavaScript is disabled, so the controls below (status/severity filters, search, hide-pass toggle, expand/collapse) are inactive. Every finding is still present in the page &mdash; repositories with findings needing attention are expanded by default, and any collapsed section can be opened manually.
+        </div>
+      </noscript>
       <div class="filter-buttons" role="group" aria-label="Filter findings by status">
         <button type="button" class="filter-btn active" data-filter-status="all" aria-pressed="true">All ({{SUMMARY_TOTAL}})</button>
         <button type="button" class="filter-btn" data-filter-status="Fail" aria-pressed="false">Fail ({{SUMMARY_FAIL}})</button>
@@ -494,6 +611,12 @@
     <section class="panel">
       <h2>Table of Contents</h2>
       {{TABLE_OF_CONTENTS}}
+    </section>
+
+    <section class="panel">
+      <h2>Findings by Check</h2>
+      <p class="summary-hint">Fail/Warning/Error/Drift findings rolled up by check, across every scanned target &mdash; shows which controls are weakest fleet-wide.</p>
+      {{CHECK_ROLLUP}}
     </section>
 
     <section class="panel">
@@ -651,6 +774,45 @@
       }
 
       applyFilters();
+    })();
+
+    (function () {
+      var root = document.documentElement;
+      var toggle = document.getElementById('theme-toggle');
+      if (!toggle) { return; }
+
+      function getStoredTheme() {
+        try { return window.localStorage.getItem('fylgyr-theme'); } catch (e) { return null; }
+      }
+
+      function setStoredTheme(value) {
+        try { window.localStorage.setItem('fylgyr-theme', value); } catch (e) { /* storage unavailable; theme just won't persist */ }
+      }
+
+      function effectiveTheme() {
+        var explicit = root.getAttribute('data-theme');
+        if (explicit === 'dark' || explicit === 'light') { return explicit; }
+        return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }
+
+      function updateLabel() {
+        var effective = effectiveTheme();
+        toggle.textContent = effective === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+        toggle.setAttribute('aria-pressed', effective === 'dark' ? 'true' : 'false');
+      }
+
+      var stored = getStoredTheme();
+      if (stored === 'dark' || stored === 'light') {
+        root.setAttribute('data-theme', stored);
+      }
+      updateLabel();
+
+      toggle.addEventListener('click', function () {
+        var next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        setStoredTheme(next);
+        updateLabel();
+      });
     })();
   </script>
 </body>
