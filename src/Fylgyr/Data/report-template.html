@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{TITLE}}</title>
+  <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAFhUlEQVR4AaRXW2gcVRj+zmx2s9n77HZLirTNg9Jaqha8JIpQYxHSgi8NiJcnBV9an6W0Pgv6qvVNBMXiS4r2wRtorVZpVBS8pCAWojQSmmxmb9lbsjP+35mZ3ay7283GZf6Z//p9/zlz5sysgR38MpnM3WbWPG7uMp/VIjp9O4DCthsgUSqbnhPJNw1nwYH62FHqfS2i08eYyBxzt9vMwAbM3eap1K70IokE9KRIUgTGSAAjwaAW6vSJMHaSuaxhrfhue/RtgFOayppfOo46D4X9SimMRSNI7jKR3p1BPJnQNn3U6WOMtlIKrGEtMYiFPr+eDZhyT2VKrwFqGvKLJmIws2kopVDOF7F2K4dCzkIpX9BCnT7GlFI6lzVSKoeaJhYxxeg6uhpgIu+vZCY4xWY2A8dxNGmlvI7mZlNC7pHYnwbFtaBjzGEzrGEtMSSeICaxRe84OhrgVEniB8wIjYaQMBMoF4qolNbp6pBwOorJszNa9h070BGjwRrWEoNY9BGbHNR96WigadjnJaBHHkvGZZrz2GhsiKv7iI4nWs4DT92Pe158FEYw0PJRYW0hlwex/JnwOBjW0mrAXbFK3/N4KiH3tohmsz3dOnvrSW01gPEH9mHq3Awi2XhHgBglWTfEdANq2uVyLcO9AI6tXqbOxVOv1fqOnDn/lUa5pl3RPUlMShPZ++7Qtn/iTBCT2PT5XNR1A6bsaFDuozYaHu15z5ncT35/5xpuXvlDh0fGgjhy6igmjh/Stn/imiC2UjJ1wqU5JagbkI1jVnSEI2OoVdzR0N6uOE0b1y/8iF/f/g72pq3L7nzyXqiAhtc2T8QmB3Wf0884RmdobBScKupDieNmL3+/iPlXP0Xut3/w50e/gI25EfdMbHK4FjSn4T0W3EIRMAxsfc69xIEXZci0elnlpTx+euMrLH624HnaF2IHDH/MSJLbsA17gincz5syldSHlUA0tO0ScpCLBeQ24MCkYSgD9hANbFba+8Ph5x/G3sfuIsxAIQe5dKJwt+ZDO4Y4jUSCrWxDFtvBZx7E4RcegT+6VnCAYkDBYo7t2CAQ9Z3KnskJPHTmCYxlYn0hyEEunSDchiyCRRq2vGQCMhLqw8rCu/Mo/q3HgfjeNKZemUHm4HhPGHKQi0FyG7lc7roYBRE0bRsB+dCgPozUrAp+eO1zLF29octGIiEceelo1z5AbHLoJMirRrgNz/iC10a1jtFwmOpwIq9rjmrhvXlwNuyNJtaXC137ALHJ4YFrTt2Acpw5OmuVquyGO2iAxZ4sfXsD35y7hJ/fvOJ52pdwJCw7bVU7fE7dgLVqXYCDv/gRUa/VEYlHddJ2T0q1NyLWNApV1PMuEW0KMYlNDnJpTgnoBuQKZTiv87peLOvbEAy1HzP6/48Qi9NPbOL4XNRbDVi3rLfkpXyZzpL3/g4EOj8wGBtWiMFvAWK6tc5ll8u1Wg3QDNjGabkWNzc25FOsJJt1CuxefF1HZbnU8hVvuo9gy+EprE1mUhqLmOIuehyiukdHA3wkFZynGWrUGyhaRfmcSvRcE9VcGVfPXsLXZz5Eo9j9Cuc9jyUTGoNYxCQ2Oaj70tEAndaK9YkknhBdz4S1koNSSv8XiMSi4LMsMX2wibpV0TpPjDGH/xGUkm1Oav2RE5PYzNsqXQ0wyMSArab8NcHFY62sgSs4Jt+LJEhmTMRTSS3U6WOMOcxlDbGIQSxLBubaneeeDTCFU5VfsR5XyjnNx4bA1fUKCquW/o9Qks912hTqa/yzIjHazGUNa4lBLGL2kr4N+MmWPB351bUJ2TieE99FEb1tc+fj9FKoi58HYxeZyxrW0nk7GdiAX8yNI7+yNiuSkik9xHtKIi1wTtDHmMgsc/26Qdd/AQAA///uqvh+AAAABklEQVQDAD75gEPI1STCAAAAAElFTkSuQmCC" />
   <style>
     :root {
       --bg: #f6f8fb;
@@ -189,12 +190,30 @@
     }
 
     a { color: #1d4ed8; }
+
+    .report-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .report-logo {
+      color: var(--pass);
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <section class="panel">
-      <h1>{{TITLE}}</h1>
+      <div class="report-title">
+        <svg class="report-logo" width="32" height="32" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="48" fill="none" stroke="currentColor" stroke-width="4"></circle>
+  <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.35"></circle>
+  <path d="M50 22 V78 M50 22 L68 36 M50 48 L68 62" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+</svg>
+        <h1>{{TITLE}}</h1>
+      </div>
       <p><strong>Generated:</strong> {{GENERATED_AT}}</p>
       <p><strong>Target:</strong> {{TARGET}}</p>
       <p><strong>Version:</strong> {{VERSION}}</p>

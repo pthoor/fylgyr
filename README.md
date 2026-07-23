@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/fylgyr-icon-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/fylgyr-icon-light.svg">
+    <img alt="Fylgyr" src="assets/fylgyr-icon-light.svg" width="88" height="88">
+  </picture>
+</p>
+
 # Fylgyr
 
 > Guardian spirit for your repos
