@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Added
+
+- Project logo assets under `assets/` (icon, wordmark badge, favicons, social preview). Wired up in the README header (theme-adaptive SVG), the module manifest `IconUri` (PowerShell Gallery listing), and inlined as a favicon + header mark in the generated HTML report.
+
 ### Fixed
 
 - `Test-EnvironmentProtection` no longer reports `Fail/High` for environments with required reviewers but `prevent_self_review` disabled when only one reviewer is configured, since enabling the control there would deadlock every deployment (nobody else exists to approve it). The finding is downgraded to `Warning/Medium` in that case; environments with two or more reviewers configured still get `Fail/High`, since the control is achievable there without deadlock.

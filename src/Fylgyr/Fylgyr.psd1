@@ -89,6 +89,7 @@
             Tags = @('PowerShell', 'GitHub', 'Security', 'SupplyChain', 'DevSecOps')
             ProjectUri = 'https://github.com/pthoor/Fylgyr'
             LicenseUri = 'https://github.com/pthoor/Fylgyr/blob/main/LICENSE'
+            IconUri = 'https://raw.githubusercontent.com/pthoor/fylgyr/main/assets/fylgyr-favicon-180.png'
         }
     }
 }
