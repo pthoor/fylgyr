@@ -367,7 +367,7 @@ The report includes:
 - grouped findings by target and check, collapsible per repository with at-a-glance status chips
 
 The report is a single self-contained HTML file (no external assets) with built-in interactivity:
-- a sticky filter toolbar to show only Fail/Warning/Error/Drift/Info/Pass/Suppressed findings, free-text search across check name/resource/detail, and expand/collapse-all controls
+- a sticky filter toolbar to show only Fail/Warning/Error/Drift/Info/Pass/Suppressed findings, a severity filter (Critical/High/Medium/Low/Info), free-text search across check name/resource/detail, and a single expand/collapse-all toggle
 - passing and suppressed results are hidden by default so large org-wide scans aren't dominated by noise; toggle them back on anytime
 - clean repositories collapse to a one-line summary; repositories with findings needing attention are expanded automatically
 - supplementary sections (Defender XDR detection queries, companion endpoint/network controls) are collapsed by default since they're not scan-specific

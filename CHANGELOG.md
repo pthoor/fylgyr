@@ -9,6 +9,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Added
 
 - Project logo assets under `assets/` (icon, wordmark badge, favicons, social preview). Wired up in the README header (theme-adaptive SVG), the module manifest `IconUri` (PowerShell Gallery listing), and inlined as a favicon + header mark in the generated HTML report.
+- HTML report (`-OutputFormat HTML`) now has a sticky filter toolbar: filter by status or severity, free-text search across check name/resource/detail, hide passing/suppressed results by default, and a single expand/collapse-all toggle for per-repository sections. Clean repositories collapse to a one-line summary with status chips; repositories with findings needing attention expand automatically. Supplementary sections (Defender XDR queries, companion controls) are collapsed by default. Adds dark mode (follows OS preference) and print styles that expand all sections. The report remains fully usable with JavaScript disabled via native `<details>` disclosure. Also surfaces the previously-computed but never-rendered `Drift` count in the summary.
 
 ### Fixed
 

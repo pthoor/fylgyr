@@ -375,6 +375,16 @@
       min-width: 220px;
     }
 
+    .filter-controls select {
+      font: inherit;
+      font-size: 13px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+    }
+
     .filter-controls button {
       font: inherit;
       font-size: 12px;
@@ -463,9 +473,16 @@
       </div>
       <div class="filter-controls">
         <label><input type="checkbox" id="toggle-hide-pass" checked /> Hide passing &amp; suppressed by default</label>
+        <select id="severity-filter" aria-label="Filter findings by severity">
+          <option value="all">All severities</option>
+          <option value="Critical">Critical</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+          <option value="Info">Info</option>
+        </select>
         <input type="search" id="finding-search" placeholder="Search findings (check, resource, detail)..." aria-label="Search findings" />
-        <button type="button" id="expand-all-btn">Expand all repos</button>
-        <button type="button" id="collapse-all-btn">Collapse all repos</button>
+        <button type="button" id="toggle-collapse-btn">Expand all repos</button>
       </div>
       <p class="filter-status-line" id="filter-status-line"></p>
     </section>
@@ -515,16 +532,17 @@
       var repoDetails = Array.prototype.slice.call(document.querySelectorAll('details.repo-group'));
       var filterButtons = Array.prototype.slice.call(document.querySelectorAll('.filter-btn'));
       var hidePassToggle = document.getElementById('toggle-hide-pass');
+      var severityFilter = document.getElementById('severity-filter');
       var searchInput = document.getElementById('finding-search');
       var statusLine = document.getElementById('filter-status-line');
-      var expandAllBtn = document.getElementById('expand-all-btn');
-      var collapseAllBtn = document.getElementById('collapse-all-btn');
+      var toggleCollapseBtn = document.getElementById('toggle-collapse-btn');
       var backToTop = document.getElementById('back-to-top');
 
-      var state = { status: 'all', query: '' };
+      var state = { status: 'all', severity: 'all', query: '' };
+      var allExpanded = false;
 
       function isFilterActive() {
-        return state.status !== 'all' || state.query !== '' || (hidePassToggle && hidePassToggle.checked);
+        return state.status !== 'all' || state.severity !== 'all' || state.query !== '' || (hidePassToggle && hidePassToggle.checked);
       }
 
       function matchesQuery(finding) {
@@ -534,8 +552,14 @@
         return haystack.indexOf(state.query) !== -1;
       }
 
+      function matchesSeverity(finding) {
+        if (state.severity === 'all') { return true; }
+        return finding.getAttribute('data-severity') === state.severity;
+      }
+
       function isVisible(finding) {
         var status = finding.getAttribute('data-status') || '';
+        if (!matchesSeverity(finding)) { return false; }
         if (state.status !== 'all') {
           return status === state.status && matchesQuery(finding);
         }
@@ -590,6 +614,13 @@
         hidePassToggle.addEventListener('change', applyFilters);
       }
 
+      if (severityFilter) {
+        severityFilter.addEventListener('change', function () {
+          state.severity = severityFilter.value;
+          applyFilters();
+        });
+      }
+
       if (searchInput) {
         searchInput.addEventListener('input', function () {
           state.query = searchInput.value.trim().toLowerCase();
@@ -597,15 +628,11 @@
         });
       }
 
-      if (expandAllBtn) {
-        expandAllBtn.addEventListener('click', function () {
-          repoDetails.forEach(function (d) { d.open = true; });
-        });
-      }
-
-      if (collapseAllBtn) {
-        collapseAllBtn.addEventListener('click', function () {
-          repoDetails.forEach(function (d) { d.open = false; });
+      if (toggleCollapseBtn) {
+        toggleCollapseBtn.addEventListener('click', function () {
+          allExpanded = !allExpanded;
+          repoDetails.forEach(function (d) { d.open = allExpanded; });
+          toggleCollapseBtn.textContent = allExpanded ? 'Collapse all repos' : 'Expand all repos';
         });
       }
 
