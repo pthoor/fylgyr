@@ -3570,6 +3570,21 @@ Describe 'ConvertTo-FylgyrHtml' {
         }
     }
 
+    It 'counts affected/checked targets correctly even when duplicate targets are not adjacent' {
+        InModuleScope Fylgyr {
+            $results = @(
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'Critical' -Resource 'workflow-a.yml' -Detail 'Unpinned action.' -Remediation 'Pin to a SHA.' -Target 'org/repo1'
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'Critical' -Resource 'workflow-b.yml' -Detail 'Unpinned action.' -Remediation 'Pin to a SHA.' -Target 'org/repo2'
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Fail' -Severity 'Critical' -Resource 'workflow-c.yml' -Detail 'Second unpinned action.' -Remediation 'Pin to a SHA.' -Target 'org/repo1'
+                Format-FylgyrResult -CheckName 'ActionPinning' -Status 'Pass' -Severity 'Low' -Resource 'org/repo3' -Detail 'All pinned.' -Remediation 'N/A' -Target 'org/repo3'
+            )
+
+            $html = ConvertTo-FylgyrHtml -Results $results -Target 'org'
+            $html | Should -Match 'Fail 3'
+            $html | Should -Match '<td>2 / 3</td>'
+        }
+    }
+
     It 'shows a no-rollup message when nothing is Fail/Warning/Error/Drift' {
         InModuleScope Fylgyr {
             $results = @(

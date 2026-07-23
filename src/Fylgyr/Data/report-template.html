@@ -665,7 +665,7 @@
       var allExpanded = false;
 
       function isFilterActive() {
-        return state.status !== 'all' || state.severity !== 'all' || state.query !== '' || (hidePassToggle && hidePassToggle.checked);
+        return state.status !== 'all' || state.severity !== 'all' || state.query !== '';
       }
 
       function matchesQuery(finding) {

@@ -217,8 +217,8 @@ $coverageSummaryHtml = @"
             continue
         }
 
-        $checkedTargetCount = @($checkResults | Select-Object -ExpandProperty Target -Unique).Count
-        $affectedTargetCount = @($actionableResults | Select-Object -ExpandProperty Target -Unique).Count
+        $checkedTargetCount = @($checkResults | Group-Object -Property Target).Count
+        $affectedTargetCount = @($actionableResults | Group-Object -Property Target).Count
         $checkRollupRows.Add([PSCustomObject]@{
                 CheckName      = [string]$checkNameGroup.Name
                 AffectedCount  = $affectedTargetCount
