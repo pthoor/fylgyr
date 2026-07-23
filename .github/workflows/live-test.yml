@@ -15,7 +15,9 @@ permissions:
 jobs:
   live-scan:
     # Forks do not have FYLGYR_TOKEN; only run in the canonical repository.
-    if: github.repository == 'pthoor/fylgyr'
+    # Dependabot-triggered runs also don't get repo secrets (GitHub withholds
+    # them by design), so skip those too instead of failing on every bump PR.
+    if: github.repository == 'pthoor/fylgyr' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:
