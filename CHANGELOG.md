@@ -9,8 +9,17 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Added
 
 - Project logo assets under `assets/` (icon, wordmark badge, favicons, social preview). Wired up in the README header (theme-adaptive SVG), the module manifest `IconUri` (PowerShell Gallery listing), and inlined as a favicon + header mark in the generated HTML report.
+- HTML report (`-OutputFormat HTML`) now has a sticky filter toolbar: filter by status or severity, free-text search across check name/resource/detail, hide passing/suppressed results by default, and a single expand/collapse-all toggle for per-repository sections. Clean repositories collapse to a one-line summary with status chips; repositories with findings needing attention expand automatically. Supplementary sections (Defender XDR queries, companion controls) are collapsed by default. Adds dark mode (follows OS preference) and print styles that expand all sections. The report remains fully usable with JavaScript disabled via native `<details>` disclosure. Also surfaces the previously-computed but never-rendered `Drift` count in the summary.
+- HTML report summary now includes a pure-CSS proportion ring chart alongside the numeric tiles, for a faster at-a-glance read on large org-wide scans.
+- HTML report adds a "Findings by Check" rollup: Fail/Warning/Error/Drift findings grouped by check across every scanned target (e.g. `ActionPinning: Fail 2, 2/3 repos affected`), so the weakest controls fleet-wide are visible before drilling into individual repos.
+- HTML report adds a manual light/dark theme toggle button (in addition to following the OS `prefers-color-scheme` by default), remembered via `localStorage` where available and hidden entirely when JavaScript is disabled.
 
 ### Fixed
+
+- HTML report: a repository whose only findings are `Suppressed`/`Info` no longer auto-expands by default — only `Fail`/`Warning`/`Error`/`Drift` findings count as "needs attention" now, matching the documented behavior.
+- HTML report: the per-repository `<summary>` disclosure no longer contains `<p>` (block-level) elements, which is invalid per the HTML `<summary>` content model (phrasing content only, optionally with a heading); switched to `<span>` with equivalent `display: block` styling so the visual layout is unchanged.
+- HTML report: the repo-group arrow, name, and status chips now lay out on one row via flexbox instead of the arrow sitting alone on its own line above the title.
+- HTML report: added a `<noscript>` notice on the filter toolbar so JavaScript-disabled viewers know the status/severity filters, search, and expand/collapse controls are inactive (findings remain fully visible either way).
 
 - `Test-EnvironmentProtection` no longer reports `Fail/High` for environments with required reviewers but `prevent_self_review` disabled when only one reviewer is configured, since enabling the control there would deadlock every deployment (nobody else exists to approve it). The finding is downgraded to `Warning/Medium` in that case; environments with two or more reviewers configured still get `Fail/High`, since the control is achievable there without deadlock.
 - `ci.yml` and `release.yml` pin `Pester` to `< 6.0` (`-MaximumVersion 5.99.99`). PSGallery began serving Pester v6, which breaks `Assert-MockCalled` and failed every test run; this had also silently broken the release workflow's own test gate.

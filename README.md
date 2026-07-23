@@ -358,13 +358,23 @@ Invoke-Fylgyr -Owner 'myorg' -Repo 'myrepo' -OutputFormat HTML -OutputPath './fy
 ```
 
 The report includes:
-- scan metadata and status summary
+- scan metadata and status summary (including drift findings), with a proportion ring chart alongside the numeric tiles for an at-a-glance read on a large scan
 - scan scope counts (repos scanned, with results, without results)
 - table of contents with clear Organization Scope vs Repository Scope sections
+- a findings-by-check rollup showing which controls fail most often across every scanned target (e.g. "ActionPinning: Fail 2, 2/3 repos affected") — a second axis on top of the per-repo grouping below
 - risk prioritization summary (critical/high, medium, prioritized findings, missing OWASP coverage)
 - overall recommendations split into scan-derived priorities and companion controls beyond GitHub
 - Defender XDR custom detection starter queries (including VS Code extension inventory telemetry)
-- grouped findings by target and check
+- grouped findings by target and check, collapsible per repository with at-a-glance status chips
+
+The report is a single self-contained HTML file (no external assets) with built-in interactivity:
+- a sticky filter toolbar to show only Fail/Warning/Error/Drift/Info/Pass/Suppressed findings, a severity filter (Critical/High/Medium/Low/Info), free-text search across check name/resource/detail, and a single expand/collapse-all toggle
+- passing and suppressed results are hidden by default so large org-wide scans aren't dominated by noise; toggle them back on anytime
+- clean repositories collapse to a one-line summary; repositories with findings needing attention are expanded automatically (based on actionable Fail/Warning/Error/Drift findings — repos with only suppressed or informational results stay collapsed)
+- supplementary sections (Defender XDR detection queries, companion endpoint/network controls) are collapsed by default since they're not scan-specific
+- light/dark theme support that follows the viewer's OS preference by default, plus a manual toggle button (remembered via `localStorage` where available) to override it
+- print styles that expand all sections for a complete printout/PDF
+- works with JavaScript disabled too: all findings remain present in the HTML and expandable via native `<details>` disclosure triangles, and a notice explains that the filter toolbar and theme toggle need JavaScript
 - evidence details (when `-IncludeEvidence` is enabled)
 - coverage dashboard snippets from `docs/COVERAGE.md`
 
